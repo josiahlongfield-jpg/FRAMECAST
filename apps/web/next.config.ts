@@ -7,6 +7,8 @@ const smallParts = !!process.env.VERCEL && !process.env.S3_BUCKET;
 
 const nextConfig: NextConfig = {
   env: {
+    // With a bucket, browsers upload parts straight to it via presigned URLs.
+    NEXT_PUBLIC_DIRECT_UPLOADS: process.env.S3_BUCKET && process.env.DIRECT_UPLOADS !== "off" ? "1" : "",
     NEXT_PUBLIC_UPLOAD_PART_BYTES: process.env.NEXT_PUBLIC_UPLOAD_PART_BYTES ?? (smallParts ? String(2 * 1024 * 1024) : ""),
   },
 };

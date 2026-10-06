@@ -1,6 +1,5 @@
 import * as store from "./store";
 
-/** Matches the S3 minimum part size; only the final part may be smaller. */
 /**
  * Bytes per upload part. 5 MiB is S3's minimum; deployments that send parts
  * through a serverless function with a smaller request limit (Vercel: 4.5 MB)
@@ -29,27 +28,41 @@ async function withRetry<T>(fn: () => Promise<T>, onRetry: (retrying: boolean) =
 
 export class FatalUploadError extends Error {}
 
-async function sendPart(videoId: string, partNumber: number, body: Blob, headers: HeadersInit) {
-  const res = await fetch(`/api/videos/${videoId}/parts/${partNumber}`, { method: "PUT", body, headers });
-  if (res.ok) return;
+/** Set at build time when videos go straight to object storage (see next.config.ts). */
+const DIRECT = process.env.NEXT_PUBLIC_DIRECT_UPLOADS === "1";
+
+async function rejectOrRetry(res: Response, what: string): Promise<never> {
   if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) {
-    const msg = (await res.json().catch(() => null))?.error ?? `Upload rejected (${res.status})`;
-    throw new FatalUploadError(msg);
+    throw new FatalUploadError((await res.json().catch(() => null))?.error ?? `${what} rejected (${res.status})`);
   }
-  throw new Error(`Upload failed (${res.status})`);
+  throw new Error(`${what} failed (${res.status})`);
 }
 
-async function sendComplete(videoId: string, partCount: number, durationMs: number, headers: HeadersInit) {
+async function sendPart(videoId: string, partNumber: number, body: Blob, headers: Record<string, string>) {
+  const api = `/api/videos/${videoId}/parts/${partNumber}`;
+  if (DIRECT) {
+    // Ask for a one-off URL, then upload the (already encrypted) bytes straight to storage.
+    const res = await fetch(api, { method: "POST", headers: { ...headers, "Content-Type": "application/json" }, body: JSON.stringify({ size: body.size }) });
+    if (!res.ok) await rejectOrRetry(res, "Upload");
+    const { url } = (await res.json()) as { url: string | null };
+    if (url) {
+      // A storage error (expired URL, network) is always retried with a fresh URL.
+      const put = await fetch(url, { method: "PUT", body });
+      if (!put.ok) throw new Error(`Storage upload failed (${put.status})`);
+      return;
+    }
+  }
+  const res = await fetch(api, { method: "PUT", body, headers });
+  if (!res.ok) await rejectOrRetry(res, "Upload");
+}
+
+async function sendComplete(videoId: string, partCount: number, durationMs: number, headers: Record<string, string>) {
   const res = await fetch(`/api/videos/${videoId}/complete`, {
     method: "POST",
     headers: { ...headers, "Content-Type": "application/json" },
     body: JSON.stringify({ partCount, durationMs }),
   });
-  if (res.ok) return;
-  if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) {
-    throw new FatalUploadError((await res.json().catch(() => null))?.error ?? `Could not finish upload (${res.status})`);
-  }
-  throw new Error(`Complete failed (${res.status})`);
+  if (!res.ok) await rejectOrRetry(res, "Finishing the upload");
 }
 
 /**

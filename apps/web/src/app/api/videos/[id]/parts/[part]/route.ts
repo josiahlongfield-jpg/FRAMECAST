@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { db } from "@/lib/db";
 import { storage } from "@/lib/storage";
 import { handle, HttpError } from "@/lib/session";
@@ -11,8 +12,7 @@ const MAX_PART_BYTES = 64 * 1024 * 1024;
  */
 export const PUT = handle(async (req: Request, ctx: { params: Promise<{ id: string; part: string }> }) => {
   const { id, part } = await ctx.params;
-  const partNumber = Number(part);
-  if (!Number.isInteger(partNumber) || partNumber < 1 || partNumber > 10000) throw new HttpError(400, "Bad part number");
+  const partNumber = parsePart(part);
 
   const video = await uploadableVideo(req, id);
   if (video.status !== "RECORDING") throw new HttpError(409, "Upload already completed");
@@ -29,3 +29,29 @@ export const PUT = handle(async (req: Request, ctx: { params: Promise<{ id: stri
   });
   return Response.json({ partNumber, size: body.length });
 });
+
+const Presign = z.object({ size: z.number().int().min(1).max(MAX_PART_BYTES) });
+
+/**
+ * With object storage, the browser uploads each part straight to the bucket.
+ * This returns a short-lived URL for one part of exactly `size` bytes. The
+ * bucket is the record of which parts arrived; see the complete route.
+ */
+export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: string; part: string }> }) => {
+  const { id, part } = await ctx.params;
+  const partNumber = parsePart(part);
+  const body = Presign.safeParse(await req.json().catch(() => null));
+  if (!body.success) throw new HttpError(body.error.issues.some((i) => i.code === "too_big") ? 413 : 400, "Bad part size");
+
+  const video = await uploadableVideo(req, id);
+  if (video.status !== "RECORDING") throw new HttpError(409, "Upload already completed");
+  const driver = storage();
+  if (!driver.presignPart) return Response.json({ url: null });
+  return Response.json({ url: await driver.presignPart(video.storageKey, video.uploadId, partNumber, body.data.size) });
+});
+
+function parsePart(part: string) {
+  const n = Number(part);
+  if (!Number.isInteger(n) || n < 1 || n > 10000) throw new HttpError(400, "Bad part number");
+  return n;
+}

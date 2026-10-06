@@ -18,13 +18,17 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
   const video = await uploadableVideo(req, id);
   if (video.status !== "RECORDING") return Response.json({ video: publicVideo(video) }); // already done, idempotent
 
-  const parts = await db.uploadPart.findMany({ where: { videoId: id }, orderBy: { partNumber: "asc" } });
+  // Parts uploaded straight to the bucket are only known to the bucket.
+  const driver = storage();
+  const parts = driver.listParts
+    ? (await driver.listParts(video.storageKey, video.uploadId)).sort((a, b) => a.partNumber - b.partNumber)
+    : await db.uploadPart.findMany({ where: { videoId: id }, orderBy: { partNumber: "asc" } });
   const missing: number[] = [];
   for (let n = 1; n <= body.data.partCount; n++) if (!parts.some((p) => p.partNumber === n)) missing.push(n);
   if (missing.length) return Response.json({ error: "Missing parts", missing }, { status: 409 });
 
   const used = parts.filter((p) => p.partNumber <= body.data.partCount);
-  await storage().complete(video.storageKey, video.uploadId, used);
+  await driver.complete(video.storageKey, video.uploadId, used);
   const updated = await db.video.update({
     where: { id },
     data: {

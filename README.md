@@ -49,13 +49,15 @@ Videos and replies are end-to-end encrypted in the browser before upload; see se
 
 `apps/web/e2e/record.mjs` drives Chromium with a fake camera through sign in, recording, playback, commenting, and a crash mid-recording followed by recovery.
 `apps/web/e2e/replies.mjs` covers the encrypted conversation: the server only stores ciphertext, a client on a phone-sized screen opens their personal link and replies with text, voice and video, an interrupted reply is recovered, a second device needs the recovery key, seats are capped and expired relay copies are deleted.
-`apps/web/e2e/planner.mjs` covers to-dos and notes: private versus shared items, a client ticking off a shared to-do, what the client can and can't see or change, and ciphertext-only storage.
+`apps/web/e2e/signin.mjs` covers email-link sign-in (link works once, returns you to the page you asked for). `multipart.mjs` uses tiny parts, so run it without `S3_BUCKET`. `apps/web/e2e/planner.mjs` covers to-dos and notes: private versus shared items, a client ticking off a shared to-do, what the client can and can't see or change, and ciphertext-only storage.
 `apps/web/e2e/reminders.mjs` covers repeating to-dos and reminder emails: business settings with a live preview, a weekly to-do with several reminders at the right local times, the reminder job, the next week's to-do appearing when the client ticks one off, the client opting out from the email, and emails never containing the to-do's text.
 `apps/web/e2e/multipart.mjs` checks the upload protocol (out-of-order parts, retries, missing-part rejection, byte-exact assembly, range requests, auth).
 
 ```bash
 cd apps/web && npm run build && npm start &
 node e2e/record.mjs /tmp && node e2e/replies.mjs /tmp && node e2e/planner.mjs /tmp && node e2e/reminders.mjs /tmp && node e2e/multipart.mjs
+# with the dev server started with AUTH_EMAIL_LINKS=true:
+node e2e/signin.mjs
 ```
 
 ## Going to production
@@ -76,4 +78,16 @@ Live at **https://sureframe.app** (bought through Vercel). `www.sureframe.app`, 
 
 Without `S3_BUCKET`, videos are stored in Postgres (`StoredPart`) in 2 MB parts, under Vercel's 4.5 MB request limit. That suits a preview. For launch, use R2/S3 with direct-to-bucket (presigned) part uploads.
 
-Reminder emails need `RESEND_API_KEY` and `MAIL_FROM`; without them they are only logged. Vercel's free plan runs crons once a day. On Pro, change `/api/cron/reminders` in `vercel.json` to `*/5 * * * *`.
+Sign-in links and reminder emails need `RESEND_API_KEY` and `MAIL_FROM`; without them they are only logged. Setting `RESEND_API_KEY` turns on email-link sign-in and switches the preview's password login off. Reminders are checked every 5 minutes (`vercel.json`, needs Vercel Pro).
+
+### Production storage (Cloudflare R2)
+
+Set `S3_BUCKET`, `S3_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com`, `S3_REGION=auto`, `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` (an R2 API token with Object Read & Write on the bucket). Browsers then upload encrypted parts straight to the bucket through short-lived presigned URLs, so video never passes through Vercel. The bucket needs this CORS policy:
+
+```json
+[{ "AllowedOrigins": ["https://sureframe.app"], "AllowedMethods": ["GET", "PUT", "HEAD"], "AllowedHeaders": ["*"], "ExposeHeaders": ["ETag"], "MaxAgeSeconds": 3600 }]
+```
+
+### Sign in with Google
+
+Create an OAuth client (Web application) in Google Cloud Console with redirect URI `https://sureframe.app/api/auth/callback/google`, then set `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET`.

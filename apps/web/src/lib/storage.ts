@@ -8,6 +8,7 @@ import {
   AbortMultipartUploadCommand,
   DeleteObjectCommand,
   GetObjectCommand,
+  ListPartsCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
@@ -24,6 +25,14 @@ export interface StorageDriver {
   delete(key: string): Promise<void>;
   /** A URL the browser can play directly, or null to stream through /api/videos/:id/stream. */
   playbackUrl(key: string): Promise<string | null>;
+  /**
+   * Object storage only: a short-lived URL the browser can PUT one part to
+   * directly, so video bytes never pass through our servers (or their
+   * request-size limits). The part's exact size is signed into the URL.
+   */
+  presignPart?(key: string, uploadId: string | null, partNumber: number, size: number): Promise<string>;
+  /** Object storage only: the parts actually stored, as the source of truth at completion. */
+  listParts?(key: string, uploadId: string | null): Promise<{ partNumber: number; etag: string | null; sizeBytes: number }[]>;
   /** Local driver only: open a byte range of the finished file. */
   open?(key: string, range?: { start: number; end: number }): Promise<{ stream: ReadableStream; size: number }>;
 }
@@ -138,6 +147,25 @@ class S3Driver implements StorageDriver {
       }),
     );
     return -1; // size is tracked from parts by the caller
+  }
+
+  async presignPart(key: string, uploadId: string | null, partNumber: number, size: number) {
+    return getSignedUrl(
+      this.s3,
+      new UploadPartCommand({ Bucket: this.bucket, Key: key, UploadId: uploadId!, PartNumber: partNumber, ContentLength: size }),
+      { expiresIn: 15 * 60, signableHeaders: new Set(["content-length"]) },
+    );
+  }
+
+  async listParts(key: string, uploadId: string | null) {
+    const out: { partNumber: number; etag: string | null; sizeBytes: number }[] = [];
+    let marker: string | undefined;
+    do {
+      const res = await this.s3.send(new ListPartsCommand({ Bucket: this.bucket, Key: key, UploadId: uploadId!, PartNumberMarker: marker }));
+      for (const p of res.Parts ?? []) out.push({ partNumber: p.PartNumber!, etag: p.ETag ?? null, sizeBytes: Number(p.Size ?? 0) });
+      marker = res.IsTruncated ? res.NextPartNumberMarker : undefined;
+    } while (marker);
+    return out;
   }
 
   async abort(key: string, uploadId: string | null) {
