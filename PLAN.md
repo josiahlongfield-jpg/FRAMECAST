@@ -109,7 +109,13 @@ Annual billing at ~20% off. Viewers are always free.
 - The team also has its own list on the Library page.
 - Clients see only shared items on their inbox page and can tick off shared to-dos; they can't add, edit or delete.
 - Item text is end-to-end encrypted: private items with the team key, shared items with that client's key. Due dates and done/undone are not encrypted (needed for sorting and reminders).
-- Next: reminders (email/push when something is due), repeating schedules such as "weekly check-in every Sunday".
+- Repeating to-dos: every day, weekday, week (any days), 2 weeks, month, or custom, with an optional end date. The next one appears when the current one is ticked off or its time passes. All in the business's time zone, so daylight saving doesn't shift times.
+- Reminder emails: any mix of 1 week, 3 days, 1 day, on the day (set time), 1 hour, at due time, or custom ("2 hours before", "3 days before at 7pm"). Sent to the client, the business, or both.
+- Business controls (Reminders page): business name, time zone, reply-to email, default reminders for new to-dos, who gets them by default, and a personal message, with a live preview of the email.
+- Clients can stop reminders from any email (one click, no sign-in) or from their page, and turn them back on.
+- Emails never include the to-do text (it is end-to-end encrypted); they link to the client's list.
+- Needs: an email provider (Resend, RESEND_API_KEY + MAIL_FROM on a verified domain) and a 5-minute cron (Vercel Pro, or any scheduler) calling /api/cron/reminders.
+- Next: push notifications through the mobile app; text-message reminders (Twilio) as a paid add-on.
 
 ## 7. Open items
 - Mobile app must adopt the same encryption before release (it currently uploads unencrypted and is blocked by the server).

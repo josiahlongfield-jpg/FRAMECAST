@@ -1,0 +1,295 @@
+"use client";
+
+import { useState } from "react";
+import { PRESET_REMINDERS, ruleLabel, sameRule, type ReminderRule, type Repeat } from "@/lib/schedule";
+
+export type Schedule = {
+  due: string; // datetime-local value, "" for none
+  repeat: Repeat | null;
+  reminders: ReminderRule[];
+  remindClient: boolean;
+  remindTeam: boolean;
+};
+
+const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const ordinal = (n: number) => n + (["th", "st", "nd", "rd"][(n % 100 > 10 && n % 100 < 14) || n % 10 > 3 ? 0 : n % 10] ?? "th");
+
+/** "2026-10-12T09:00" for an ISO time, in this browser's time zone. */
+export function toLocalInput(iso: string | null) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+const chip = (on: boolean) =>
+  `rounded-full border px-3 py-1 text-xs font-medium transition ${on ? "border-brand-600 bg-brand-50 text-brand-700" : "border-slate-300 bg-white text-slate-700 hover:border-slate-400"}`;
+
+/** Due date, repeat, reminders and who gets them, in one friendly block. */
+export default function ScheduleFields({
+  value,
+  onChange,
+  clientName,
+  clientEmail,
+  clientOptedOut,
+  canShareReminders,
+}: {
+  value: Schedule;
+  onChange: (s: Schedule) => void;
+  clientName?: string;
+  clientEmail?: string | null;
+  clientOptedOut?: boolean;
+  /** The to-do is shared with a client, so the client can be reminded. */
+  canShareReminders: boolean;
+}) {
+  const set = (patch: Partial<Schedule>) => onChange({ ...value, ...patch });
+  const first = clientName?.split(" ")[0] ?? "client";
+
+  return (
+    <div className="grid gap-3 text-sm">
+      <label className="flex flex-wrap items-center gap-2 text-slate-600">
+        <span className="w-20 shrink-0">Due</span>
+        <input
+          type="datetime-local"
+          value={value.due}
+          onChange={(e) => set({ due: e.target.value, repeat: e.target.value ? value.repeat : null })}
+          aria-label="Due date"
+          className="rounded-lg border border-slate-300 px-2 py-1 text-sm"
+        />
+        {value.due && (
+          <button type="button" onClick={() => set({ due: "", repeat: null })} className="text-xs text-slate-500 hover:text-slate-800">
+            Clear
+          </button>
+        )}
+      </label>
+      {value.due && (
+        <>
+          <RepeatPicker due={value.due} value={value.repeat} onChange={(repeat) => set({ repeat })} />
+          <div className="flex flex-wrap items-start gap-2 text-slate-600">
+            <span className="w-20 shrink-0 pt-1">Remind</span>
+            <div className="min-w-0 flex-1">
+              <ReminderPicker value={value.reminders} onChange={(reminders) => set({ reminders })} />
+              {value.reminders.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                  {canShareReminders && (
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={value.remindClient && !!clientEmail && !clientOptedOut}
+                        disabled={!clientEmail || clientOptedOut}
+                        onChange={(e) => set({ remindClient: e.target.checked })}
+                        className="accent-brand-600"
+                      />
+                      Email {first}
+                      {!clientEmail && <span className="text-xs text-amber-700">(add {first}&apos;s email first)</span>}
+                      {clientEmail && clientOptedOut && <span className="text-xs text-amber-700">({first} turned reminders off)</span>}
+                    </label>
+                  )}
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={value.remindTeam} onChange={(e) => set({ remindTeam: e.target.checked })} className="accent-brand-600" />
+                    Email me
+                  </label>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+type RepeatChoice = "none" | "day" | "weekdays" | "week" | "2week" | "month" | "custom";
+
+function choiceFor(r: Repeat | null, dueDay: number): RepeatChoice {
+  if (!r) return "none";
+  const wd = r.weekdays ?? [];
+  if (r.until) return "custom";
+  if (r.unit === "day" && r.every === 1) return "day";
+  if (r.unit === "week" && r.every === 1 && wd.join() === "1,2,3,4,5") return "weekdays";
+  if (r.unit === "week" && (wd.length === 0 || (wd.length === 1 && wd[0] === dueDay))) return r.every === 1 ? "week" : r.every === 2 ? "2week" : "custom";
+  if (r.unit === "month" && r.every === 1) return "month";
+  return "custom";
+}
+
+function RepeatPicker({ due, value, onChange }: { due: string; value: Repeat | null; onChange: (r: Repeat | null) => void }) {
+  const d = new Date(due);
+  const dueDay = d.getDay();
+  const dueDate = d.getDate();
+  const [custom, setCustom] = useState(choiceFor(value, dueDay) === "custom");
+  const choice = custom ? "custom" : choiceFor(value, dueDay);
+
+  function pick(c: RepeatChoice) {
+    setCustom(c === "custom");
+    if (c === "none") onChange(null);
+    else if (c === "day") onChange({ every: 1, unit: "day" });
+    else if (c === "weekdays") onChange({ every: 1, unit: "week", weekdays: [1, 2, 3, 4, 5] });
+    else if (c === "week") onChange({ every: 1, unit: "week", weekdays: [dueDay] });
+    else if (c === "2week") onChange({ every: 2, unit: "week", weekdays: [dueDay] });
+    else if (c === "month") onChange({ every: 1, unit: "month", monthDay: dueDate });
+    else onChange(value ?? { every: 1, unit: "week", weekdays: [dueDay] });
+  }
+
+  return (
+    <div className="flex flex-wrap items-start gap-2 text-slate-600">
+      <span className="w-20 shrink-0 pt-1">Repeat</span>
+      <div className="grid min-w-0 flex-1 gap-2">
+        <select value={choice} onChange={(e) => pick(e.target.value as RepeatChoice)} aria-label="Repeat" className="w-fit rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm">
+          <option value="none">Doesn&apos;t repeat</option>
+          <option value="day">Every day</option>
+          <option value="weekdays">Every weekday (Mon to Fri)</option>
+          <option value="week">Every week on {DAYS[dueDay]}</option>
+          <option value="2week">Every 2 weeks on {DAYS[dueDay]}</option>
+          <option value="month">Every month on the {ordinal(dueDate)}</option>
+          <option value="custom">Custom…</option>
+        </select>
+        {choice === "custom" && value && (
+          <div className="grid gap-2 rounded-lg bg-slate-50 p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              Every
+              <input
+                type="number"
+                min={1}
+                max={365}
+                value={value.every}
+                onChange={(e) => onChange({ ...value, every: Math.max(1, Math.min(365, Number(e.target.value) || 1)) })}
+                aria-label="Repeat every"
+                className="w-16 rounded-lg border border-slate-300 px-2 py-1"
+              />
+              <select
+                value={value.unit}
+                onChange={(e) => {
+                  const unit = e.target.value as Repeat["unit"];
+                  onChange({ every: value.every, unit, until: value.until, ...(unit === "week" ? { weekdays: [dueDay] } : unit === "month" ? { monthDay: dueDate } : {}) });
+                }}
+                aria-label="Repeat unit"
+                className="rounded-lg border border-slate-300 bg-white px-2 py-1"
+              >
+                <option value="day">{value.every === 1 ? "day" : "days"}</option>
+                <option value="week">{value.every === 1 ? "week" : "weeks"}</option>
+                <option value="month">{value.every === 1 ? "month" : "months"}</option>
+              </select>
+            </div>
+            {value.unit === "week" && (
+              <div className="flex flex-wrap gap-1" role="group" aria-label="Days of the week">
+                {DAYS.map((name, i) => {
+                  const on = (value.weekdays ?? [dueDay]).includes(i);
+                  return (
+                    <button
+                      key={name}
+                      type="button"
+                      aria-pressed={on}
+                      aria-label={name}
+                      onClick={() => {
+                        const cur = value.weekdays ?? [dueDay];
+                        const next = on ? cur.filter((x) => x !== i) : [...cur, i].sort();
+                        if (next.length) onChange({ ...value, weekdays: next });
+                      }}
+                      className={`h-8 w-8 rounded-full text-xs font-semibold ${on ? "bg-brand-600 text-white" : "bg-white text-slate-600 ring-1 ring-slate-300"}`}
+                    >
+                      {name[0]}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+              Ends
+              <select
+                value={value.until ? "on" : "never"}
+                onChange={(e) => {
+                  const { until: _drop, ...rest } = value;
+                  void _drop;
+                  onChange(e.target.value === "never" ? rest : { ...rest, until: due.slice(0, 10) });
+                }}
+                aria-label="Repeat ends"
+                className="rounded-lg border border-slate-300 bg-white px-2 py-1"
+              >
+                <option value="never">Never</option>
+                <option value="on">On a date</option>
+              </select>
+              {value.until && (
+                <input
+                  type="date"
+                  value={value.until}
+                  min={due.slice(0, 10)}
+                  onChange={(e) => e.target.value && onChange({ ...value, until: e.target.value })}
+                  aria-label="Repeat until"
+                  className="rounded-lg border border-slate-300 px-2 py-1"
+                />
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Tap the common choices, or build your own ("2 hours before", "3 days before at 7pm"). */
+export function ReminderPicker({ value, onChange }: { value: ReminderRule[]; onChange: (r: ReminderRule[]) => void }) {
+  const [adding, setAdding] = useState(false);
+  const [amount, setAmount] = useState(2);
+  const [unit, setUnit] = useState<ReminderRule["unit"]>("hour");
+  const [useAt, setUseAt] = useState(false);
+  const [at, setAt] = useState("09:00");
+  const has = (r: ReminderRule) => value.some((v) => sameRule(v, r));
+  const toggle = (r: ReminderRule) => onChange(has(r) ? value.filter((v) => !sameRule(v, r)) : [...value, r]);
+  const customs = value.filter((v) => !PRESET_REMINDERS.some((p) => sameRule(p.rule, v)));
+  const dayish = unit === "day" || unit === "week";
+
+  return (
+    <div className="grid gap-2">
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Reminders">
+        {PRESET_REMINDERS.map((p) => (
+          <button key={p.label} type="button" aria-pressed={has(p.rule)} onClick={() => toggle(p.rule)} className={chip(has(p.rule))}>
+            {p.rule.at ? `${p.label} (${ruleLabel(p.rule).replace("On the day at ", "")})` : p.label}
+          </button>
+        ))}
+        {customs.map((r) => (
+          <button key={ruleLabel(r)} type="button" aria-pressed onClick={() => toggle(r)} className={chip(true)} title="Remove">
+            {ruleLabel(r)} ×
+          </button>
+        ))}
+        {!adding && value.length < 10 && (
+          <button type="button" onClick={() => setAdding(true)} className="rounded-full border border-dashed border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 hover:border-slate-400">
+            + Custom
+          </button>
+        )}
+      </div>
+      {adding && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 p-3">
+          <input type="number" min={0} max={365} value={amount} onChange={(e) => setAmount(Math.max(0, Math.min(365, Number(e.target.value) || 0)))} aria-label="Reminder amount" className="w-16 rounded-lg border border-slate-300 px-2 py-1" />
+          <select value={unit} onChange={(e) => setUnit(e.target.value as ReminderRule["unit"])} aria-label="Reminder unit" className="rounded-lg border border-slate-300 bg-white px-2 py-1">
+            <option value="minute">minutes</option>
+            <option value="hour">hours</option>
+            <option value="day">days</option>
+            <option value="week">weeks</option>
+          </select>
+          before
+          {dayish && (
+            <label className="flex items-center gap-1.5">
+              <input type="checkbox" checked={useAt} onChange={(e) => setUseAt(e.target.checked)} className="accent-brand-600" />
+              at
+              <input type="time" value={at} disabled={!useAt} onChange={(e) => setAt(e.target.value)} aria-label="Reminder time" className="rounded-lg border border-slate-300 px-2 py-1 disabled:opacity-50" />
+            </label>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              const r: ReminderRule = { amount, unit, ...(dayish && useAt ? { at } : {}) };
+              if (!has(r)) onChange([...value, r]);
+              setAdding(false);
+            }}
+            className="rounded-lg bg-slate-900 px-3 py-1 text-xs font-medium text-white"
+          >
+            Add reminder
+          </button>
+          <button type="button" onClick={() => setAdding(false)} className="text-xs text-slate-500">
+            Cancel
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -1,7 +1,10 @@
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { memberOrClient } from "@/lib/access";
 import { itemDTO } from "@/lib/items";
+import { ensureTimezone, scheduleReminders, spawnNext } from "@/lib/reminders";
+import { Repeat, ReminderRules } from "@/lib/scheduleSchema";
 import { handle, HttpError } from "@/lib/session";
 
 const Patch = z.object({
@@ -10,6 +13,11 @@ const Patch = z.object({
   body: z.string().min(20).max(20000).optional(),
   shared: z.boolean().optional(),
   dueAt: z.string().datetime().nullable().optional(),
+  repeat: Repeat.nullable().optional(),
+  reminders: ReminderRules.optional(),
+  remindClient: z.boolean().optional(),
+  remindTeam: z.boolean().optional(),
+  tz: z.string().max(64).optional(),
 });
 
 async function load(id: string) {
@@ -29,7 +37,8 @@ export const PATCH = handle(async (req: Request, ctx: { params: Promise<{ id: st
   const d = body.data;
   if (who.kind === "client") {
     // Clients can only tick off tasks shared with them.
-    if (item.kind !== "TASK" || d.body !== undefined || d.shared !== undefined || d.dueAt !== undefined) {
+    const { done, ...rest } = d;
+    if (item.kind !== "TASK" || done === undefined || Object.values(rest).some((v) => v !== undefined)) {
       throw new HttpError(403, "Not allowed");
     }
   }
@@ -37,11 +46,28 @@ export const PATCH = handle(async (req: Request, ctx: { params: Promise<{ id: st
   if (d.shared !== undefined && d.shared !== item.shared && d.body === undefined) {
     throw new HttpError(400, "Sharing changes which key seals the text; send the re-encrypted body");
   }
+  const shared = d.shared ?? item.shared;
+  const dueAt = d.dueAt === undefined ? item.dueAt : d.dueAt ? new Date(d.dueAt) : null;
+  const scheduled = item.kind === "TASK" && !!dueAt;
   const updated = await db.item.update({
     where: { id },
-    data: { done: d.done, body: d.body, shared: d.shared, dueAt: d.dueAt === undefined ? undefined : d.dueAt ? new Date(d.dueAt) : null },
+    data: {
+      done: d.done,
+      body: d.body,
+      shared: d.shared,
+      dueAt: d.dueAt === undefined ? undefined : dueAt,
+      repeat: !scheduled ? Prisma.DbNull : d.repeat === undefined ? undefined : d.repeat ?? Prisma.DbNull,
+      reminders: d.reminders === undefined ? undefined : d.reminders.length ? d.reminders : Prisma.DbNull,
+      remindClient: d.remindClient === undefined && d.shared === undefined ? undefined : shared && (d.remindClient ?? item.remindClient),
+      remindTeam: d.remindTeam,
+      // A changed date or rule starts the repeat afresh from this occurrence.
+      spawnedNext: d.dueAt !== undefined || d.repeat !== undefined ? false : undefined,
+    },
   });
-  return Response.json({ item: itemDTO(updated) });
+  const tz = await ensureTimezone(item.workspaceId, d.tz);
+  await scheduleReminders(updated, tz);
+  const next = d.done === true ? await spawnNext(updated, tz) : null;
+  return Response.json({ item: itemDTO(updated), next: next ? itemDTO(next) : null });
 });
 
 export const DELETE = handle(async (_req: Request, ctx: { params: Promise<{ id: string }> }) => {

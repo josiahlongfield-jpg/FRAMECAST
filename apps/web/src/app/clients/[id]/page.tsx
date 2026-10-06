@@ -8,6 +8,8 @@ import { db } from "@/lib/db";
 import { clientLink } from "@/lib/clients";
 import { PLANS } from "@/lib/plans";
 import { requirePageUser } from "@/lib/session";
+import { workspaceReminderDefaults } from "@/lib/reminders";
+import ClientEmail from "@/components/ClientEmail";
 
 export const metadata: Metadata = { title: "Client" };
 
@@ -29,7 +31,7 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
         <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{client.name}</h1>
-            {client.email && <p className="text-sm text-slate-500">{client.email}</p>}
+            <ClientEmail clientId={client.id} firstName={client.name.split(" ")[0]} initial={client.email} optedOut={client.remindersOff} />
           </div>
           <CopyClientLink workspaceId={workspace.id} fingerprint={workspace.keyFingerprint} link={clientLink(client.token)} teamKeyWrap={client.teamKeyWrap} />
         </div>
@@ -63,6 +65,8 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
             clientId={client.id}
             clientName={client.name}
             clientTeamKeyWrap={client.teamKeyWrap}
+            client={{ email: client.email, remindersOff: client.remindersOff }}
+            defaults={workspaceReminderDefaults(workspace)}
             title="To-dos & notes"
           />
         </div>

@@ -83,6 +83,16 @@ model Workspace {
   cloudBackup          Boolean      @default(false)
   /// Fingerprint of the team's end-to-end key. The key itself never reaches the server.
   keyFingerprint       String?
+  /// IANA time zone used for due dates and reminders, e.g. "Australia/Sydney".
+  timezone             String?
+  /// Reminder rules pre-selected on new to-dos (see lib/schedule.ts ReminderRule[]).
+  reminderDefaults     Json?
+  remindClientDefault  Boolean      @default(true)
+  remindTeamDefault    Boolean      @default(false)
+  /// Optional note the business adds to every reminder email.
+  reminderMessage      String?
+  /// Where client replies to reminder emails go.
+  reminderReplyTo      String?
   createdAt            DateTime     @default(now())
   members              Membership[]
   videos               Video[]
@@ -214,6 +224,8 @@ model Client {
   /// The client's end-to-end key, wrapped with the team key. The unwrapped key
   /// travels only in the link fragment (#k=…), which browsers never send to servers.
   teamKeyWrap String?
+  /// The client turned reminder emails off (from an email's unsubscribe link or their inbox).
+  remindersOff Boolean  @default(false)
   createdAt   DateTime  @default(now())
   removedAt   DateTime?
   workspaceId String
@@ -239,6 +251,15 @@ model Item {
   done        Boolean   @default(false)
   dueAt       DateTime?
   shared      Boolean   @default(false)
+  /// Repeat rule (lib/schedule.ts Repeat); the next occurrence is created when this one is done or overdue.
+  repeat      Json?
+  /// Occurrences of one repeating to-do share a seriesId.
+  seriesId    String?
+  spawnedNext Boolean   @default(false)
+  /// Reminder rules (lib/schedule.ts ReminderRule[]) and who gets them.
+  reminders    Json?
+  remindClient Boolean  @default(false)
+  remindTeam   Boolean  @default(false)
   authorName  String
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -246,6 +267,27 @@ model Item {
   clientId    String?
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   client      Client?   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  scheduled   Reminder[]
 
   @@index([workspaceId, clientId])
+  @@index([spawnedNext, dueAt])
+}
+
+enum ReminderTo {
+  CLIENT
+  TEAM
+}
+
+/// One reminder email waiting to go out.
+model Reminder {
+  id      String     @id @default(cuid())
+  sendAt  DateTime
+  sentAt  DateTime?
+  to      ReminderTo
+  error   String?
+  itemId  String
+  item    Item       @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([sentAt, sendAt])
+  @@index([itemId])
 }

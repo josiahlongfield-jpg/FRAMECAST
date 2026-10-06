@@ -11,6 +11,7 @@ export default function AppHeader({ email, plan }: { email: string; plan: string
           <nav className="hidden gap-4 text-sm sm:flex">
             <Link href="/library" className="text-slate-600 hover:text-slate-900">Library</Link>
             <Link href="/clients" className="text-slate-600 hover:text-slate-900">Clients</Link>
+            <Link href="/settings/reminders" className="text-slate-600 hover:text-slate-900">Reminders</Link>
             <Link href="/settings/billing" className="text-slate-600 hover:text-slate-900">Billing</Link>
           </nav>
         </div>

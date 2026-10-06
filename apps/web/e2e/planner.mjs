@@ -52,7 +52,7 @@ await pro.uncheck("text=Share with Riley");
 await pro.fill('textarea[aria-label="New note"]', "Prefers morning calls");
 await pro.click("form >> button:has-text('Add')");
 await pro.waitForSelector("text=Prefers morning calls");
-ok("overdue due date shown in red", (await pro.getAttribute("text=/^Due Jan 5/", "class"))?.includes("text-red-600"));
+ok("overdue due date shown in red", (await pro.getAttribute("text=/^Due .*Jan 5/", "class"))?.includes("text-red-600"));
 await pro.screenshot({ path: `${shots}/client-space.png`, fullPage: true });
 
 const bodies = sql(`select string_agg(body, '|') from "Item" where "workspaceId"=(select "workspaceId" from "Client" where id='${clientId}')`);

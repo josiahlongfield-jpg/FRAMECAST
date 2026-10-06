@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { unwrapKey } from "@/lib/e2e/crypto";
-import Planner from "./Planner";
+import Planner, { type PlannerClient, type PlannerDefaults } from "./Planner";
 import TeamKeyGate from "./TeamKeyGate";
 
 type Props = {
@@ -11,6 +11,8 @@ type Props = {
   clientId?: string | null;
   clientName?: string;
   clientTeamKeyWrap?: string | null;
+  client?: PlannerClient;
+  defaults?: PlannerDefaults;
   title?: string;
 };
 
@@ -23,7 +25,7 @@ export default function MemberPlanner({ workspaceId, fingerprint, ...rest }: Pro
   );
 }
 
-function Unlocked({ teamKey, clientId = null, clientName, clientTeamKeyWrap, title }: Omit<Props, "workspaceId" | "fingerprint"> & { teamKey: CryptoKey }) {
+function Unlocked({ teamKey, clientId = null, clientName, clientTeamKeyWrap, client, defaults, title }: Omit<Props, "workspaceId" | "fingerprint"> & { teamKey: CryptoKey }) {
   const [clientKey, setClientKey] = useState<CryptoKey | null>(null);
   const [ready, setReady] = useState(!clientTeamKeyWrap);
 
@@ -36,5 +38,5 @@ function Unlocked({ teamKey, clientId = null, clientName, clientTeamKeyWrap, tit
   }, [clientTeamKeyWrap, teamKey]);
 
   if (!ready) return <p className="text-sm text-slate-500">Unlocking…</p>;
-  return <Planner role="member" clientId={clientId} clientName={clientName} privateKey={teamKey} sharedKey={clientKey} title={title} />;
+  return <Planner role="member" clientId={clientId} clientName={clientName} client={client} defaults={defaults} privateKey={teamKey} sharedKey={clientKey} title={title} />;
 }

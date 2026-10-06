@@ -3,12 +3,25 @@
 import { useCallback, useEffect, useState } from "react";
 import { decryptText, encryptText } from "@/lib/e2e/crypto";
 import type { ItemDTO } from "@/lib/items";
+import { browserTimeZone, DEFAULT_REMINDERS, repeatLabel, ruleLabel, sortRules, type ReminderRule } from "@/lib/schedule";
+import ScheduleFields, { toLocalInput, type Schedule } from "./ScheduleFields";
 
 type Decrypted = ItemDTO & { text: string };
 
+export type PlannerDefaults = { reminders: ReminderRule[]; remindClient: boolean; remindTeam: boolean };
+export type PlannerClient = { email: string | null; remindersOff: boolean };
+
+const RepeatIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden><path d="M17 2l4 4-4 4" /><path d="M3 11v-1a4 4 0 0 1 4-4h14" /><path d="M7 22l-4-4 4-4" /><path d="M21 13v1a4 4 0 0 1-4 4H3" /></svg>
+);
+const BellIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></svg>
+);
+
 /**
- * To-dos, notes and due dates, end-to-end encrypted. Members see everything;
- * a client sees and can tick off only what is shared with them.
+ * To-dos, notes, due dates, repeats and reminders, end-to-end encrypted.
+ * Members see everything; a client sees and can tick off only what is
+ * shared with them.
  *
  * privateKey seals items only the team can read (members only).
  * sharedKey seals items shared with the client (the client's key).
@@ -17,6 +30,8 @@ export default function Planner({
   role,
   clientId,
   clientName,
+  client,
+  defaults,
   privateKey,
   sharedKey,
   title = "Tasks & notes",
@@ -24,17 +39,30 @@ export default function Planner({
   role: "member" | "client";
   clientId: string | null;
   clientName?: string;
+  client?: PlannerClient;
+  defaults?: PlannerDefaults;
   privateKey: CryptoKey | null;
   sharedKey: CryptoKey | null;
   title?: string;
 }) {
+  const fresh = useCallback(
+    (): Schedule => ({
+      due: "",
+      repeat: null,
+      reminders: defaults?.reminders ?? DEFAULT_REMINDERS,
+      remindClient: defaults?.remindClient ?? true,
+      remindTeam: defaults?.remindTeam ?? false,
+    }),
+    [defaults],
+  );
   const [items, setItems] = useState<Decrypted[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [kind, setKind] = useState<"TASK" | "NOTE">("TASK");
   const [text, setText] = useState("");
-  const [due, setDue] = useState("");
+  const [schedule, setSchedule] = useState<Schedule>(fresh);
   const [share, setShare] = useState(false);
   const [showDone, setShowDone] = useState(false);
+  const [editing, setEditing] = useState<string>();
   const [error, setError] = useState<string>();
 
   const keyFor = useCallback((shared: boolean) => (shared ? sharedKey : privateKey), [sharedKey, privateKey]);
@@ -59,6 +87,15 @@ export default function Planner({
       });
   }, [clientId, decrypt]);
 
+  const scheduleBody = (s: Schedule, shared: boolean) => ({
+    dueAt: s.due ? new Date(s.due).toISOString() : null,
+    repeat: s.due ? s.repeat : null,
+    reminders: s.due ? s.reminders : [],
+    remindClient: shared && s.remindClient && !!client?.email && !client.remindersOff,
+    remindTeam: s.remindTeam,
+    tz: browserTimeZone(),
+  });
+
   async function add(e: React.FormEvent) {
     e.preventDefault();
     const shared = !!clientId && share;
@@ -73,25 +110,29 @@ export default function Planner({
         body: await encryptText(text.trim(), key),
         clientId,
         shared,
-        dueAt: kind === "TASK" && due ? new Date(due).toISOString() : null,
+        ...(kind === "TASK" ? scheduleBody(schedule, shared) : {}),
       }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return setError(data.error ?? "Could not save");
     setItems((cur) => [{ ...data.item, text: text.trim() }, ...cur]);
     setText("");
-    setDue("");
+    setSchedule(fresh());
   }
 
-  async function patch(i: Decrypted, change: Partial<{ done: boolean; shared: boolean; body: string }>) {
+  async function patch(i: Decrypted, change: Record<string, unknown>, newText = i.text) {
     const res = await fetch(`/api/items/${i.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(change),
     });
-    if (!res.ok) return;
-    const { item } = await res.json();
-    setItems((cur) => cur.map((x) => (x.id === i.id ? { ...item, text: i.text } : x)));
+    if (!res.ok) return false;
+    const { item, next } = (await res.json()) as { item: ItemDTO; next: ItemDTO | null };
+    setItems((cur) => {
+      const list = cur.map((x) => (x.id === i.id ? { ...item, text: newText } : x));
+      return next && !list.some((x) => x.id === next.id) ? [...list, { ...next, text: newText }] : list;
+    });
+    return true;
   }
 
   async function toggleShare(i: Decrypted) {
@@ -102,6 +143,7 @@ export default function Planner({
   }
 
   async function remove(i: Decrypted) {
+    if (i.repeat && !confirm("Delete this to-do? Earlier and later repeats stay on the list.")) return;
     const res = await fetch(`/api/items/${i.id}`, { method: "DELETE" });
     if (res.ok) setItems((cur) => cur.filter((x) => x.id !== i.id));
   }
@@ -112,48 +154,87 @@ export default function Planner({
     .sort((a, b) => (a.dueAt ?? "9999").localeCompare(b.dueAt ?? "9999"));
   const notes = items.filter((i) => i.kind === "NOTE");
   const done = items.filter((i) => i.kind === "TASK" && i.done);
+  const first = clientName?.split(" ")[0] ?? "client";
 
-  const row = (i: Decrypted) => (
-    <li key={i.id} className="group flex items-start gap-3 py-2.5">
-      {i.kind === "TASK" ? (
-        <input
-          type="checkbox"
-          checked={i.done}
-          onChange={() => patch(i, { done: !i.done })}
-          aria-label={`Mark "${i.text}" ${i.done ? "not done" : "done"}`}
-          className="mt-0.5 h-4 w-4 shrink-0 accent-brand-600"
+  const row = (i: Decrypted) =>
+    editing === i.id ? (
+      <li key={i.id} className="py-2.5">
+        <ItemEditor
+          item={i}
+          clientName={clientName}
+          client={client}
+          onCancel={() => setEditing(undefined)}
+          onSave={async (newText, s) => {
+            const key = keyFor(i.shared);
+            if (!key) return;
+            const change: Record<string, unknown> = i.kind === "TASK" ? scheduleBody(s, i.shared) : {};
+            if (newText !== i.text) change.body = await encryptText(newText, key);
+            if (await patch(i, change, newText)) setEditing(undefined);
+          }}
         />
-      ) : (
-        <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-slate-300" aria-hidden />
-      )}
-      <div className="min-w-0 flex-1">
-        <p className={`whitespace-pre-wrap text-sm ${i.done ? "text-slate-400 line-through" : "text-slate-800"}`}>{i.text}</p>
-        <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-          {i.dueAt && (
-            <span className={!i.done && new Date(i.dueAt).getTime() < now ? "font-medium text-red-600" : ""}>
-              Due {new Date(i.dueAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-            </span>
-          )}
-          {role === "member" && clientId && (
-            <button onClick={() => toggleShare(i)} className={`rounded px-1.5 ${i.shared ? "bg-brand-50 text-brand-700" : "bg-slate-100 text-slate-600"} hover:underline`}>
-              {i.shared ? `Shared with ${clientName?.split(" ")[0] ?? "client"}` : "Private to your team"}
-            </button>
-          )}
+      </li>
+    ) : (
+      <li key={i.id} className="group flex items-start gap-3 py-2.5">
+        {i.kind === "TASK" ? (
+          <input
+            type="checkbox"
+            checked={i.done}
+            onChange={() => patch(i, { done: !i.done })}
+            aria-label={`Mark "${i.text}" ${i.done ? "not done" : "done"}`}
+            className="mt-0.5 h-4 w-4 shrink-0 accent-brand-600"
+          />
+        ) : (
+          <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-slate-300" aria-hidden />
+        )}
+        <div className="min-w-0 flex-1">
+          <p className={`whitespace-pre-wrap text-sm ${i.done ? "text-slate-400 line-through" : "text-slate-800"}`}>{i.text}</p>
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-slate-500">
+            {i.dueAt && (
+              <span className={!i.done && new Date(i.dueAt).getTime() < now ? "font-medium text-red-600" : ""}>
+                Due {new Date(i.dueAt).toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+              </span>
+            )}
+            {i.repeat && (
+              <span className="inline-flex items-center gap-1" title="Repeats">
+                <RepeatIcon /> {repeatLabel(i.repeat)}
+              </span>
+            )}
+            {i.dueAt && !i.done && i.reminders.length > 0 && (i.remindClient || i.remindTeam) && (
+              <span className="inline-flex items-center gap-1" title="Email reminders">
+                <BellIcon /> {sortRules(i.reminders).map(ruleLabel).join(", ")}
+                {role === "member" && (
+                  <span className="text-slate-400">
+                    {" "}
+                    · {[i.remindClient && first, i.remindTeam && "you"].filter(Boolean).join(" and ")}
+                  </span>
+                )}
+              </span>
+            )}
+            {role === "member" && clientId && (
+              <button onClick={() => toggleShare(i)} className={`rounded px-1.5 ${i.shared ? "bg-brand-50 text-brand-700" : "bg-slate-100 text-slate-600"} hover:underline`}>
+                {i.shared ? `Shared with ${first}` : "Private to your team"}
+              </button>
+            )}
+          </div>
         </div>
-      </div>
-      {role === "member" && (
-        <button onClick={() => remove(i)} aria-label="Delete" className="text-xs text-slate-400 opacity-0 hover:text-red-600 group-hover:opacity-100 focus:opacity-100">
-          Delete
-        </button>
-      )}
-    </li>
-  );
+        {role === "member" && (
+          <div className="flex gap-2 text-xs text-slate-400 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+            <button onClick={() => setEditing(i.id)} aria-label={`Edit "${i.text}"`} className="hover:text-slate-800">
+              Edit
+            </button>
+            <button onClick={() => remove(i)} aria-label="Delete" className="hover:text-red-600">
+              Delete
+            </button>
+          </div>
+        )}
+      </li>
+    );
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5">
       <h2 className="font-semibold text-slate-900">{title}</h2>
       {role === "member" && (
-        <form onSubmit={add} className="mt-4 grid gap-2">
+        <form onSubmit={add} className="mt-4 grid gap-3">
           <div role="tablist" aria-label="Item type" className="grid w-48 grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1 text-xs">
             {(["TASK", "NOTE"] as const).map((k) => (
               <button
@@ -176,19 +257,24 @@ export default function Planner({
             aria-label={kind === "TASK" ? "New to-do" : "New note"}
             className="resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-600 focus:outline-none"
           />
+          {clientId && (
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              <input type="checkbox" checked={share} onChange={(e) => setShare(e.target.checked)} className="accent-brand-600" />
+              Share with {first}
+              <span className="text-xs text-slate-400">{share ? `${first} can see this` : "Only your team can see this"}</span>
+            </label>
+          )}
+          {kind === "TASK" && (
+            <ScheduleFields
+              value={schedule}
+              onChange={setSchedule}
+              clientName={clientName}
+              clientEmail={client?.email}
+              clientOptedOut={client?.remindersOff}
+              canShareReminders={!!clientId && share}
+            />
+          )}
           <div className="flex flex-wrap items-center gap-3 text-sm">
-            {kind === "TASK" && (
-              <label className="flex items-center gap-2 text-slate-600">
-                Due
-                <input type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} aria-label="Due date" className="rounded-lg border border-slate-300 px-2 py-1 text-sm" />
-              </label>
-            )}
-            {clientId && (
-              <label className="flex items-center gap-2 text-slate-600">
-                <input type="checkbox" checked={share} onChange={(e) => setShare(e.target.checked)} className="accent-brand-600" />
-                Share with {clientName?.split(" ")[0] ?? "client"}
-              </label>
-            )}
             <button className="ml-auto rounded-lg bg-slate-900 px-3 py-1.5 font-medium text-white hover:bg-slate-800">Add</button>
           </div>
           {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
@@ -224,5 +310,50 @@ export default function Planner({
         </div>
       )}
     </section>
+  );
+}
+
+function ItemEditor({
+  item,
+  clientName,
+  client,
+  onSave,
+  onCancel,
+}: {
+  item: Decrypted;
+  clientName?: string;
+  client?: PlannerClient;
+  onSave: (text: string, s: Schedule) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [text, setText] = useState(item.text);
+  const [busy, setBusy] = useState(false);
+  const [s, setS] = useState<Schedule>({
+    due: toLocalInput(item.dueAt),
+    repeat: item.repeat,
+    reminders: item.reminders,
+    remindClient: item.remindClient,
+    remindTeam: item.remindTeam,
+  });
+  return (
+    <form
+      className="grid gap-3 rounded-xl bg-slate-50 p-3"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (!text.trim()) return;
+        setBusy(true);
+        await onSave(text.trim(), s);
+        setBusy(false);
+      }}
+    >
+      <textarea value={text} onChange={(e) => setText(e.target.value)} rows={item.kind === "NOTE" ? 3 : 1} aria-label="Edit text" className="resize-none rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" />
+      {item.kind === "TASK" && (
+        <ScheduleFields value={s} onChange={setS} clientName={clientName} clientEmail={client?.email} clientOptedOut={client?.remindersOff} canShareReminders={item.shared} />
+      )}
+      <div className="flex justify-end gap-2 text-sm">
+        <button type="button" onClick={onCancel} className="rounded-lg px-3 py-1.5 text-slate-600 hover:bg-slate-100">Cancel</button>
+        <button disabled={busy} className="rounded-lg bg-slate-900 px-3 py-1.5 font-medium text-white hover:bg-slate-800 disabled:opacity-50">Save</button>
+      </div>
+    </form>
   );
 }

@@ -5,6 +5,7 @@ import Logo from "@/components/Logo";
 import ClientKeyCapture from "@/components/ClientKeyCapture";
 import ClientPlanner from "@/components/ClientPlanner";
 import { db } from "@/lib/db";
+import { unsubscribeUrl } from "@/lib/reminders";
 
 export const metadata: Metadata = { title: "Your videos" };
 
@@ -63,6 +64,14 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
               <div className="mt-4">
                 <ClientPlanner clientId={c.id} title="Your to-dos & notes" />
               </div>
+              {c.email && (
+                <p className="mt-2 text-xs text-slate-500">
+                  Reminder emails to {c.email} are {c.remindersOff ? "off" : "on"}.{" "}
+                  <a href={unsubscribeUrl(c.id)} className="font-medium text-brand-700 hover:underline">
+                    {c.remindersOff ? "Turn on" : "Turn off"}
+                  </a>
+                </p>
+              )}
             </section>
           ))
         )}
