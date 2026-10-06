@@ -13,9 +13,9 @@ const Body = z.object({ extraSeats: z.number().int().min(0).max(1000) });
  * Billed as a quantity on the workspace's existing Stripe subscription.
  */
 export const POST = handle(async (req: Request) => {
-  await limitByIp("billing", 20, 600);
   const { workspace } = await requireUser();
   const body = Body.safeParse(await req.json());
+  await limitByIp("billing", 20, 600);
   if (!body.success) throw new HttpError(400, "Invalid seat count");
   if (!workspace.stripeSubscriptionId) throw new HttpError(400, "Upgrade to a paid plan to add client seats");
 

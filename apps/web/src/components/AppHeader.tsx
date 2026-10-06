@@ -6,6 +6,7 @@ const LINKS = [
   ["/library", "Library"],
   ["/clients", "Clients"],
   ["/settings/reminders", "Reminders"],
+  ["/settings/branding", "Branding"],
   ["/settings/billing", "Billing"],
   ["/settings/account", "Account"],
 ] as const;

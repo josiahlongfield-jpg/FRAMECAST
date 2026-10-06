@@ -95,6 +95,12 @@ model Workspace {
   reminderMessage      String?
   /// Where client replies to reminder emails go.
   reminderReplyTo      String?
+  /// Custom branding (paid plans) shown to clients: logo image and accent colour (#rrggbb).
+  brandLogo            Bytes?
+  brandLogoType        String?
+  brandColor           String?
+  /// Bumped on every branding change so logo URLs bust caches.
+  brandVersion         Int          @default(0)
   createdAt            DateTime     @default(now())
   members              Membership[]
   videos               Video[]

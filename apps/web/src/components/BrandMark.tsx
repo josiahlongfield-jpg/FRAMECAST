@@ -1,0 +1,22 @@
+import Link from "next/link";
+import Logo from "./Logo";
+import type { Brand } from "@/lib/branding";
+
+/** The business's own logo and name for client-facing pages, with a quiet SureFrame credit. */
+export default function BrandMark({ brand, href }: { brand: Brand | null; href: string }) {
+  if (!brand || (!brand.logoUrl && !brand.color)) return <Logo href={href} />;
+  return (
+    <Link href={href} className="flex min-w-0 items-center gap-2 font-semibold tracking-tight text-slate-900">
+      {brand.logoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={brand.logoUrl} alt="" className="h-8 max-w-[8rem] shrink-0 object-contain" />
+      ) : (
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-600 text-sm text-white">
+          {brand.name.trim().charAt(0).toUpperCase()}
+        </span>
+      )}
+      <span className="truncate">{brand.name}</span>
+      <span className="hidden shrink-0 text-xs font-normal text-slate-400 sm:inline">via SureFrame</span>
+    </Link>
+  );
+}

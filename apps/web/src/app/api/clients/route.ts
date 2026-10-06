@@ -26,9 +26,9 @@ export const GET = handle(async () => {
 
 /** Add a client. Each active client uses one seat; clients never pay. */
 export const POST = handle(async (req: Request) => {
-  await limitByIp("clients", 30, 3600);
   const { workspace } = await requireUser();
   const body = Body.safeParse(await req.json());
+  await limitByIp("clients", 30, 3600);
   if (!body.success) throw new HttpError(400, "Enter a name and, optionally, a valid email");
   const seats = await seatUsage(workspace);
   if (seats.used >= seats.limit) {

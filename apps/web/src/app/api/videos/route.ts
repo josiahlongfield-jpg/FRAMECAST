@@ -15,9 +15,9 @@ const CreateBody = z.object({
 
 /** Start a recording: creates the video row and opens a multipart upload. */
 export const POST = handle(async (req: Request) => {
-  await limitByIp("videos", 60, 3600);
   const { user, workspace } = await requireUser();
   const body = CreateBody.safeParse(await req.json());
+  await limitByIp("videos", 60, 3600);
   if (!body.success) throw new HttpError(400, "Invalid request");
   if (!workspace.keyFingerprint) throw new HttpError(409, "Set up your encryption key before recording");
 

@@ -10,9 +10,9 @@ const Body = z.object({ enabled: z.boolean() });
 
 /** Optional paid add-on: keep encrypted copies on the server instead of letting them expire. */
 export const POST = handle(async (req: Request) => {
-  await limitByIp("billing", 20, 600);
   const { workspace } = await requireUser();
   const body = Body.safeParse(await req.json());
+  await limitByIp("billing", 20, 600);
   if (!body.success) throw new HttpError(400, "Invalid request");
   if (!workspace.stripeSubscriptionId) throw new HttpError(400, "Upgrade to a paid plan to add cloud backup");
 

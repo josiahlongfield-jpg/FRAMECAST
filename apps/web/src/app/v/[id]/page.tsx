@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import Logo from "@/components/Logo";
+import BrandMark from "@/components/BrandMark";
+import { brandOf, brandStyle } from "@/lib/branding";
 import WatchView from "@/components/WatchView";
 import { db } from "@/lib/db";
 import { viewerFor } from "@/lib/access";
@@ -55,14 +57,17 @@ export default async function Watch({ params }: Props) {
       : Promise.resolve([]),
   ]);
   const expired = !!video.expiresAt && video.expiresAt < new Date();
+  const workspace = await db.workspace.findUniqueOrThrow({ where: { id: video.workspaceId } });
+  // Clients see the business's branding; the team sees the normal app.
+  const brand = isMember ? null : brandOf(workspace);
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50" style={brandStyle(brand?.color ?? null)}>
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
-          <Logo href={isMember ? "/library" : "/inbox"} />
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
+          {isMember ? <Logo href="/library" /> : <BrandMark brand={brand} href="/inbox" />}
           {!isMember && (
-            <Link href="/inbox" className="text-sm font-medium text-slate-600 hover:text-slate-900">
+            <Link href="/inbox" className="shrink-0 text-sm font-medium text-slate-600 hover:text-slate-900">
               All my videos
             </Link>
           )}
@@ -77,7 +82,7 @@ export default async function Watch({ params }: Props) {
             ownerName={video.owner.name ?? video.owner.email.split("@")[0]}
             viewer={
               viewer.kind === "member"
-                ? { kind: "member", workspaceId: video.workspaceId, fingerprint: (await db.workspace.findUniqueOrThrow({ where: { id: video.workspaceId } })).keyFingerprint }
+                ? { kind: "member", workspaceId: video.workspaceId, fingerprint: workspace.keyFingerprint }
                 : { kind: "client", clientId: viewer.client.id }
             }
             clients={clients.map((c) => ({ id: c.id, name: c.name, link: clientLink(c.token, video.id), teamKeyWrap: c.teamKeyWrap }))}

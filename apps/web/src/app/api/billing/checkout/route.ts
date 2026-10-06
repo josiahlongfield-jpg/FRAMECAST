@@ -9,9 +9,9 @@ import { limitByIp } from "@/lib/rateLimit";
 const Body = z.object({ plan: z.enum(["PRO", "BUSINESS"]) });
 
 export const POST = handle(async (req: Request) => {
-  await limitByIp("billing", 20, 600);
   const { user, workspace } = await requireUser();
   const body = Body.safeParse(await req.json());
+  await limitByIp("billing", 20, 600);
   if (!body.success) throw new HttpError(400, "Invalid plan");
   const price = await priceId(PLAN_KEY[body.data.plan]);
 

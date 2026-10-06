@@ -40,8 +40,8 @@ export const GET = handle(async (req: Request) => {
 });
 
 export const POST = handle(async (req: Request) => {
-  await limitByIp("items", 120, 60);
   const body = Create.safeParse(await req.json());
+  await limitByIp("items", 120, 60);
   if (!body.success) throw new HttpError(400, "Invalid item");
   const d = body.data;
   const who = await memberOrClient(d.clientId ?? null);

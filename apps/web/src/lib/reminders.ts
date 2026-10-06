@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { appUrl } from "@/lib/stripe";
 import { sendMail } from "@/lib/mail";
 import { reminderEmail } from "@/lib/reminderEmail";
+import { brandOf } from "@/lib/branding";
 import { DEFAULT_REMINDERS, isTimeZone, nextOccurrence, reminderTime, type ReminderRule } from "@/lib/schedule";
 import { Repeat, ReminderRules } from "@/lib/scheduleSchema";
 
@@ -134,7 +135,7 @@ export async function runReminders(now = new Date()) {
       mails.push({
         to: c.email,
         replyTo: ws.reminderReplyTo,
-        m: reminderEmail({ ...base, message: ws.reminderMessage, link: appUrl(`/c/${c.token}`), unsubscribe: unsubscribeUrl(c.id) }),
+        m: reminderEmail({ ...base, ...brandOf(ws, appUrl("")), message: ws.reminderMessage, link: appUrl(`/c/${c.token}`), unsubscribe: unsubscribeUrl(c.id) }),
       });
     } else {
       const link = appUrl(item.clientId ? `/clients/${item.clientId}` : "/library");
