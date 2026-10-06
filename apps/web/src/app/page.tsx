@@ -46,8 +46,10 @@ export default function Home() {
               One take is <span className="block text-brand-600 sm:inline">all it takes.</span>
             </h1>
             <p className="mx-auto mt-6 max-w-2xl text-lg text-slate-600">
-              Your recording is saved on your device and uploaded as you talk, so a crash, a dropped connection or a
-              flat battery never costs you a take. Stop recording and your client&apos;s private link is ready.
+              Every take is saved as you record, so a crash or dropped signal will never cost you the time you took to
+              make it. Each recording is end-to-end encrypted and only those you send it to will have access. Your clients
+              join and make use of our services for free under your subscription, and their to-dos and reminders live right
+              next to your corresponding videos.
             </p>
             <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
               <Link href="/record" className="rounded-xl bg-brand-600 px-6 py-3 font-semibold text-white shadow-sm hover:bg-brand-700">
