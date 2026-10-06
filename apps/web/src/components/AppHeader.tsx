@@ -7,6 +7,7 @@ const LINKS = [
   ["/clients", "Clients"],
   ["/settings/reminders", "Reminders"],
   ["/settings/billing", "Billing"],
+  ["/settings/account", "Account"],
 ] as const;
 
 export default function AppHeader({ email, plan }: { email: string; plan: string }) {

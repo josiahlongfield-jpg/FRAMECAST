@@ -5,6 +5,7 @@ import { replyDTO, visibleReplies } from "@/lib/replies";
 import { handle, HttpError } from "@/lib/session";
 import { viewableVideo } from "@/lib/access";
 import { ALLOWED_MIME, extensionFor, newUploadToken, newVideoId } from "@/lib/videos";
+import { limitByIp } from "@/lib/rateLimit";
 
 const MAX_REPLY_MINUTES = 15;
 
@@ -33,6 +34,7 @@ export const GET = handle(async (_req: Request, ctx: { params: Promise<{ id: str
  * crash-safe part upload as normal recordings.
  */
 export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
+  await limitByIp("replies", 30, 300);
   const { id } = await ctx.params;
   const parsed = Body.safeParse(await req.json());
   if (!parsed.success) throw new HttpError(400, "Invalid reply");

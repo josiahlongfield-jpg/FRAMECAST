@@ -305,3 +305,13 @@ model StoredPart {
 
   @@id([key, partNumber])
 }
+
+/// Fixed-window request counters for rate limiting (lib/rateLimit.ts).
+model RateLimit {
+  key         String
+  windowStart DateTime
+  count       Int      @default(1)
+
+  @@id([key, windowStart])
+  @@index([windowStart])
+}

@@ -49,6 +49,7 @@ Videos and replies are end-to-end encrypted in the browser before upload; see se
 
 `apps/web/e2e/record.mjs` drives Chromium with a fake camera through sign in, recording, playback, commenting, and a crash mid-recording followed by recovery.
 `apps/web/e2e/replies.mjs` covers the encrypted conversation: the server only stores ciphertext, a client on a phone-sized screen opens their personal link and replies with text, voice and video, an interrupted reply is recovered, a second device needs the recovery key, seats are capped and expired relay copies are deleted.
+`apps/web/e2e/billing.mjs` covers billing and account controls against a local fake Stripe (`e2e/fake-stripe.mjs`; start the app with `STRIPE_SECRET_KEY=sk_test_fake STRIPE_API_BASE=http://localhost:12111 STRIPE_WEBHOOK_SECRET=whsec_test`): catalog created once, Managed Payments checkout, webhooks, seats, cloud backup, in-place upgrades, cancellation, data export, account deletion and rate limits.
 `apps/web/e2e/signin.mjs` covers email-link sign-in (link works once, returns you to the page you asked for). `multipart.mjs` uses tiny parts, so run it without `S3_BUCKET`. `apps/web/e2e/planner.mjs` covers to-dos and notes: private versus shared items, a client ticking off a shared to-do, what the client can and can't see or change, and ciphertext-only storage.
 `apps/web/e2e/reminders.mjs` covers repeating to-dos and reminder emails: business settings with a live preview, a weekly to-do with several reminders at the right local times, the reminder job, the next week's to-do appearing when the client ticks one off, the client opting out from the email, and emails never containing the to-do's text.
 `apps/web/e2e/multipart.mjs` checks the upload protocol (out-of-order parts, retries, missing-part rejection, byte-exact assembly, range requests, auth).
@@ -64,7 +65,7 @@ node e2e/signin.mjs
 
 - Host `apps/web` on Vercel; Postgres on Neon or Supabase; storage on Cloudflare R2 (set `S3_*`).
 - Create a Mux account and point its webhook at `/api/webhooks/mux`.
-- Create Stripe products for Pro and Business (per-seat monthly prices) and point a webhook at `/api/webhooks/stripe` for `customer.subscription.*` events.
+- Stripe: set `STRIPE_SECRET_KEY`. Products and prices (Pro, Business, extra client seat, cloud backup) are created on first use by lookup key (`src/lib/billing.ts`), with the SaaS business-use tax code, so there are no price ids to copy. Checkout uses Managed Payments (Stripe is merchant of record and handles tax, fraud and disputes); accept its terms under Settings → Managed Payments, or set `STRIPE_MANAGED_PAYMENTS=off` for plain Checkout with Stripe Tax. Add a webhook endpoint `https://<domain>/api/webhooks/stripe` for `customer.subscription.created`, `.updated` and `.deleted`, and put its signing secret in `STRIPE_WEBHOOK_SECRET`.
 - Ship mobile with `eas build` and `eas submit`. Paid upgrades in the iOS and Android apps must follow App Store and Play billing rules (RevenueCat recommended).
 
 ## Hosted preview on Vercel (free tier)

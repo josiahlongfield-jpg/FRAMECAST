@@ -6,6 +6,7 @@ import { itemDTO } from "@/lib/items";
 import { ensureTimezone, scheduleReminders } from "@/lib/reminders";
 import { Repeat, ReminderRules } from "@/lib/scheduleSchema";
 import { handle, HttpError } from "@/lib/session";
+import { limitByIp } from "@/lib/rateLimit";
 
 const Create = z.object({
   kind: z.enum(["TASK", "NOTE"]),
@@ -39,6 +40,7 @@ export const GET = handle(async (req: Request) => {
 });
 
 export const POST = handle(async (req: Request) => {
+  await limitByIp("items", 120, 60);
   const body = Create.safeParse(await req.json());
   if (!body.success) throw new HttpError(400, "Invalid item");
   const d = body.data;

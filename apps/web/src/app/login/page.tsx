@@ -4,6 +4,7 @@ import Link from "next/link";
 import Logo from "@/components/Logo";
 import { AuthError } from "next-auth";
 import { auth, authProviders, previewPassword, signIn } from "@/auth";
+import { limitByIp, rateLimit } from "@/lib/rateLimit";
 
 export const metadata: Metadata = { title: "Sign in" };
 
@@ -38,7 +39,14 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
               className="grid gap-3"
               action={async (fd: FormData) => {
                 "use server";
-                await signIn("email", { email: String(fd.get("email") ?? "").trim().toLowerCase(), redirectTo, redirect: false });
+                const email = String(fd.get("email") ?? "").trim().toLowerCase();
+                try {
+                  await limitByIp("signin-email", 10, 3600);
+                  await rateLimit(`signin-email:to:${email}`, 5, 3600);
+                } catch {
+                  redirect(`/login?error=rate&next=${encodeURIComponent(redirectTo)}`);
+                }
+                await signIn("email", { email, redirectTo, redirect: false });
                 redirect("/login/check");
               }}
             >
@@ -91,6 +99,7 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
 }
 
 function errorText(code: string) {
+  if (code === "rate") return "Too many sign-in emails were requested. Wait a few minutes, then try again.";
   if (code === "password") return "That password isn't right. Check it and try again.";
   if (code === "Verification") return "That sign-in link has expired or was already used. Enter your email to get a new one.";
   if (code === "OAuthAccountNotLinked") return "That email is already used with another sign-in method. Use the email link instead.";

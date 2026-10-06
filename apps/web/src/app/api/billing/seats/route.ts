@@ -1,8 +1,10 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { ACTIVE_STATUSES, SEAT_KEY, priceId } from "@/lib/billing";
 import { PLANS } from "@/lib/plans";
 import { handle, HttpError, requireUser } from "@/lib/session";
 import { stripe } from "@/lib/stripe";
+import { limitByIp } from "@/lib/rateLimit";
 
 const Body = z.object({ extraSeats: z.number().int().min(0).max(1000) });
 
@@ -11,11 +13,10 @@ const Body = z.object({ extraSeats: z.number().int().min(0).max(1000) });
  * Billed as a quantity on the workspace's existing Stripe subscription.
  */
 export const POST = handle(async (req: Request) => {
+  await limitByIp("billing", 20, 600);
   const { workspace } = await requireUser();
   const body = Body.safeParse(await req.json());
   if (!body.success) throw new HttpError(400, "Invalid seat count");
-  const price = process.env.STRIPE_PRICE_CLIENT_SEAT;
-  if (!price) throw new HttpError(503, "Extra seats are not configured yet");
   if (!workspace.stripeSubscriptionId) throw new HttpError(400, "Upgrade to a paid plan to add client seats");
 
   const used = await db.client.count({ where: { workspaceId: workspace.id, removedAt: null } });
@@ -23,7 +24,9 @@ export const POST = handle(async (req: Request) => {
     throw new HttpError(400, `You have ${used} clients. Remove some before lowering your seats.`);
   }
 
+  const price = await priceId(SEAT_KEY);
   const sub = await stripe().subscriptions.retrieve(workspace.stripeSubscriptionId);
+  if (!ACTIVE_STATUSES.has(sub.status)) throw new HttpError(400, "Your subscription is not active");
   const item = sub.items.data.find((i) => i.price.id === price);
   const items =
     body.data.extraSeats === 0

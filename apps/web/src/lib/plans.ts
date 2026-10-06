@@ -50,16 +50,3 @@ export const EXTRA_SEAT_PRICE = 2;
 export function clientSeatLimit(w: { plan: Plan; extraClientSeats: number }) {
   return PLANS[w.plan].clientSeats + w.extraClientSeats;
 }
-
-/** Stripe price ids come from env so the same build works in test and live mode. */
-export function stripePriceFor(plan: Plan): string | undefined {
-  if (plan === "PRO") return process.env.STRIPE_PRICE_PRO;
-  if (plan === "BUSINESS") return process.env.STRIPE_PRICE_BUSINESS;
-  return undefined;
-}
-
-export function planForStripePrice(priceId: string | undefined | null): Plan {
-  if (priceId && priceId === process.env.STRIPE_PRICE_BUSINESS) return "BUSINESS";
-  if (priceId && priceId === process.env.STRIPE_PRICE_PRO) return "PRO";
-  return "FREE";
-}

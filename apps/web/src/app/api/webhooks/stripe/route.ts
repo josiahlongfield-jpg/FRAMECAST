@@ -1,30 +1,31 @@
 import type Stripe from "stripe";
 import { db } from "@/lib/db";
-import { planForStripePrice } from "@/lib/plans";
+import { ACTIVE_STATUSES, BACKUP_KEY, catalogKeyOf, planOf, SEAT_KEY } from "@/lib/billing";
 import { stripe } from "@/lib/stripe";
 import { applyBackupSetting } from "@/lib/retention";
-
-const ACTIVE = new Set(["active", "trialing", "past_due"]);
 
 async function syncSubscription(sub: Stripe.Subscription) {
   const workspaceId = sub.metadata.workspaceId;
   if (!workspaceId) return;
-  const seatPrice = process.env.STRIPE_PRICE_CLIENT_SEAT;
-  const item = sub.items.data.find((i) => i.price.id !== seatPrice && i.price.id !== process.env.STRIPE_PRICE_CLOUD_BACKUP);
-  const seatItem = sub.items.data.find((i) => i.price.id === seatPrice);
-  const backupPrice = process.env.STRIPE_PRICE_CLOUD_BACKUP;
-  const cloudBackup = ACTIVE.has(sub.status) && !!backupPrice && sub.items.data.some((i) => i.price.id === backupPrice);
-  const active = ACTIVE.has(sub.status);
-  const plan = active ? planForStripePrice(item?.price.id) : "FREE";
+  const workspace = await db.workspace.findUnique({ where: { id: workspaceId } });
+  if (!workspace) return;
+  // An old subscription ending must not wipe out a newer one.
+  if (workspace.stripeSubscriptionId && workspace.stripeSubscriptionId !== sub.id && !ACTIVE_STATUSES.has(sub.status)) return;
+
+  const active = ACTIVE_STATUSES.has(sub.status);
+  const planItem = sub.items.data.find((i) => planOf(i.price));
+  const seatItem = sub.items.data.find((i) => catalogKeyOf(i.price) === SEAT_KEY);
+  const cloudBackup = active && sub.items.data.some((i) => catalogKeyOf(i.price) === BACKUP_KEY);
   await db.workspace.update({
     where: { id: workspaceId },
     data: {
-      plan,
-      stripeSubscriptionId: sub.id,
+      plan: active && planItem ? planOf(planItem.price)! : "FREE",
+      stripeSubscriptionId: active ? sub.id : null,
+      stripeCustomerId: typeof sub.customer === "string" ? sub.customer : sub.customer.id,
       subscriptionStatus: sub.status,
       extraClientSeats: active ? (seatItem?.quantity ?? 0) : 0,
       cloudBackup,
-      currentPeriodEnd: item?.current_period_end ? new Date(item.current_period_end * 1000) : null,
+      currentPeriodEnd: active && planItem?.current_period_end ? new Date(planItem.current_period_end * 1000) : null,
     },
   });
   await applyBackupSetting(workspaceId, cloudBackup);
@@ -45,7 +46,8 @@ export async function POST(req: Request) {
     case "customer.subscription.created":
     case "customer.subscription.updated":
     case "customer.subscription.deleted":
-      await syncSubscription(event.data.object);
+      // Re-read so out-of-order deliveries always apply the latest state.
+      await syncSubscription(await stripe().subscriptions.retrieve(event.data.object.id));
       break;
   }
   return new Response("ok");

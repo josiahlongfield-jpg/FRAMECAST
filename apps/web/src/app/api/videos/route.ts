@@ -4,6 +4,7 @@ import { PLANS } from "@/lib/plans";
 import { storage } from "@/lib/storage";
 import { handle, HttpError, requireUser } from "@/lib/session";
 import { ALLOWED_MIME, extensionFor, newVideoId, publicVideo } from "@/lib/videos";
+import { limitByIp } from "@/lib/rateLimit";
 
 const CreateBody = z.object({
   mimeType: z.string().regex(ALLOWED_MIME),
@@ -14,6 +15,7 @@ const CreateBody = z.object({
 
 /** Start a recording: creates the video row and opens a multipart upload. */
 export const POST = handle(async (req: Request) => {
+  await limitByIp("videos", 60, 3600);
   const { user, workspace } = await requireUser();
   const body = CreateBody.safeParse(await req.json());
   if (!body.success) throw new HttpError(400, "Invalid request");

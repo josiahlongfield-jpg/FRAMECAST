@@ -2,6 +2,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { clientLink, newClientToken, seatUsage } from "@/lib/clients";
 import { handle, HttpError, requireUser } from "@/lib/session";
+import { limitByIp } from "@/lib/rateLimit";
 
 const Body = z.object({
   name: z.string().trim().min(1).max(80),
@@ -25,6 +26,7 @@ export const GET = handle(async () => {
 
 /** Add a client. Each active client uses one seat; clients never pay. */
 export const POST = handle(async (req: Request) => {
+  await limitByIp("clients", 30, 3600);
   const { workspace } = await requireUser();
   const body = Body.safeParse(await req.json());
   if (!body.success) throw new HttpError(400, "Enter a name and, optionally, a valid email");
