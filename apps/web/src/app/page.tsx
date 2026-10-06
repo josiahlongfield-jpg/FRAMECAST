@@ -48,7 +48,7 @@ export default function Home() {
             <p className="mx-auto mt-6 max-w-2xl text-lg text-slate-600">
               Every take is saved as you record, so a crash or dropped signal will never cost you the time you took to
               make it. Each recording is end-to-end encrypted and only those you send it to will have access. Your clients
-              join and make use of our services for free under your subscription, and their to-dos and reminders live right
+              join and make use of our services for free under your subscription, while their to-dos and reminders live right
               next to your corresponding videos.
             </p>
             <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
