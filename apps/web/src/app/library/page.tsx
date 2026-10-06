@@ -1,0 +1,71 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import AppHeader from "@/components/AppHeader";
+import { db } from "@/lib/db";
+import { PLANS } from "@/lib/plans";
+import { requirePageUser } from "@/lib/session";
+
+export const metadata: Metadata = { title: "Library" };
+
+const fmt = (ms: number | null) => {
+  if (!ms) return "";
+  const s = Math.round(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+};
+
+export default async function Library() {
+  const { user, workspace } = await requirePageUser("/library");
+  const plan = PLANS[workspace.plan];
+  const videos = await db.video.findMany({ where: { workspaceId: workspace.id }, orderBy: { createdAt: "desc" } });
+
+  return (
+    <>
+      <AppHeader email={user.email} plan={plan.name} />
+      <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+        <div className="mb-8 flex items-end justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Your videos</h1>
+            <p className="mt-1 text-sm text-slate-500">
+              {videos.length} {videos.length === 1 ? "video" : "videos"}
+              {plan.maxVideos !== null && ` of ${plan.maxVideos} on the ${plan.name} plan`}
+            </p>
+          </div>
+        </div>
+        {videos.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-300 p-16 text-center">
+            <h2 className="font-semibold text-slate-900">No videos yet</h2>
+            <p className="mt-1 text-sm text-slate-500">Record your first video and it will show up here.</p>
+            <Link href="/record" className="mt-6 inline-block rounded-xl bg-brand-600 px-5 py-2.5 font-semibold text-white hover:bg-brand-700">Record a video</Link>
+          </div>
+        ) : (
+          <ul className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {videos.map((v) => (
+              <li key={v.id}>
+                <Link href={`/v/${v.id}`} className="group block">
+                  <div className="relative aspect-video overflow-hidden rounded-xl bg-slate-900">
+                    {v.thumbnailUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={v.thumbnailUrl} alt="" className="h-full w-full object-cover transition group-hover:scale-105" />
+                    ) : v.status !== "RECORDING" ? (
+                      <video src={`/api/videos/${v.id}/stream#t=0.5`} preload="metadata" muted className="h-full w-full object-cover" />
+                    ) : null}
+                    {v.status === "RECORDING" && (
+                      <span className="absolute inset-0 grid place-items-center text-sm text-slate-300">Incomplete upload</span>
+                    )}
+                    {v.durationMs ? (
+                      <span className="absolute bottom-2 right-2 rounded bg-black/70 px-1.5 py-0.5 text-xs text-white">{fmt(v.durationMs)}</span>
+                    ) : null}
+                  </div>
+                  <h3 className="mt-3 truncate font-medium text-slate-900 group-hover:text-brand-700">{v.title}</h3>
+                  <p className="text-xs text-slate-500">
+                    {v.createdAt.toLocaleDateString("en-US", { dateStyle: "medium" })} · {v.viewCount} {v.viewCount === 1 ? "view" : "views"}
+                  </p>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </main>
+    </>
+  );
+}

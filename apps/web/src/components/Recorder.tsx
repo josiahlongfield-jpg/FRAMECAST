@@ -1,0 +1,396 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import * as store from "@/lib/recorder/store";
+import { ChunkedUploader, lockName, recoverInterrupted, type UploadState } from "@/lib/recorder/uploader";
+import {
+  bitrateFor,
+  getCamera,
+  getMic,
+  getScreen,
+  mixAudio,
+  openCameraBubble,
+  pickMimeType,
+  stopAll,
+  type Mode,
+  type Quality,
+} from "@/lib/recorder/media";
+
+type Phase = "setup" | "countdown" | "recording" | "paused" | "finishing";
+
+const MODES: { id: Mode; label: string; hint: string }[] = [
+  { id: "screen+camera", label: "Screen + Camera", hint: "Share your screen with a floating camera bubble" },
+  { id: "screen", label: "Screen only", hint: "Just your screen and voice" },
+  { id: "camera", label: "Camera only", hint: "A face-to-camera message" },
+];
+
+const fmt = (ms: number) => {
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+};
+
+export default function Recorder({ maxResolution, maxDurationMin }: { maxResolution: Quality; maxDurationMin: number }) {
+  const router = useRouter();
+  const [mode, setMode] = useState<Mode>("screen+camera");
+  const [quality, setQuality] = useState<Quality>(Math.min(1080, maxResolution) as Quality);
+  const [cams, setCams] = useState<MediaDeviceInfo[]>([]);
+  const [mics, setMics] = useState<MediaDeviceInfo[]>([]);
+  const [camId, setCamId] = useState<string>();
+  const [micId, setMicId] = useState<string>();
+  const [phase, setPhase] = useState<Phase>("setup");
+  const [count, setCount] = useState(3);
+  const [elapsed, setElapsed] = useState(0);
+  const [upload, setUpload] = useState<UploadState>({ uploadedBytes: 0, bufferedBytes: 0, retrying: false });
+  const [error, setError] = useState<string>();
+  const [recovered, setRecovered] = useState<string[]>([]);
+  const [bubbleOpen, setBubbleOpen] = useState(false);
+
+  const preview = useRef<HTMLVideoElement>(null);
+  const camStream = useRef<MediaStream | null>(null);
+  const live = useRef<{
+    recorder: MediaRecorder;
+    uploader: ChunkedUploader;
+    streams: MediaStream[];
+    closeAudio: () => void;
+    closeBubble: () => void;
+    releaseLock: () => void;
+    videoId: string;
+    startedAt: number;
+    accumulated: number;
+  } | null>(null);
+
+  // Finish anything a previous crash left behind.
+  useEffect(() => {
+    recoverInterrupted((id) => setRecovered((r) => [...r, id])).catch(() => {});
+  }, []);
+
+  const loadDevices = useCallback(async () => {
+    const all = await navigator.mediaDevices.enumerateDevices();
+    setCams(all.filter((d) => d.kind === "videoinput"));
+    setMics(all.filter((d) => d.kind === "audioinput"));
+  }, []);
+
+  // Camera preview while setting up.
+  useEffect(() => {
+    if (phase !== "setup" || mode === "screen") {
+      if (phase === "setup") {
+        stopAll(camStream.current);
+        camStream.current = null;
+      }
+      return;
+    }
+    let cancelled = false;
+    getCamera(camId, quality)
+      .then(async (s) => {
+        if (cancelled) return stopAll(s);
+        stopAll(camStream.current);
+        camStream.current = s;
+        if (preview.current) preview.current.srcObject = s;
+        await loadDevices();
+      })
+      .catch(() => setError("Camera permission is needed for this mode. Allow it in your browser's address bar."));
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, camId, quality, phase, loadDevices]);
+
+  useEffect(() => {
+    getMic(undefined)
+      .then((s) => {
+        stopAll(s);
+        return loadDevices();
+      })
+      .catch(() => setError("Microphone permission is needed to record. Allow it in your browser's address bar."));
+    return () => stopAll(camStream.current);
+  }, [loadDevices]);
+
+  // Timer + plan duration limit.
+  useEffect(() => {
+    if (phase !== "recording") return;
+    const t = setInterval(() => {
+      const l = live.current;
+      if (!l) return;
+      const ms = l.accumulated + (performance.now() - l.startedAt);
+      setElapsed(ms);
+      if (ms >= maxDurationMin * 60_000) void stop();
+    }, 250);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, maxDurationMin]);
+
+  // Warn before closing the tab mid-recording (recovery still has the data).
+  useEffect(() => {
+    if (phase === "setup") return;
+    const h = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", h);
+    return () => window.removeEventListener("beforeunload", h);
+  }, [phase]);
+
+  function durationNow() {
+    const l = live.current;
+    if (!l) return 0;
+    return Math.round(l.accumulated + (l.recorder.state === "recording" ? performance.now() - l.startedAt : 0));
+  }
+
+  async function start() {
+    setError(undefined);
+    const streams: MediaStream[] = [];
+    try {
+      const mic = await getMic(micId);
+      streams.push(mic);
+      let video: MediaStreamTrack;
+      if (mode === "camera") {
+        const cam = camStream.current ?? (await getCamera(camId, quality));
+        camStream.current = cam;
+        video = cam.getVideoTracks()[0];
+      } else {
+        const screen = await getScreen(quality);
+        streams.push(screen);
+        video = screen.getVideoTracks()[0];
+        // The browser's own "Stop sharing" button ends the recording cleanly.
+        video.addEventListener("ended", () => void stop());
+      }
+      const audio = mixAudio(streams);
+      const tracks = [video, ...(audio.track ? [audio.track] : [])];
+      const mimeType = pickMimeType();
+
+      const res = await fetch("/api/videos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mimeType }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not start recording");
+      const videoId: string = data.video.id;
+
+      await store.putSession({ videoId, title: data.video.title, mimeType, startedAt: Date.now(), nextPart: 1, durationMs: 0, stopped: false });
+
+      let releaseLock = () => {};
+      await new Promise<void>((held) => {
+        navigator.locks.request(lockName(videoId), () => new Promise<void>((release) => {
+          releaseLock = release;
+          held();
+        }));
+      });
+
+      let closeBubble = () => {};
+      if (mode === "screen+camera" && camStream.current) {
+        closeBubble = await openCameraBubble(camStream.current);
+        setBubbleOpen(true);
+      }
+
+      const uploader = new ChunkedUploader(videoId, {}, setUpload);
+      const recorder = new MediaRecorder(new MediaStream(tracks), { mimeType, videoBitsPerSecond: bitrateFor(quality) });
+      recorder.ondataavailable = (e) => {
+        void uploader.push(e.data).then(() => store.updateSession(videoId, { durationMs: durationNow() }));
+      };
+      recorder.onerror = () => setError("The browser stopped the recorder. Your recording so far has been saved.");
+
+      live.current = { recorder, uploader, streams, closeAudio: audio.close, closeBubble, releaseLock, videoId, startedAt: 0, accumulated: 0 };
+
+      setPhase("countdown");
+      for (let n = 3; n > 0; n--) {
+        setCount(n);
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+      recorder.start(2000);
+      live.current.startedAt = performance.now();
+      setPhase("recording");
+    } catch (err) {
+      stopAll(...streams);
+      setPhase("setup");
+      if ((err as Error).name !== "NotAllowedError") setError((err as Error).message);
+    }
+  }
+
+  function pause() {
+    const l = live.current;
+    if (!l || l.recorder.state !== "recording") return;
+    l.recorder.pause();
+    l.accumulated += performance.now() - l.startedAt;
+    setPhase("paused");
+  }
+
+  function resume() {
+    const l = live.current;
+    if (!l || l.recorder.state !== "paused") return;
+    l.recorder.resume();
+    l.startedAt = performance.now();
+    setPhase("recording");
+  }
+
+  async function stop() {
+    const l = live.current;
+    if (!l || l.recorder.state === "inactive") return;
+    const durationMs = durationNow();
+    setPhase("finishing");
+    const stopped = new Promise<void>((r) => l.recorder.addEventListener("stop", () => r(), { once: true }));
+    l.recorder.stop();
+    await stopped;
+    cleanup();
+    try {
+      await store.updateSession(l.videoId, { durationMs, stopped: true });
+      await l.uploader.finish(durationMs);
+      router.push(`/v/${l.videoId}?new=1`);
+    } catch (err) {
+      setError(`${(err as Error).message}. Your recording is saved on this device and will finish uploading next time you open the recorder.`);
+      setPhase("setup");
+    } finally {
+      l.releaseLock();
+      live.current = null;
+    }
+  }
+
+  async function discard() {
+    const l = live.current;
+    if (!l) return;
+    l.recorder.ondataavailable = null;
+    if (l.recorder.state !== "inactive") l.recorder.stop();
+    cleanup();
+    await store.removeSession(l.videoId);
+    await fetch(`/api/videos/${l.videoId}`, { method: "DELETE" }).catch(() => {});
+    l.releaseLock();
+    live.current = null;
+    setElapsed(0);
+    setPhase("setup");
+  }
+
+  function cleanup() {
+    const l = live.current;
+    if (!l) return;
+    stopAll(...l.streams);
+    l.closeAudio();
+    l.closeBubble();
+    setBubbleOpen(false);
+  }
+
+  async function popOutBubble() {
+    if (!camStream.current || !live.current) return;
+    live.current.closeBubble = await openCameraBubble(camStream.current);
+    setBubbleOpen(true);
+  }
+
+  const recordingish = phase === "recording" || phase === "paused";
+  const allowedQualities = ([720, 1080, 2160] as Quality[]).filter((q) => q <= maxResolution);
+
+  return (
+    <div className="grid gap-8 lg:grid-cols-[1fr_340px]">
+      <div className="relative aspect-video overflow-hidden rounded-2xl border border-slate-200 bg-slate-900 shadow-sm">
+        {mode !== "screen" ? (
+          <video ref={preview} autoPlay muted playsInline className="h-full w-full -scale-x-100 object-cover" />
+        ) : (
+          <div className="flex h-full flex-col items-center justify-center gap-2 text-slate-300">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="4" width="20" height="13" rx="2" /><path d="M8 21h8M12 17v4" /></svg>
+            <p className="text-sm">You&apos;ll pick a screen, window or tab when you start.</p>
+          </div>
+        )}
+        {phase === "countdown" && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-8xl font-semibold text-white">{count}</div>
+        )}
+        {recordingish && (
+          <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full bg-black/70 px-3 py-1.5 text-sm font-medium text-white">
+            <span className={`h-2.5 w-2.5 rounded-full ${phase === "recording" ? "animate-pulse bg-red-500" : "bg-amber-400"}`} />
+            {phase === "paused" ? "Paused" : "Recording"} · {fmt(elapsed)}
+          </div>
+        )}
+      </div>
+
+      <aside className="flex flex-col gap-5">
+        {recovered.length > 0 && (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+            We recovered {recovered.length === 1 ? "a recording" : `${recovered.length} recordings`} that was interrupted.{" "}
+            <a className="font-medium underline" href={`/v/${recovered[0]}`}>View it</a>
+          </div>
+        )}
+        {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div>}
+
+        {phase === "setup" && (
+          <>
+            <fieldset className="flex flex-col gap-2">
+              <legend className="mb-2 text-sm font-semibold text-slate-900">What do you want to record?</legend>
+              {MODES.map((m) => (
+                <label key={m.id} className={`cursor-pointer rounded-xl border p-3 transition ${mode === m.id ? "border-brand-600 bg-brand-50 ring-1 ring-brand-600" : "border-slate-200 hover:border-slate-300"}`}>
+                  <input type="radio" name="mode" className="sr-only" checked={mode === m.id} onChange={() => setMode(m.id)} />
+                  <span className="block text-sm font-medium text-slate-900">{m.label}</span>
+                  <span className="block text-xs text-slate-500">{m.hint}</span>
+                </label>
+              ))}
+            </fieldset>
+
+            <div className="grid gap-3 text-sm">
+              {mode !== "screen" && (
+                <label className="grid gap-1">
+                  <span className="font-medium text-slate-700">Camera</span>
+                  <select className="rounded-lg border border-slate-300 bg-white px-3 py-2" value={camId ?? ""} onChange={(e) => setCamId(e.target.value || undefined)}>
+                    <option value="">Default camera</option>
+                    {cams.map((d) => <option key={d.deviceId} value={d.deviceId}>{d.label || "Camera"}</option>)}
+                  </select>
+                </label>
+              )}
+              <label className="grid gap-1">
+                <span className="font-medium text-slate-700">Microphone</span>
+                <select className="rounded-lg border border-slate-300 bg-white px-3 py-2" value={micId ?? ""} onChange={(e) => setMicId(e.target.value || undefined)}>
+                  <option value="">Default microphone</option>
+                  {mics.map((d) => <option key={d.deviceId} value={d.deviceId}>{d.label || "Microphone"}</option>)}
+                </select>
+              </label>
+              <label className="grid gap-1">
+                <span className="font-medium text-slate-700">Quality</span>
+                <select className="rounded-lg border border-slate-300 bg-white px-3 py-2" value={quality} onChange={(e) => setQuality(Number(e.target.value) as Quality)}>
+                  {allowedQualities.map((q) => <option key={q} value={q}>{q === 2160 ? "4K" : `${q}p`}</option>)}
+                </select>
+                {maxResolution < 1080 && <span className="text-xs text-slate-500">Upgrade to Pro for 1080p and 4K.</span>}
+              </label>
+            </div>
+
+            <button onClick={start} className="rounded-xl bg-brand-600 px-4 py-3 font-semibold text-white shadow-sm hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600">
+              Start recording
+            </button>
+            <p className="text-xs text-slate-500">
+              Your recording uploads while you talk and is backed up on this device, so a crash or lost connection never costs you a take.
+            </p>
+          </>
+        )}
+
+        {recordingish && (
+          <>
+            <div className="flex gap-2">
+              {phase === "recording" ? (
+                <button onClick={pause} className="flex-1 rounded-xl border border-slate-300 px-4 py-3 font-medium hover:bg-slate-50">Pause</button>
+              ) : (
+                <button onClick={resume} className="flex-1 rounded-xl border border-slate-300 px-4 py-3 font-medium hover:bg-slate-50">Resume</button>
+              )}
+              <button onClick={stop} className="flex-1 rounded-xl bg-red-600 px-4 py-3 font-semibold text-white hover:bg-red-700">Stop</button>
+            </div>
+            {mode === "screen+camera" && !bubbleOpen && (
+              <button onClick={popOutBubble} className="rounded-xl border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50">Pop out camera bubble</button>
+            )}
+            <button onClick={discard} className="text-sm text-slate-500 underline-offset-2 hover:underline">Discard and start over</button>
+            <UploadBadge s={upload} />
+            <p className="text-xs text-slate-500">Limit on your plan: {maxDurationMin} minutes.</p>
+          </>
+        )}
+
+        {phase === "finishing" && (
+          <div className="flex items-center gap-3 rounded-xl border border-slate-200 p-4 text-sm">
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-brand-600 border-t-transparent" />
+            Finishing upload… your link will open in a moment.
+          </div>
+        )}
+      </aside>
+    </div>
+  );
+}
+
+function UploadBadge({ s }: { s: UploadState }) {
+  if (s.error) return <p className="text-sm text-red-700">{s.error}</p>;
+  if (s.retrying)
+    return <p className="text-sm text-amber-700">Connection lost. Still recording and saving locally; upload resumes automatically.</p>;
+  return (
+    <p className="text-sm text-emerald-700">
+      Saved to cloud: {(s.uploadedBytes / 1024 / 1024).toFixed(1)} MB
+      {s.bufferedBytes > 0 && <span className="text-slate-500"> (+{(s.bufferedBytes / 1024 / 1024).toFixed(1)} MB on device)</span>}
+    </p>
+  );
+}

@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "Framecast",
+    "slug": "framecast",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.framecast.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.framecast.app"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-web-browser",
+      "expo-secure-store",
+      "expo-video",
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Framecast uses your camera to record video messages.",
+          "microphonePermission": "Framecast uses your microphone to record your voice.",
+          "recordAudioAndroid": true
+        }
+      ]
+    ],
+    "scheme": "framecast",
+    "extra": {
+      "apiUrl": "http://localhost:3000"
+    }
+  }
+}
