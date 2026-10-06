@@ -104,10 +104,16 @@ Annual billing at ~20% off. Viewers are always free.
 - The server keeps its encrypted copy for **30 days** (configurable), then a daily job deletes it. The original stays on the device ("Save to device" on every video). **Cloud backup** ($5/month add-on) keeps encrypted copies until deleted.
 - Trade-offs: no server-side transcoding, captions or AI on video content (the server can't read it); a lost recovery key means old videos can't be opened on a new device.
 
+## 6b. To-dos, notes and due dates (built 2026-10-06)
+- Each client has a page with their videos plus a to-do and notes list. Every item is either private to the team or shared with the client.
+- The team also has its own list on the Library page.
+- Clients see only shared items on their inbox page and can tick off shared to-dos; they can't add, edit or delete.
+- Item text is end-to-end encrypted: private items with the team key, shared items with that client's key. Due dates and done/undone are not encrypted (needed for sorting and reminders).
+- Next: reminders (email/push when something is due), repeating schedules such as "weekly check-in every Sunday".
+
 ## 7. Open items
 - Mobile app must adopt the same encryption before release (it currently uploads unencrypted and is blocked by the server).
 - Video titles and client names are not encrypted (needed for lists and search); consider encrypting titles.
-- Built-in to-do list, notes and schedules per client (requested).
 - Point-and-draw on a paused frame (general replacement for form review).
 - S3/R2 bucket needs CORS for the browser to fetch encrypted files when using signed URLs.
 

@@ -87,6 +87,7 @@ model Workspace {
   members              Membership[]
   videos               Video[]
   clients              Client[]
+  items                Item[]
 }
 
 model Membership {
@@ -218,6 +219,33 @@ model Client {
   workspaceId String
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   videos      Video[]
+  items       Item[]
 
   @@index([workspaceId, removedAt])
+}
+
+enum ItemKind {
+  TASK
+  NOTE
+}
+
+/// A to-do or note, either general or about one client. The text is end-to-end
+/// encrypted: with the team key when private, or with the client's key when
+/// shared with that client (the team can unwrap the client key).
+model Item {
+  id          String    @id @default(cuid())
+  kind        ItemKind
+  body        String /// ciphertext
+  done        Boolean   @default(false)
+  dueAt       DateTime?
+  shared      Boolean   @default(false)
+  authorName  String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspaceId String
+  clientId    String?
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client      Client?   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, clientId])
 }

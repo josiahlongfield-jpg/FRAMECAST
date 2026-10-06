@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { exportKey, generateKey, unwrapKey, wrapKey } from "@/lib/e2e/crypto";
 import TeamKeyGate from "./TeamKeyGate";
@@ -152,7 +153,7 @@ function Manager({
             {clients.map((c) => (
               <li key={c.id} className="flex flex-wrap items-center justify-between gap-3 px-6 py-4">
                 <div>
-                  <p className="font-medium text-slate-900">{c.name}</p>
+                  <Link href={`/clients/${c.id}`} className="font-medium text-slate-900 hover:text-brand-700 hover:underline">{c.name}</Link>
                   <p className="text-xs text-slate-500">
                     {c.email ? `${c.email} · ` : ""}{c.videoCount} {c.videoCount === 1 ? "video" : "videos"}
                   </p>

@@ -19,9 +19,10 @@ await page.goto(BASE + "/pricing");
 await page.screenshot({ path: `${shots}/pricing.png`, fullPage: true });
 
 await page.goto(BASE + "/record");
-await page.fill('input[name="email"]', "demo@acme.com");
+await page.fill('input[name="email"]', `demo${Date.now()}@acme.com`);
 await page.click("text=Continue");
 await page.waitForURL("**/record");
+await page.click("text=I've saved it"); // first device: recovery key shown once
 
 // 1) Normal recording
 await page.click("text=Camera only");

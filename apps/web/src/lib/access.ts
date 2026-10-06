@@ -40,3 +40,26 @@ export async function viewableVideo(id: string) {
   if (!viewer) throw new HttpError(404, "Video not found");
   return { video, viewer };
 }
+
+/** The client signed in on this device for a workspace (via their personal link), if any. */
+export async function clientFromCookie(workspaceId: string) {
+  const token = (await cookies()).get(clientCookie(workspaceId))?.value;
+  if (!token) return null;
+  const client = await db.client.findUnique({ where: { token } });
+  return client && !client.removedAt && client.workspaceId === workspaceId ? client : null;
+}
+
+/** Either a workspace member, or the client named by `clientId` on their own device. */
+export async function memberOrClient(clientId: string | null) {
+  const me = await currentUser();
+  if (clientId) {
+    const client = await db.client.findUnique({ where: { id: clientId } });
+    if (!client || client.removedAt) throw new HttpError(404, "Not found");
+    if (me && me.workspace.id === client.workspaceId) return { kind: "member" as const, me, workspaceId: client.workspaceId };
+    const self = await clientFromCookie(client.workspaceId);
+    if (self?.id === client.id) return { kind: "client" as const, client: self, workspaceId: client.workspaceId };
+    throw new HttpError(404, "Not found");
+  }
+  if (!me) throw new HttpError(401, "Sign in required");
+  return { kind: "member" as const, me, workspaceId: me.workspace.id };
+}

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import Logo from "@/components/Logo";
 import ClientKeyCapture from "@/components/ClientKeyCapture";
+import ClientPlanner from "@/components/ClientPlanner";
 import { db } from "@/lib/db";
 
 export const metadata: Metadata = { title: "Your videos" };
@@ -59,6 +60,9 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
                   ))}
                 </ul>
               )}
+              <div className="mt-4">
+                <ClientPlanner clientId={c.id} title="Your to-dos & notes" />
+              </div>
             </section>
           ))
         )}

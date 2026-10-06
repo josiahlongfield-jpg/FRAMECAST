@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import AppHeader from "@/components/AppHeader";
+import MemberPlanner from "@/components/MemberPlanner";
 import { db } from "@/lib/db";
 import { PLANS } from "@/lib/plans";
 import { requirePageUser } from "@/lib/session";
@@ -72,6 +73,9 @@ export default async function Library() {
             ))}
           </ul>
         )}
+        <div className="mt-12 max-w-2xl">
+          <MemberPlanner workspaceId={workspace.id} fingerprint={workspace.keyFingerprint} title="My to-dos & notes" />
+        </div>
       </main>
     </>
   );

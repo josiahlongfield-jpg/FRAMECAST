@@ -49,11 +49,12 @@ Videos and replies are end-to-end encrypted in the browser before upload; see se
 
 `apps/web/e2e/record.mjs` drives Chromium with a fake camera through sign in, recording, playback, commenting, and a crash mid-recording followed by recovery.
 `apps/web/e2e/replies.mjs` covers the encrypted conversation: the server only stores ciphertext, a client on a phone-sized screen opens their personal link and replies with text, voice and video, an interrupted reply is recovered, a second device needs the recovery key, seats are capped and expired relay copies are deleted.
+`apps/web/e2e/planner.mjs` covers to-dos and notes: private versus shared items, a client ticking off a shared to-do, what the client can and can't see or change, and ciphertext-only storage.
 `apps/web/e2e/multipart.mjs` checks the upload protocol (out-of-order parts, retries, missing-part rejection, byte-exact assembly, range requests, auth).
 
 ```bash
 cd apps/web && npm run build && npm start &
-node e2e/record.mjs /tmp && node e2e/replies.mjs /tmp && node e2e/multipart.mjs
+node e2e/record.mjs /tmp && node e2e/replies.mjs /tmp && node e2e/planner.mjs /tmp && node e2e/multipart.mjs
 ```
 
 ## Going to production

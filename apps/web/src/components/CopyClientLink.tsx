@@ -1,0 +1,29 @@
+"use client";
+
+import { useState } from "react";
+import TeamKeyGate from "./TeamKeyGate";
+import { personalLink } from "./ClientsManager";
+
+export default function CopyClientLink(props: { workspaceId: string; fingerprint: string | null; link: string; teamKeyWrap: string | null }) {
+  return (
+    <TeamKeyGate workspaceId={props.workspaceId} fingerprint={props.fingerprint}>
+      {(teamKey) => <Button {...props} teamKey={teamKey} />}
+    </TeamKeyGate>
+  );
+}
+
+function Button({ link, teamKeyWrap, teamKey }: { link: string; teamKeyWrap: string | null; teamKey: CryptoKey }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={async () => {
+        await navigator.clipboard.writeText(await personalLink(link, teamKeyWrap, teamKey));
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }}
+      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50"
+    >
+      {copied ? "Copied" : "Copy personal link"}
+    </button>
+  );
+}
