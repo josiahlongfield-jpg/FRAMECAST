@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Logo from "@/components/Logo";
-import { auth, authProviders, signIn } from "@/auth";
+import { AuthError } from "next-auth";
+import { auth, authProviders, previewPassword, signIn } from "@/auth";
 
 export const metadata: Metadata = { title: "Sign in" };
 
-export default async function Login({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
-  const { next } = await searchParams;
+export default async function Login({ searchParams }: { searchParams: Promise<{ next?: string; error?: string }> }) {
+  const { next, error } = await searchParams;
   const redirectTo = next?.startsWith("/") && !next.startsWith("//") ? next : "/library";
   if ((await auth())?.user) redirect(redirectTo);
 
@@ -26,13 +27,25 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
               className="grid gap-3"
               action={async (fd: FormData) => {
                 "use server";
-                await signIn("dev", { email: fd.get("email"), redirectTo });
+                try {
+                  await signIn("dev", { email: fd.get("email"), password: fd.get("password") ?? "", redirectTo });
+                } catch (e) {
+                  if (e instanceof AuthError) redirect(`/login?error=1&next=${encodeURIComponent(redirectTo)}`);
+                  throw e;
+                }
               }}
             >
               <label className="grid gap-1 text-sm">
                 <span className="font-medium text-slate-700">Work email</span>
                 <input name="email" type="email" required placeholder="you@company.com" className="rounded-lg border border-slate-300 px-3 py-2" />
               </label>
+              {previewPassword && (
+                <label className="grid gap-1 text-sm">
+                  <span className="font-medium text-slate-700">Preview password</span>
+                  <input name="password" type="password" required className="rounded-lg border border-slate-300 px-3 py-2" />
+                </label>
+              )}
+              {error && <p role="alert" className="text-sm text-red-700">That password isn&apos;t right. Check it and try again.</p>}
               <button className="rounded-xl bg-brand-600 px-4 py-3 font-semibold text-white hover:bg-brand-700">Continue</button>
             </form>
           )}

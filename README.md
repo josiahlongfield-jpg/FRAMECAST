@@ -64,3 +64,14 @@ node e2e/record.mjs /tmp && node e2e/replies.mjs /tmp && node e2e/planner.mjs /t
 - Create a Mux account and point its webhook at `/api/webhooks/mux`.
 - Create Stripe products for Pro and Business (per-seat monthly prices) and point a webhook at `/api/webhooks/stripe` for `customer.subscription.*` events.
 - Ship mobile with `eas build` and `eas submit`. Paid upgrades in the iOS and Android apps must follow App Store and Play billing rules (RevenueCat recommended).
+
+## Hosted preview on Vercel (free tier)
+
+1. Import the GitHub repo in Vercel and set **Root Directory** to `apps/web`.
+2. Environment variables: `AUTH_SECRET` (random), `CRON_SECRET` (random), `AUTH_DEV_LOGIN=true`, `PREVIEW_PASSWORD` (shared password for the email sign-in).
+3. Storage tab: create a **Neon** Postgres database and connect it to the project. It sets `DATABASE_URL` and `DATABASE_URL_UNPOOLED`.
+4. Redeploy. The `vercel-build` script runs migrations before building.
+
+Without `S3_BUCKET`, videos are stored in Postgres (`StoredPart`) in 2 MB parts, under Vercel's 4.5 MB request limit. That suits a preview. For launch, use R2/S3 with direct-to-bucket (presigned) part uploads.
+
+Reminder emails need `RESEND_API_KEY` and `MAIL_FROM`; without them they are only logged. Vercel's free plan runs crons once a day. On Pro, change `/api/cron/reminders` in `vercel.json` to `*/5 * * * *`.

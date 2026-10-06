@@ -5,7 +5,7 @@
 // another device needs the recovery key, videos are private, seats are
 // capped, and expired relay copies are cleaned up.
 import { chromium, devices } from "@playwright/test";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { execSync } from "node:child_process";
 
@@ -47,7 +47,10 @@ console.log("coach plays own video, duration", await coach.$eval("main video", f
 
 // The server only has ciphertext
 const keyPath = sql(`select "storageKey" from "Video" where id='${rootId}'`);
-const stored = readFileSync(join(".data/uploads", keyPath));
+// Local disk driver, or the Postgres driver (STORAGE_DRIVER=db): read the first bytes either way.
+const stored = existsSync(join(".data/uploads", keyPath))
+  ? readFileSync(join(".data/uploads", keyPath))
+  : Buffer.from(sql(`select encode(substring(data from 1 for 64), 'hex') from "StoredPart" where key='${keyPath}' order by "partNumber" limit 1`), "hex");
 const isWebm = stored[0] === 0x1a && stored[1] === 0x45 && stored[2] === 0xdf && stored[3] === 0xa3;
 console.log("stored file", stored.length, "bytes; readable WebM on server:", isWebm);
 
@@ -153,6 +156,8 @@ console.log("purge job:", purge.status(), await purge.text());
 console.log("purge without secret:", (await strangerCtx.request.get(`${BASE}/api/cron/purge`)).status());
 await client2.reload();
 await client2.waitForSelector("text=expired from our servers");
-console.log("client sees expiry notice; file on server:", (() => { try { statSync(join(".data/uploads", keyPath)); return "still there"; } catch { return "deleted"; } })());
+const onDisk = (() => { try { statSync(join(".data/uploads", keyPath)); return true; } catch { return false; } })();
+const inDb = sql(`select count(*) from "StoredPart" where key='${keyPath}'`) !== "0";
+console.log("client sees expiry notice; file on server:", onDisk || inDb ? "still there" : "deleted");
 
 await browser.close();

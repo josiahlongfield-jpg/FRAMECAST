@@ -5,6 +5,8 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  /// Direct (non-pooled) connection for migrations. Same as DATABASE_URL locally.
+  directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
 // ---------- Auth.js ----------
@@ -290,4 +292,16 @@ model Reminder {
 
   @@index([sentAt, sendAt])
   @@index([itemId])
+}
+
+/// Video bytes kept in Postgres by the "db" storage driver (previews and
+/// small deployments without S3/R2). Each upload part is one row; the file
+/// is the parts in order, so nothing is copied when an upload completes.
+model StoredPart {
+  key        String
+  partNumber Int
+  size       Int
+  data       Bytes
+
+  @@id([key, partNumber])
 }

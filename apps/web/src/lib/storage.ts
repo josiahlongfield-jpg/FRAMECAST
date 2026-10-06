@@ -154,13 +154,93 @@ class S3Driver implements StorageDriver {
   }
 }
 
+/**
+ * Keeps video bytes in Postgres, one row per upload part. For previews and
+ * small deployments on hosts with no writable disk (e.g. Vercel) and no S3/R2
+ * bucket yet. Ranges are served by reading only the parts they touch.
+ */
+class DbDriver implements StorageDriver {
+  private async db() {
+    return (await import("@/lib/db")).db;
+  }
+
+  async begin() {
+    return null;
+  }
+
+  async putPart(key: string, _uploadId: string | null, partNumber: number, body: Uint8Array) {
+    const db = await this.db();
+    const data = Buffer.from(body);
+    await db.storedPart.upsert({
+      where: { key_partNumber: { key, partNumber } },
+      create: { key, partNumber, size: data.length, data },
+      update: { size: data.length, data },
+    });
+    return null;
+  }
+
+  async complete(key: string, _uploadId: string | null, parts: { partNumber: number }[]) {
+    const db = await this.db();
+    const keep = parts.map((p) => p.partNumber);
+    await db.storedPart.deleteMany({ where: { key, partNumber: { notIn: keep } } });
+    const sum = await db.storedPart.aggregate({ where: { key }, _sum: { size: true } });
+    return sum._sum.size ?? 0;
+  }
+
+  async abort(key: string) {
+    await this.delete(key);
+  }
+
+  async delete(key: string) {
+    const db = await this.db();
+    await db.storedPart.deleteMany({ where: { key } });
+  }
+
+  async playbackUrl() {
+    return null;
+  }
+
+  async open(key: string, range?: { start: number; end: number }) {
+    const db = await this.db();
+    const index = await db.storedPart.findMany({ where: { key }, select: { partNumber: true, size: true }, orderBy: { partNumber: "asc" } });
+    const size = index.reduce((n, p) => n + p.size, 0);
+    const start = range?.start ?? 0;
+    const end = range?.end ?? size - 1;
+    // Parts overlapping [start, end], with each one's offset in the file.
+    const wanted: { partNumber: number; offset: number; size: number }[] = [];
+    let offset = 0;
+    for (const p of index) {
+      if (offset + p.size > start && offset <= end) wanted.push({ ...p, offset });
+      offset += p.size;
+    }
+    let i = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        const p = wanted[i++];
+        if (!p) return controller.close();
+        const row = await db.storedPart.findUniqueOrThrow({ where: { key_partNumber: { key, partNumber: p.partNumber } }, select: { data: true } });
+        const from = Math.max(0, start - p.offset);
+        const to = Math.min(p.size, end - p.offset + 1);
+        controller.enqueue(new Uint8Array(row.data.subarray(from, to)));
+      },
+    });
+    return { stream, size };
+  }
+}
+
 let driver: StorageDriver | undefined;
 
+/**
+ * S3/R2 when S3_BUCKET is set. Otherwise Postgres on hosts without a
+ * writable disk (Vercel) or when STORAGE_DRIVER=db, else local files.
+ */
 export function storage(): StorageDriver {
   if (!driver) {
     driver = process.env.S3_BUCKET
       ? new S3Driver(process.env.S3_BUCKET)
-      : new LocalDriver(path.resolve(process.env.LOCAL_STORAGE_DIR ?? ".data/uploads"));
+      : process.env.STORAGE_DRIVER === "db" || (process.env.VERCEL && process.env.STORAGE_DRIVER !== "local")
+        ? new DbDriver()
+        : new LocalDriver(path.resolve(process.env.LOCAL_STORAGE_DIR ?? ".data/uploads"));
   }
   return driver;
 }

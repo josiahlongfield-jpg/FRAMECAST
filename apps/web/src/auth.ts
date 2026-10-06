@@ -9,16 +9,21 @@ const providers: Provider[] = [];
 
 if (process.env.AUTH_GOOGLE_ID) providers.push(Google);
 
-// Email-only sign in for local development and demos. Never enable in production.
+/** Shared password that protects a hosted preview's email sign-in. */
+export const previewPassword = process.env.PREVIEW_PASSWORD || null;
+
+// Email-only sign in for local development and demos. Never enable in
+// production; on a hosted preview, also set PREVIEW_PASSWORD.
 if (process.env.AUTH_DEV_LOGIN === "true") {
   providers.push(
     Credentials({
       id: "dev",
       name: "Dev login",
-      credentials: { email: { label: "Email", type: "email" } },
+      credentials: { email: { label: "Email", type: "email" }, password: { label: "Preview password", type: "password" } },
       async authorize(creds) {
         const email = String(creds?.email ?? "").trim().toLowerCase();
         if (!email.includes("@")) return null;
+        if (previewPassword && String(creds?.password ?? "") !== previewPassword) return null;
         return db.user.upsert({ where: { email }, update: {}, create: { email, name: email.split("@")[0] } });
       },
     }),

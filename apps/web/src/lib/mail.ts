@@ -12,9 +12,14 @@ export async function sendMail(mail: Mail) {
   const from = `${(mail.fromName ?? BRAND.name).replace(/[<>"]/g, "")} <${process.env.MAIL_FROM ?? "reminders@example.com"}>`;
   const key = process.env.RESEND_API_KEY;
   if (!key) {
-    const dir = join(process.cwd(), ".data", "outbox");
-    await mkdir(dir, { recursive: true });
-    await writeFile(join(dir, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.json`), JSON.stringify({ from, ...mail }, null, 2));
+    try {
+      const dir = join(process.cwd(), ".data", "outbox");
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.json`), JSON.stringify({ from, ...mail }, null, 2));
+    } catch {
+      // No writable disk (e.g. a hosted preview): log instead.
+      console.log("[mail not sent: no RESEND_API_KEY]", JSON.stringify({ to: mail.to, subject: mail.subject }));
+    }
     return;
   }
   const res = await fetch("https://api.resend.com/emails", {

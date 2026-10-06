@@ -1,7 +1,12 @@
 import * as store from "./store";
 
 /** Matches the S3 minimum part size; only the final part may be smaller. */
-export const PART_BYTES = 5 * 1024 * 1024;
+/**
+ * Bytes per upload part. 5 MiB is S3's minimum; deployments that send parts
+ * through a serverless function with a smaller request limit (Vercel: 4.5 MB)
+ * set a lower value at build time (see next.config.ts).
+ */
+export const PART_BYTES = Number(process.env.NEXT_PUBLIC_UPLOAD_PART_BYTES) || 5 * 1024 * 1024;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 

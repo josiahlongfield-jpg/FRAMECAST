@@ -10,5 +10,6 @@ export function stripe() {
 }
 
 export function appUrl(path = "") {
-  return (process.env.APP_URL ?? "http://localhost:3000") + path;
+  const vercel = process.env.VERCEL_PROJECT_PRODUCTION_URL;
+  return (process.env.APP_URL ?? (vercel ? `https://${vercel}` : "http://localhost:3000")) + path;
 }
