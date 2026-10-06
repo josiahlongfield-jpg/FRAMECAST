@@ -29,7 +29,7 @@ export default function Record() {
   if (!camPerm.granted || !micPerm.granted) {
     return (
       <View style={[styles.black, styles.center]}>
-        <Text style={styles.permText}>Framecast needs your camera and microphone to record.</Text>
+        <Text style={styles.permText}>SureFrame needs your camera and microphone to record.</Text>
         <Pressable style={styles.permButton} onPress={async () => { await requestCam(); await requestMic(); }}>
           <Text style={styles.permButtonText}>Allow access</Text>
         </Pressable>

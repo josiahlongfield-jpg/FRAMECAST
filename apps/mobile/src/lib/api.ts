@@ -17,9 +17,9 @@ export async function getSession(): Promise<Session | null> {
   return cached;
 }
 
-/** Sign in through the web app in a browser sheet; it hands the session back via framecast://auth. */
+/** Sign in through the web app in a browser sheet; it hands the session back via sureframe://auth. */
 export async function signIn(): Promise<boolean> {
-  const res = await WebBrowser.openAuthSessionAsync(`${API_URL}/mobile/handoff`, "framecast://auth");
+  const res = await WebBrowser.openAuthSessionAsync(`${API_URL}/mobile/handoff`, "sureframe://auth");
   if (res.type !== "success") return false;
   const params = new URL(res.url).searchParams;
   const cookie = params.get("cookie");

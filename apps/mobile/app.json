@@ -1,14 +1,14 @@
 {
   "expo": {
-    "name": "Framecast",
-    "slug": "framecast",
+    "name": "SureFrame",
+    "slug": "sureframe",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.framecast.app"
+      "bundleIdentifier": "com.sureframe.app"
     },
     "android": {
       "adaptiveIcon": {
@@ -18,7 +18,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.framecast.app"
+      "package": "com.sureframe.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -31,13 +31,13 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Framecast uses your camera to record video messages.",
-          "microphonePermission": "Framecast uses your microphone to record your voice.",
+          "cameraPermission": "SureFrame uses your camera to record video messages.",
+          "microphonePermission": "SureFrame uses your microphone to record your voice.",
           "recordAudioAndroid": true
         }
       ]
     ],
-    "scheme": "framecast",
+    "scheme": "sureframe",
     "extra": {
       "apiUrl": "http://localhost:3000"
     }

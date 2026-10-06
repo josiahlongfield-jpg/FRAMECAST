@@ -1,6 +1,6 @@
-# Framecast: Product & Architecture Plan
+# SureFrame: Product & Architecture Plan
 
-> "Framecast" is a placeholder name. Swap it once the real brand is chosen.
+> Product name: SureFrame (chosen 2026-10-06; previously the placeholder "Framecast").
 
 ## 1. Positioning
 
@@ -12,7 +12,7 @@ Pitch line for businesses: *"Loom, but it doesn't crash, it doesn't lose your ta
 
 ## 2. Loom's known pain points → our answer
 
-| Pain point (commonly reported) | Framecast answer |
+| Pain point (commonly reported) | SureFrame answer |
 |---|---|
 | Recordings crash / are lost mid-take, "processing" hangs | **Chunked, resumable upload while recording** (every few seconds) plus a local crash-recovery buffer (IndexedDB on web, file system on mobile). If the tab or app dies, the take is recovered on next open. |
 | Long processing before a link works | Link is live the moment you stop. Viewers get the raw upload instantly; transcoded HLS replaces it in the background. |

@@ -1,7 +1,7 @@
-# Framecast
+# SureFrame
 
 Async screen and camera recording for teams, built to never lose a take.
-"Framecast" is a placeholder name; rename it in `apps/web/src/lib/brand.ts` and `apps/mobile/app.json`.
+The product name lives in `apps/web/src/lib/brand.ts` and `apps/mobile/app.json`. Internal identifiers (database name, browser storage keys) still say `framecast` on purpose: renaming them would orphan keys and recordings already saved in browsers.
 
 See [PLAN.md](PLAN.md) for product scope, pricing and architecture.
 

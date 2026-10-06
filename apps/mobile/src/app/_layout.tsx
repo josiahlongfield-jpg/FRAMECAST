@@ -13,7 +13,7 @@ export default function Layout() {
           contentStyle: { backgroundColor: colors.bg },
         }}
       >
-        <Stack.Screen name="index" options={{ title: "Framecast" }} />
+        <Stack.Screen name="index" options={{ title: "SureFrame" }} />
         <Stack.Screen name="record" options={{ headerShown: false, presentation: "fullScreenModal" }} />
         <Stack.Screen name="v/[id]" options={{ title: "" }} />
       </Stack>

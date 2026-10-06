@@ -16,7 +16,7 @@ Researched 2026-10-06 from public reviews (Capterra, review roundups) and Loom's
 | 8 | **Audio out of sync, login problems after the migration** | Reported alongside upload failures. | Light |
 | 9 | **Lock-in** | Years of Loom links embedded in docs makes switching hard. | Light |
 
-## 2. How Framecast answers each one
+## 2. How SureFrame answers each one
 
 | Complaint | Answer | Status |
 |---|---|---|

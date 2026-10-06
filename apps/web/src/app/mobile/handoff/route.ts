@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 
 const COOKIE_NAMES = ["__Secure-authjs.session-token", "authjs.session-token"];
-const APP_SCHEME = process.env.MOBILE_APP_SCHEME ?? "framecast";
+const APP_SCHEME = process.env.MOBILE_APP_SCHEME ?? "sureframe";
 
 /**
  * The mobile app opens this page in a system browser sheet. After the user
