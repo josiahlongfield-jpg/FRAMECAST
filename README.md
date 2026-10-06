@@ -72,6 +72,8 @@ node e2e/record.mjs /tmp && node e2e/replies.mjs /tmp && node e2e/planner.mjs /t
 3. Storage tab: create a **Neon** Postgres database and connect it to the project. It sets `DATABASE_URL` and `DATABASE_URL_UNPOOLED`.
 4. Redeploy. The `vercel-build` script runs migrations before building.
 
+Live at **https://sureframe.app** (bought through Vercel). `www.sureframe.app`, `getsureframe.com` and `www.getsureframe.com` redirect there. `APP_URL=https://sureframe.app` is set for production so emails, share links and Stripe redirects use it.
+
 Without `S3_BUCKET`, videos are stored in Postgres (`StoredPart`) in 2 MB parts, under Vercel's 4.5 MB request limit. That suits a preview. For launch, use R2/S3 with direct-to-bucket (presigned) part uploads.
 
 Reminder emails need `RESEND_API_KEY` and `MAIL_FROM`; without them they are only logged. Vercel's free plan runs crons once a day. On Pro, change `/api/cron/reminders` in `vercel.json` to `*/5 * * * *`.
