@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { REACTIONS } from "@/lib/reactions";
@@ -322,7 +323,7 @@ function WatchBody({
                 ))}
               </select>
               {clients.length === 0 && (
-                <a href="/clients" className="text-brand-700 hover:underline">Add a client first</a>
+                <Link href="/clients" className="text-brand-700 hover:underline">Add a client first</Link>
               )}
             </label>
             <p className="mt-2 text-xs text-slate-500">

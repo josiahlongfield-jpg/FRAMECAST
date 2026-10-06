@@ -127,7 +127,7 @@ function Manager({
           </div>
         ) : (
           <p className="mt-5 border-t border-slate-100 pt-5 text-sm text-slate-600">
-            <a href="/pricing" className="font-medium text-brand-700 hover:underline">Upgrade</a> for 10 or more client seats, with extra seats at ${seatPrice} each per month.
+            <Link href="/pricing" className="font-medium text-brand-700 hover:underline">Upgrade</Link> for 10 or more client seats, with extra seats at ${seatPrice} each per month.
           </p>
         )}
       </section>
