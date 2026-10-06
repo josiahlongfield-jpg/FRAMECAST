@@ -77,9 +77,12 @@ model Workspace {
   stripeSubscriptionId String?      @unique
   subscriptionStatus   String?
   currentPeriodEnd     DateTime?
+  /// Client seats bought on top of the plan's included seats.
+  extraClientSeats     Int          @default(0)
   createdAt            DateTime     @default(now())
   members              Membership[]
   videos               Video[]
+  clients              Client[]
 }
 
 model Membership {
@@ -121,6 +124,10 @@ model Video {
   updatedAt       DateTime     @updatedAt
   ownerId         String
   workspaceId     String
+  /// The client this video was sent to. Videos are private: only workspace
+  /// members and this client can watch them.
+  clientId        String?
+  client          Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
   /// Set when this video is the media of a reply in another video's conversation.
   replyToId       String?
   /// sha256 of a one-time token that lets a guest (no account) upload this reply's media.
@@ -177,4 +184,22 @@ model Reaction {
   createdAt   DateTime @default(now())
   videoId     String
   video       Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+}
+
+/// Someone a creator works with (e.g. a personal trainer's client). Clients
+/// never pay: each uses one of the workspace's client seats and gets a
+/// private link to watch and reply to the videos sent to them.
+model Client {
+  id          String    @id @default(cuid())
+  name        String
+  email       String?
+  /// Secret in the client's personal link. Treat like a password.
+  token       String    @unique
+  createdAt   DateTime  @default(now())
+  removedAt   DateTime?
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  videos      Video[]
+
+  @@index([workspaceId, removedAt])
 }

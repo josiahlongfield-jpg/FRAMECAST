@@ -1,11 +1,12 @@
 import { db } from "@/lib/db";
 import { storage } from "@/lib/storage";
+import { viewerFor } from "@/lib/access";
 
 /** Serve the raw recording with HTTP Range support so players can seek. */
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   const video = await db.video.findUnique({ where: { id } });
-  if (!video || video.status === "RECORDING") return new Response("Not found", { status: 404 });
+  if (!video || video.status === "RECORDING" || !(await viewerFor(video))) return new Response("Not found", { status: 404 });
   if (video.expiresAt && video.expiresAt < new Date()) return new Response("Link expired", { status: 410 });
 
   const driver = storage();

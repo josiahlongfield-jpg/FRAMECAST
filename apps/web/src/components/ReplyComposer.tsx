@@ -9,7 +9,6 @@ import type { ReplyDTO } from "@/lib/replies";
 type Mode = "TEXT" | "VIDEO" | "AUDIO";
 type Phase = "idle" | "preview" | "recording" | "sending";
 
-const NAME_KEY = "framecast.replyName";
 const AUDIO_TYPES = ["audio/webm;codecs=opus", "audio/mp4", "audio/webm"];
 
 function pickAudioType() {
@@ -21,27 +20,16 @@ const fmt = (ms: number) => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 };
 
-function readName() {
-  try {
-    return localStorage.getItem(NAME_KEY) ?? "";
-  } catch {
-    return "";
-  }
-}
-
 export default function ReplyComposer({
   videoId,
-  signedIn,
   currentTimeMs,
   onReplied,
 }: {
   videoId: string;
-  signedIn: boolean;
   currentTimeMs: () => number | undefined;
   onReplied: (r: ReplyDTO) => void;
 }) {
   const [mode, setMode] = useState<Mode>("TEXT");
-  const [name, setName] = useState("");
   const [text, setText] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [facing, setFacing] = useState<"user" | "environment">("user");
@@ -54,8 +42,6 @@ export default function ReplyComposer({
   const preview = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
   const live = useRef<{ recorder: MediaRecorder; uploader: ChunkedUploader; mediaId: string; startedAt: number; release: () => void } | null>(null);
-
-  useEffect(() => setName(readName()), []);
 
   // Live camera/mic preview while a media mode is selected.
   // Re-acquired when the mode or camera changes, and after each sent reply.
@@ -103,50 +89,34 @@ export default function ReplyComposer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, maxMs]);
 
-  function rememberName() {
-    try {
-      localStorage.setItem(NAME_KEY, name.trim());
-    } catch {
-      /* private mode */
-    }
-  }
-
-  function needName() {
-    if (signedIn || name.trim()) return false;
-    setError("Add your name so they know who replied.");
-    return true;
-  }
-
   async function sendText(e: React.FormEvent) {
     e.preventDefault();
-    if (!text.trim() || needName()) return;
+    if (!text.trim()) return;
     setPhase("sending");
     setError(undefined);
     const res = await fetch(`/api/videos/${videoId}/replies`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind: "TEXT", body: text, timestampMs: currentTimeMs(), authorName: name.trim() || undefined }),
+      body: JSON.stringify({ kind: "TEXT", body: text, timestampMs: currentTimeMs() }),
     });
     const data = await res.json().catch(() => ({}));
     setPhase("idle");
     if (!res.ok) return setError(data.error ?? "Could not send your reply");
-    rememberName();
     setText("");
     onReplied(data.reply);
   }
 
   async function start() {
-    if (!stream.current || needName()) return;
+    if (!stream.current) return;
     setError(undefined);
     const mimeType = mode === "VIDEO" ? pickMimeType() : pickAudioType();
     const res = await fetch(`/api/videos/${videoId}/replies`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind: mode, mimeType, authorName: name.trim() || undefined }),
+      body: JSON.stringify({ kind: mode, mimeType }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return setError(data.error ?? "Could not start your reply");
-    rememberName();
     setMaxMs(data.maxDurationMin * 60_000);
     const mediaId: string = data.mediaId;
 
@@ -235,17 +205,6 @@ export default function ReplyComposer({
         ))}
       </div>
 
-      {!signedIn && (
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Your name"
-          aria-label="Your name"
-          maxLength={80}
-          disabled={busy}
-          className="mb-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-600 focus:outline-none"
-        />
-      )}
 
       {mode === "TEXT" ? (
         <form onSubmit={sendText}>

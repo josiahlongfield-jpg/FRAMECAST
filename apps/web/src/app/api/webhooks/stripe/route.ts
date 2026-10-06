@@ -8,14 +8,18 @@ const ACTIVE = new Set(["active", "trialing", "past_due"]);
 async function syncSubscription(sub: Stripe.Subscription) {
   const workspaceId = sub.metadata.workspaceId;
   if (!workspaceId) return;
-  const item = sub.items.data[0];
-  const plan = ACTIVE.has(sub.status) ? planForStripePrice(item?.price.id) : "FREE";
+  const seatPrice = process.env.STRIPE_PRICE_CLIENT_SEAT;
+  const item = sub.items.data.find((i) => i.price.id !== seatPrice);
+  const seatItem = sub.items.data.find((i) => i.price.id === seatPrice);
+  const active = ACTIVE.has(sub.status);
+  const plan = active ? planForStripePrice(item?.price.id) : "FREE";
   await db.workspace.update({
     where: { id: workspaceId },
     data: {
       plan,
       stripeSubscriptionId: sub.id,
       subscriptionStatus: sub.status,
+      extraClientSeats: active ? (seatItem?.quantity ?? 0) : 0,
       currentPeriodEnd: item?.current_period_end ? new Date(item.current_period_end * 1000) : null,
     },
   });

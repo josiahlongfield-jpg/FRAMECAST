@@ -3,23 +3,31 @@ import { db } from "@/lib/db";
 import { storage } from "@/lib/storage";
 import { handle, HttpError, requireUser } from "@/lib/session";
 import { ownedVideo, publicVideo } from "@/lib/videos";
+import { viewableVideo } from "@/lib/access";
 
 export const GET = handle(async (_req: Request, ctx: { params: Promise<{ id: string }> }) => {
   const { id } = await ctx.params;
-  const video = await db.video.findUnique({ where: { id } });
-  if (!video) throw new HttpError(404, "Video not found");
+  const { video } = await viewableVideo(id);
   return Response.json({ video: publicVideo(video) });
 });
 
-const Patch = z.object({ title: z.string().trim().min(1).max(200) });
+const Patch = z.object({
+  title: z.string().trim().min(1).max(200).optional(),
+  /** Send the video to a client (or null to make it members-only again). */
+  clientId: z.string().nullable().optional(),
+});
 
 export const PATCH = handle(async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
   const { id } = await ctx.params;
   const { workspace } = await requireUser();
   await ownedVideo(id, workspace.id);
   const body = Patch.safeParse(await req.json());
-  if (!body.success) throw new HttpError(400, "Invalid title");
-  const video = await db.video.update({ where: { id }, data: { title: body.data.title } });
+  if (!body.success) throw new HttpError(400, "Invalid update");
+  if (body.data.clientId) {
+    const client = await db.client.findFirst({ where: { id: body.data.clientId, workspaceId: workspace.id, removedAt: null } });
+    if (!client) throw new HttpError(400, "Unknown client");
+  }
+  const video = await db.video.update({ where: { id }, data: { title: body.data.title, clientId: body.data.clientId } });
   return Response.json({ video: publicVideo(video) });
 });
 

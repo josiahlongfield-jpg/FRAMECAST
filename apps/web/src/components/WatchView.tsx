@@ -29,13 +29,16 @@ export default function WatchView({
   video,
   ownerName,
   canEdit,
-  signedIn,
+  clients,
+  sentToId,
   initialReplies,
 }: {
   video: Video;
   ownerName: string;
   canEdit: boolean;
-  signedIn: boolean;
+  /** Members only: clients this video can be sent to, with their personal link to it. */
+  clients: { id: string; name: string; link: string }[];
+  sentToId: string | null;
   initialReplies: ReplyDTO[];
 }) {
   const router = useRouter();
@@ -150,8 +153,21 @@ export default function WatchView({
     router.push("/library");
   }
 
+  const [sentTo, setSentTo] = useState(sentToId);
+  const recipient = clients.find((c) => c.id === sentTo);
+
+  async function sendTo(clientId: string | null) {
+    setSentTo(clientId);
+    await fetch(`/api/videos/${video.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId }),
+    });
+  }
+
   async function copyLink() {
-    await navigator.clipboard.writeText(window.location.origin + `/v/${video.id}`);
+    if (!recipient) return;
+    await navigator.clipboard.writeText(recipient.link);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
@@ -196,14 +212,42 @@ export default function WatchView({
             </p>
           </div>
           <div className="flex gap-2">
-            <button onClick={copyLink} className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
-              {copied ? "Link copied" : "Copy link"}
-            </button>
+            {canEdit && recipient && (
+              <button onClick={copyLink} className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
+                {copied ? "Link copied" : `Copy ${recipient.name.split(" ")[0]}'s link`}
+              </button>
+            )}
             {canEdit && (
               <button onClick={remove} className="rounded-xl border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">Delete</button>
             )}
           </div>
         </div>
+
+        {canEdit && (
+          <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
+            <label className="flex flex-wrap items-center gap-3 text-sm">
+              <span className="font-medium text-slate-900">Send to</span>
+              <select
+                value={sentTo ?? ""}
+                onChange={(e) => sendTo(e.target.value || null)}
+                className="min-w-48 rounded-lg border border-slate-300 bg-white px-3 py-2"
+              >
+                <option value="">Only my team (private)</option>
+                {clients.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+              {clients.length === 0 && (
+                <a href="/clients" className="text-brand-700 hover:underline">Add a client first</a>
+              )}
+            </label>
+            <p className="mt-2 text-xs text-slate-500">
+              {recipient
+                ? `Only your team and ${recipient.name} can watch this. Send them their personal link.`
+                : "Nobody outside your team can watch this until you send it to a client."}
+            </p>
+          </div>
+        )}
 
         <div className="mt-4 flex gap-2">
           {REACTIONS.map((e) => (
@@ -250,7 +294,6 @@ export default function WatchView({
         </ul>
         <ReplyComposer
           videoId={video.id}
-          signedIn={signedIn}
           currentTimeMs={momentMs}
           onReplied={addReply}
         />

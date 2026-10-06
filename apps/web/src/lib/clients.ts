@@ -1,0 +1,16 @@
+import crypto from "node:crypto";
+import { db } from "@/lib/db";
+import { clientSeatLimit } from "@/lib/plans";
+import { appUrl } from "@/lib/stripe";
+
+export const newClientToken = () => crypto.randomBytes(24).toString("base64url");
+
+/** The link a client uses to open their videos. Optionally opens one video. */
+export function clientLink(token: string, videoId?: string) {
+  return appUrl(`/c/${token}${videoId ? `?v=${videoId}` : ""}`);
+}
+
+export async function seatUsage(workspace: { id: string; plan: Parameters<typeof clientSeatLimit>[0]["plan"]; extraClientSeats: number }) {
+  const used = await db.client.count({ where: { workspaceId: workspace.id, removedAt: null } });
+  return { used, limit: clientSeatLimit(workspace) };
+}

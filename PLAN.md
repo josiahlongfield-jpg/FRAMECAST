@@ -48,9 +48,14 @@ Pitch line for businesses: *"Loom, but it doesn't crash, it doesn't lose your ta
 
 | Tier | Price | Limits |
 |---|---|---|
-| Free | $0 | 25 videos, 5 min each, 720p |
-| Pro | $12 / creator / mo | Unlimited videos, 4h length, 1080p/4K, editing, branding |
-| Business | $20 / creator / mo | Pro + SSO, analytics, retention, admin controls, priority support |
+| Free | $0 | 25 videos, 5 min each, 720p, 3 client accounts |
+| Pro | $12 / creator / mo | Unlimited videos, 4h length, 1080p/4K, editing, branding, 10 client accounts |
+| Business | $20 / creator / mo | Pro + SSO, analytics, retention, admin controls, priority support, 25 client accounts |
+| Extra client seats | $2 / seat / mo | Paid plans only |
+
+**Clients never pay.** A client account can watch and reply (video, voice, text) to what's sent to them, but can't create videos. Seats are capped per plan so the free side can't be abused; creators buy more as needed.
+
+**Private by default.** No public videos. A video is visible only to the creator's team and the one client it is sent to, through that client's personal link. Removing a client cuts off access immediately.
 
 Annual billing at ~20% off. Viewers are always free.
 
@@ -92,11 +97,17 @@ Annual billing at ~20% off. Viewers are always free.
 4. On stop, the client completes the multipart upload; the share link is already valid.
 5. On next load, any unfinished session in IndexedDB is offered for recovery.
 
-## 6. App store notes
+## 6. Open items
+- **Storage model** (decision pending): encrypted relay with the master copy on the device and optional paid cloud backup is recommended; see the thread.
+- Mux playback is currently set to public URLs; switch to signed playback before launch so HLS streams follow the same privacy rules.
+- Mobile app still shares the plain video link; switch it to the client's personal link.
+- Built-in to-do list, notes and schedules per client (requested).
+
+## 7. App store notes
 - iOS in-app subscriptions must use Apple IAP (or link out under current US rules); RevenueCat handles both stores and syncs to Stripe entitlements.
 - Screen recording on iOS requires a Broadcast Upload Extension (ReplayKit); this needs a custom dev build, not Expo Go.
 
-## 7. Delivery phases
+## 8. Delivery phases
 
 | Phase | Scope |
 |---|---|
@@ -105,7 +116,7 @@ Annual billing at ~20% off. Viewers are always free.
 | 2 | Mobile apps, editor, analytics, public launch |
 | 3 | Enterprise features, desktop app, AI |
 
-## 8. Decisions needed from you
+## 9. Decisions needed from you
 1. Product name and domain.
 2. GitHub repository for the code (new repo recommended).
 3. Accounts to create when we wire real services: Stripe, Mux (or AWS/R2), a Postgres host, Apple Developer ($99/yr), Google Play Console ($25 one-time).

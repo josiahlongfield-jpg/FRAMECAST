@@ -6,6 +6,8 @@ export type PlanLimits = {
   maxVideos: number | null;
   maxDurationMin: number;
   maxResolution: 720 | 1080 | 2160;
+  /** Client accounts included. Clients watch and reply for free; more can be bought. */
+  clientSeats: number;
   features: string[];
 };
 
@@ -16,7 +18,8 @@ export const PLANS: Record<Plan, PlanLimits> = {
     maxVideos: 25,
     maxDurationMin: 5,
     maxResolution: 720,
-    features: ["25 videos", "Up to 5 minutes per video", "720p recording", "Video, voice and text replies"],
+    clientSeats: 3,
+    features: ["25 videos", "Up to 5 minutes per video", "720p recording", "3 client accounts", "Video, voice and text replies"],
   },
   PRO: {
     name: "Pro",
@@ -24,7 +27,8 @@ export const PLANS: Record<Plan, PlanLimits> = {
     maxVideos: null,
     maxDurationMin: 240,
     maxResolution: 2160,
-    features: ["Unlimited videos", "Up to 4 hours per video", "1080p and 4K recording", "Trim and edit", "Custom branding", "Download control"],
+    clientSeats: 10,
+    features: ["Unlimited videos", "10 client accounts included", "Up to 4 hours per video", "1080p and 4K recording", "Trim and edit", "Custom branding", "Download control"],
   },
   BUSINESS: {
     name: "Business",
@@ -32,9 +36,17 @@ export const PLANS: Record<Plan, PlanLimits> = {
     maxVideos: null,
     maxDurationMin: 240,
     maxResolution: 2160,
-    features: ["Everything in Pro", "SSO (SAML / OIDC)", "Viewer analytics", "Retention policies", "Admin controls", "Priority support"],
+    clientSeats: 25,
+    features: ["Everything in Pro", "25 client accounts included", "SSO (SAML / OIDC)", "Viewer analytics", "Retention policies", "Admin controls", "Priority support"],
   },
 };
+
+/** Price of each extra client seat, per month. */
+export const EXTRA_SEAT_PRICE = 2;
+
+export function clientSeatLimit(w: { plan: Plan; extraClientSeats: number }) {
+  return PLANS[w.plan].clientSeats + w.extraClientSeats;
+}
 
 /** Stripe price ids come from env so the same build works in test and live mode. */
 export function stripePriceFor(plan: Plan): string | undefined {
