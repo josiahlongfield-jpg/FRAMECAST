@@ -30,14 +30,14 @@ Researched 2026-10-06 from public reviews (Capterra, review roundups) and Loom's
 | Audio sync | Audio re-synced during processing (Mux). | Built, needs Mux keys |
 | Lock-in | One-click export of every video and transcript. | To build |
 
-## 3. Features for the personal-trainer check-in use case (and businesses like it)
+## 3. Features for businesses that work with clients (personal trainer is one example)
 
-The pattern: one coach, many clients, a back-and-forth conversation about each client's progress, often filmed on a phone in a gym.
+The product is broad-spectrum: any business with clients, customers, students or patients. The pattern is one business, many clients, and a private back-and-forth video conversation with each. The personal trainer is the first example, not the target market.
 
 1. **Video, voice or text replies on every video.** The client opens the link and replies with a video from their phone, a voice note, or a typed message, with no account and no app download. The coach replies back the same way. Each client's messages form one conversation thread. *This is the core of the pitch.*
 2. **Client spaces.** Each client gets a private space holding their whole history of check-ins and replies, so the coach can see progress over months. Private by default.
 3. **Check-in requests and reminders.** The coach sets "Weekly check-in, every Sunday". The client gets a text or email with a one-tap link to record and send. The coach sees who has and hasn't checked in.
-4. **Form-review tools.** Slow motion, frame-by-frame stepping, side-by-side comparison of two videos (week 1 vs week 8), and drawing lines or circles on a paused frame with a voice-over. This is where Loom is weakest and where coaches get the most value.
+4. **Point and draw on a paused frame** (general version of form review, which Josiah dropped as too niche on 2026-10-06): circle or arrow on a moment in the video, useful for design feedback, support, training and coaching alike.
 5. **Rear camera at full quality.** Record in 1080p or 4K at 60 fps for movement. Uploads safely over gym Wi-Fi or cellular, and waits for Wi-Fi if the client chooses.
 6. **Notifications.** Push and email when a client watches, replies or misses a check-in.
 7. **Branding.** The coach's or company's logo and colours on share pages and emails, so it looks like their own product to their clients.
@@ -49,7 +49,7 @@ The pattern: one coach, many clients, a back-and-forth conversation about each c
 
 1. Video, voice and text replies with conversation threads (feature 1) plus private-by-default links.
 2. Client spaces and check-in requests with reminders (features 2 and 3).
-3. Form-review tools (feature 4) and branding (feature 7).
+3. Branding (feature 7) and point-and-draw (feature 4).
 4. Notifications, captions, templates, export.
 
 ## Sources

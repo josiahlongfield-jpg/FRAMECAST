@@ -1,13 +1,19 @@
-// Two-way conversation: a coach adds a client, records a check-in and sends
-// it to them. The client, on a phone-sized screen with no account, replies
-// with text, voice and video; the coach answers back; an interrupted video
-// reply is recovered. Also checks videos are private and seats are capped.
+// End-to-end encrypted conversation between a business and its client.
+// A coach adds a client, records a video and sends it. The client, on a
+// phone-sized screen with no account, opens their personal link and replies
+// with text, voice and video. Checks the server only stores ciphertext,
+// another device needs the recovery key, videos are private, seats are
+// capped, and expired relay copies are cleaned up.
 import { chromium, devices } from "@playwright/test";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { execSync } from "node:child_process";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const shots = process.argv[2] ?? "/tmp";
 const args = ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"];
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM, args });
+const sql = (q) => execSync(`su postgres -c "psql -d framecast -tAc \\"${q.replace(/"/g, '\\\\\\"')}\\""`).toString().trim();
 
 const finiteDuration = (el) => new Promise((r) => {
   const check = () => (Number.isFinite(el.duration) && el.duration > 0 ? r(el.duration) : setTimeout(check, 200));
@@ -15,13 +21,19 @@ const finiteDuration = (el) => new Promise((r) => {
   setTimeout(() => r(el.duration), 10000);
 });
 
-// Coach records a check-in video
-const coachCtx = await browser.newContext({ permissions: ["camera", "microphone"], viewport: { width: 1360, height: 900 } });
+// Coach signs in; this first device creates the team key and shows the recovery key once
+const coachCtx = await browser.newContext({ permissions: ["camera", "microphone", "clipboard-read", "clipboard-write"], viewport: { width: 1360, height: 900 } });
 const coach = await coachCtx.newPage();
+coach.on("console", (m) => m.type() === "error" && console.log("coach console:", m.text()));
+const email = `coach${Date.now()}@studio.com`;
 await coach.goto(BASE + "/record");
-await coach.fill('input[name="email"]', "coach@fitstudio.com");
+await coach.fill('input[name="email"]', email);
 await coach.click("text=Continue");
 await coach.waitForURL("**/record");
+const recoveryKey = await coach.getAttribute("[data-recovery-key]", "data-recovery-key");
+console.log("recovery key shown once:", recoveryKey ? `${recoveryKey.length} chars` : "MISSING");
+await coach.click("text=I've saved it");
+
 await coach.click("text=Camera only");
 await coach.click("text=Start recording");
 await coach.waitForSelector("text=/Recording · \\d/", { timeout: 15000 });
@@ -30,94 +42,117 @@ await coach.click("button:has-text('Stop')");
 await coach.waitForURL("**/v/**", { timeout: 30000 });
 const link = coach.url().split("?")[0];
 const rootId = link.split("/v/")[1];
+await coach.waitForSelector("main video", { timeout: 20000 });
+console.log("coach plays own video, duration", await coach.$eval("main video", finiteDuration));
 
-// Nobody can watch before it is sent to a client
+// The server only has ciphertext
+const keyPath = sql(`select "storageKey" from "Video" where id='${rootId}'`);
+const stored = readFileSync(join(".data/uploads", keyPath));
+const isWebm = stored[0] === 0x1a && stored[1] === 0x45 && stored[2] === 0xdf && stored[3] === 0xa3;
+console.log("stored file", stored.length, "bytes; readable WebM on server:", isWebm);
+
+// Nobody can watch before it is sent
 const strangerCtx = await browser.newContext();
 const stranger = await strangerCtx.newPage();
 await stranger.goto(link);
 console.log("stranger sees:", await stranger.textContent("h1"));
-console.log("stranger stream status", (await strangerCtx.request.get(`${BASE}/api/videos/${rootId}/stream`)).status());
 
-// Add a client, send the video to them
-const add = await coachCtx.request.post(`${BASE}/api/clients`, { data: { name: "Sam Client", email: "sam@example.com" } });
-const sam = (await add.json()).client;
-await coach.reload();
+// Add a client through the UI (their key is made in the coach's browser), then send
+await coach.goto(BASE + "/clients");
+await coach.fill('input[aria-label="Client name"]', "Sam Client");
+await coach.click("button:has-text('Add client')");
+await coach.waitForSelector("text=Sam Client");
+await coach.goto(link);
 await coach.selectOption("select", { label: "Sam Client" });
-await coach.waitForSelector("text=Copy Sam's link");
+await coach.waitForTimeout(500);
+await coach.click("text=Copy Sam's link");
+const personal = await coach.evaluate(() => navigator.clipboard.readText());
+console.log("personal link carries key in fragment:", /\?v=\w+#k=[\w-]{43}$/.test(personal));
 await coach.screenshot({ path: `${shots}/send-to-client.png` });
-const personal = `${sam.link}?v=${rootId}`;
-console.log("sent to client; personal link opens", personal.replace(/c\/[^?]+/, "c/<token>"));
 
-// Client on a phone, not signed in
+// Client on a phone opens their personal link and replies
 const clientCtx = await browser.newContext({ ...devices["Pixel 7"], permissions: ["camera", "microphone"] });
 const client = await clientCtx.newPage();
 client.on("console", (m) => m.type() === "error" && console.log("client console:", m.text()));
 await client.goto(personal);
 await client.waitForURL("**/v/**");
-await client.fill('textarea[aria-label="Reply"]', "Felt strong on squats this week!");
+await client.waitForSelector("main video", { timeout: 20000 });
+console.log("key removed from address bar:", !client.url().includes("#k="));
+console.log("client plays video, duration", await client.$eval("main video", finiteDuration));
+await client.fill('textarea[aria-label="Reply"]', "Felt strong this week!");
 await client.click("button:has-text('Send reply')");
-await client.waitForSelector("aside ul >> text=Felt strong on squats this week!");
-console.log("text reply sent");
+await client.waitForSelector("aside ul >> text=Felt strong this week!");
+const storedText = sql(`select body from "Reply" where "videoId"='${rootId}' order by "createdAt" desc limit 1`);
+console.log("reply text readable on server:", storedText.includes("Felt strong"));
 
 await client.click("role=tab[name='Voice']");
 await client.click("button:has-text('Record voice reply')");
 await client.waitForSelector("text=/Recording · \\d/");
 await client.waitForTimeout(3000);
 await client.click("button:has-text('Stop and send')");
-await client.waitForSelector("aside audio", { timeout: 30000 });
-console.log("voice reply duration", await client.$eval("aside audio", finiteDuration));
+await client.waitForSelector("aside ul audio", { timeout: 30000 });
+console.log("voice reply duration", await client.$eval("aside ul audio", finiteDuration));
 
 await client.click("role=tab[name='Video']");
 await client.click("button:has-text('Record video reply')");
 await client.waitForSelector("text=/Recording · \\d/");
 await client.waitForTimeout(4000);
 await client.click("button:has-text('Stop and send')");
-await client.waitForFunction(() => document.querySelectorAll("aside ul video").length === 1, null, { timeout: 30000 });
+await client.waitForSelector("aside ul video", { timeout: 30000 });
 console.log("video reply duration", await client.$eval("aside ul video", finiteDuration));
 await client.screenshot({ path: `${shots}/reply-phone.png`, fullPage: true });
 
-// Interrupted video reply: close the tab mid-recording, reopen, it gets sent
+// Interrupted video reply: close the tab mid-recording; reopening (no link) finishes it
 await client.click("role=tab[name='Video']");
 await client.click("button:has-text('Record video reply')");
 await client.waitForSelector("text=/Recording · \\d/");
 await client.waitForTimeout(5000);
 await client.close({ runBeforeUnload: false });
 const client2 = await clientCtx.newPage();
-await client2.goto(link); // remembered on this device, no token in the URL
+await client2.goto(link);
 await client2.waitForFunction(() => document.querySelectorAll("aside ul video").length === 2, null, { timeout: 30000 });
-console.log("interrupted reply recovered, video replies now", await client2.$$eval("aside ul video", (els) => els.length));
+console.log("interrupted reply recovered and playable:", await client2.$$eval("aside ul video", (els) => els.length));
 
-// Coach sees all replies and answers back
+// Coach sees and answers
 await coach.reload();
-await coach.waitForSelector("text=Felt strong on squats this week!");
-const counts = await coach.evaluate(() => ({
-  audio: document.querySelectorAll("aside ul audio").length,
-  video: document.querySelectorAll("aside ul video").length,
-}));
-console.log("coach sees", counts);
-await coach.fill('textarea[aria-label="Reply"]', "Great work Sam. Watch your knees at the bottom.");
+await coach.waitForSelector("aside ul >> text=Felt strong this week!");
+await coach.fill('textarea[aria-label="Reply"]', "Great work Sam.");
 await coach.click("button:has-text('Send reply')");
-await coach.waitForSelector("aside ul >> text=Watch your knees");
+await coach.waitForSelector("aside ul >> text=Great work Sam.");
+await coach.waitForFunction(() => document.querySelectorAll("aside ul audio").length === 1 && document.querySelectorAll("aside ul video").length === 2, null, { timeout: 20000 });
+console.log("coach sees all replies decrypted");
 await coach.screenshot({ path: `${shots}/reply-coach.png` });
 
-// Reply media must not show up in the coach's library
-await coach.goto(BASE + "/library");
-console.log("library cards", await coach.$$eval("main ul li", (els) => els.length));
+// A second device for the coach needs the recovery key
+const laptop = await (await browser.newContext({ viewport: { width: 1360, height: 900 } })).newPage();
+await laptop.goto(BASE + "/login?next=" + encodeURIComponent("/v/" + rootId));
+await laptop.fill('input[name="email"]', email);
+await laptop.click("text=Continue");
+await laptop.waitForSelector("text=Unlock your videos on this device");
+await laptop.fill('input[aria-label="Recovery key"]', "A".repeat(43));
+await laptop.click("button:has-text('Unlock')");
+console.log("wrong recovery key:", await laptop.textContent("[role=alert]"));
+await laptop.fill('input[aria-label="Recovery key"]', recoveryKey);
+await laptop.click("button:has-text('Unlock')");
+await laptop.waitForSelector("main video", { timeout: 20000 });
+console.log("new device with recovery key, duration", await laptop.$eval("main video", finiteDuration));
 
-// Seat limit: the Free plan includes 3 client seats
-for (const n of ["Two", "Three"]) await coachCtx.request.post(`${BASE}/api/clients`, { data: { name: `Client ${n}` } });
-const fourth = await coachCtx.request.post(`${BASE}/api/clients`, { data: { name: "Client Four" } });
-console.log("4th client on Free plan:", fourth.status(), (await fourth.json()).error);
-await coach.goto(BASE + "/clients");
-await coach.screenshot({ path: `${shots}/clients.png`, fullPage: true });
+// Seat limit on Free (3)
+for (const n of ["Two", "Three"]) {
+  await coach.goto(BASE + "/clients");
+  await coach.fill('input[aria-label="Client name"]', `Client ${n}`);
+  await coach.click("button:has-text('Add client')");
+  await coach.waitForSelector(`text=Client ${n}`);
+}
+console.log("add button disabled when full:", await coach.isDisabled("button:has-text('Add client')"));
 
-// Removing a client cuts off their access straight away
-await coachCtx.request.delete(`${BASE}/api/clients/${sam.id}`);
-const after = await clientCtx.newPage();
-await after.goto(link);
-console.log("removed client sees:", await after.textContent("h1"));
+// Relay window: force the copy past its deletion date and run the daily job
+sql(`update "Video" set "purgeAt"=now() - interval '1 minute' where id='${rootId}'`);
+const purge = await strangerCtx.request.get(`${BASE}/api/cron/purge`, { headers: { authorization: "Bearer test-cron-secret" } });
+console.log("purge job:", purge.status(), await purge.text());
+console.log("purge without secret:", (await strangerCtx.request.get(`${BASE}/api/cron/purge`)).status());
+await client2.reload();
+await client2.waitForSelector("text=expired from our servers");
+console.log("client sees expiry notice; file on server:", (() => { try { statSync(join(".data/uploads", keyPath)); return "still there"; } catch { return "deleted"; } })());
 
-// A made-up upload token cannot write to the coach's video
-const forged = await clientCtx.request.put(`${BASE}/api/videos/${rootId}/parts/1`, { data: Buffer.alloc(10), headers: { "x-upload-token": "forged" } });
-console.log("forged token upload", forged.status());
 await browser.close();

@@ -9,8 +9,10 @@ import { ALLOWED_MIME, extensionFor, newUploadToken, newVideoId } from "@/lib/vi
 const MAX_REPLY_MINUTES = 15;
 
 const Body = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("TEXT"), body: z.string().trim().min(1).max(4000), timestampMs: z.number().int().min(0).optional() }),
-  z.object({ kind: z.enum(["VIDEO", "AUDIO"]), mimeType: z.string().regex(ALLOWED_MIME) }),
+  // Text arrives already sealed with the conversation's video key.
+  z.object({ kind: z.literal("TEXT"), body: z.string().min(1).max(8000), encrypted: z.literal(true), timestampMs: z.number().int().min(0).optional() }),
+  // Media key wrapped with the conversation's video key.
+  z.object({ kind: z.enum(["VIDEO", "AUDIO"]), mimeType: z.string().regex(ALLOWED_MIME), parentKeyWrap: z.string().min(40).max(200) }),
 ]);
 
 export const GET = handle(async (_req: Request, ctx: { params: Promise<{ id: string }> }) => {
@@ -44,7 +46,7 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
 
   if (body.kind === "TEXT") {
     const reply = await db.reply.create({
-      data: { kind: "TEXT", body: body.body, timestampMs: body.timestampMs, authorName, videoId: id, authorUserId: me?.user.id },
+      data: { kind: "TEXT", body: body.body, encrypted: true, timestampMs: body.timestampMs, authorName, videoId: id, authorUserId: me?.user.id },
       include: { media: true },
     });
     return Response.json({ reply: replyDTO(reply, root.ownerId) }, { status: 201 });
@@ -68,6 +70,8 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
           storageKey,
           uploadId,
           uploadTokenHash: upload.hash,
+          encrypted: true,
+          parentKeyWrap: body.parentKeyWrap,
           replyToId: id,
           ownerId: root.ownerId,
           workspaceId: root.workspaceId,

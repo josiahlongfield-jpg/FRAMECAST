@@ -32,8 +32,8 @@ await page.screenshot({ path: `${shots}/recording.png` });
 console.log("clicking stop after", Date.now() - t0, await page.textContent("text=/Recording · \\d/")); await page.click("button:has-text('Stop')");
 await page.waitForURL("**/v/**", { timeout: 30000 });
 const firstUrl = page.url();
-await page.waitForSelector("video");
-const dur = await page.$eval("video", (v) => new Promise((r) => {
+await page.waitForSelector("main video", { timeout: 20000 });
+const dur = await page.$eval("main video", (v) => new Promise((r) => {
   const check = () => (Number.isFinite(v.duration) ? r(v.duration) : setTimeout(check, 200));
   check();
   setTimeout(() => r(v.duration), 10000);
@@ -61,7 +61,8 @@ console.log("recovery banner shown");
 await page2.screenshot({ path: `${shots}/recovered.png` });
 const recoveredHref = await page2.getAttribute("text=View it", "href");
 await page2.goto(BASE + recoveredHref);
-const dur2 = await page2.$eval("video", (v) => new Promise((r) => {
+await page2.waitForSelector("main video", { timeout: 20000 });
+const dur2 = await page2.$eval("main video", (v) => new Promise((r) => {
   const check = () => (Number.isFinite(v.duration) ? r(v.duration) : setTimeout(check, 200));
   check();
   setTimeout(() => r(v.duration), 10000);

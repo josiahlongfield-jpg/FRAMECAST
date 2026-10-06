@@ -20,6 +20,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ token: string }
     maxAge: 60 * 60 * 24 * 365,
   });
   const v = url.searchParams.get("v");
-  const dest = v && /^[a-z0-9]{6,20}$/.test(v) ? `/v/${v}` : "/inbox";
+  // The browser carries the link's #k=… fragment (the client's key) through this redirect.
+  const dest = v && /^[a-z0-9]{6,20}$/.test(v) ? `/v/${v}` : `/inbox?c=${client.id}`;
   return Response.redirect(new URL(dest, url), 302);
 }

@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { storage } from "@/lib/storage";
 import { handle, HttpError } from "@/lib/session";
 import { startTranscode } from "@/lib/transcode";
+import { purgeDate } from "@/lib/retention";
 import { publicVideo, uploadableVideo } from "@/lib/videos";
 
 const Body = z.object({ partCount: z.number().int().min(1), durationMs: z.number().int().min(0).optional() });
@@ -32,9 +33,11 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
       sizeBytes: used.reduce((sum, p) => sum + BigInt(p.sizeBytes), BigInt(0)),
       uploadId: null,
       uploadTokenHash: null, // a guest's token is single-use
+      purgeAt: purgeDate((await db.workspace.findUniqueOrThrow({ where: { id: video.workspaceId } })).cloudBackup),
     },
   });
   await db.uploadPart.deleteMany({ where: { videoId: id } });
-  after(() => startTranscode(id).catch((e) => console.error("transcode", e)));
+  // Encrypted recordings can't be read by the server, so they aren't transcoded.
+  if (!updated.encrypted) after(() => startTranscode(id).catch((e) => console.error("transcode", e)));
   return Response.json({ video: publicVideo(updated) });
 });

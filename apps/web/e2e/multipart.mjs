@@ -9,7 +9,9 @@ await page.fill('input[name="email"]', "api@acme.com");
 await page.click("text=Continue");
 await page.waitForURL("**/library");
 const r = page.request;
-const { video } = await (await r.post(BASE + "/api/videos", { data: { mimeType: "video/webm" } })).json();
+// The protocol doesn't care what the bytes are; real clients send encrypted frames.
+await r.post(BASE + "/api/workspace/key", { data: { fingerprint: "test-fingerprint-0000000" } });
+const { video } = await (await r.post(BASE + "/api/videos", { data: { mimeType: "video/webm", teamKeyWrap: "x".repeat(60) } })).json();
 const a = Buffer.alloc(1000, 97), b = Buffer.alloc(500, 98), c = Buffer.alloc(200, 99);
 console.log("part2", (await r.put(`${BASE}/api/videos/${video.id}/parts/2`, { data: b })).status());
 console.log("part1", (await r.put(`${BASE}/api/videos/${video.id}/parts/1`, { data: Buffer.alloc(10, 120) })).status());

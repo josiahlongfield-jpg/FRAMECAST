@@ -29,7 +29,16 @@ export default async function ClientsPage() {
           Clients watch and reply to the videos you send them for free. They don&apos;t need an account, just their personal link.
         </p>
         <ClientsManager
-          initialClients={clients.map((c) => ({ id: c.id, name: c.name, email: c.email, link: clientLink(c.token), videoCount: c._count.videos }))}
+          workspaceId={workspace.id}
+          fingerprint={workspace.keyFingerprint}
+          initialClients={clients.map((c) => ({
+            id: c.id,
+            name: c.name,
+            email: c.email,
+            link: clientLink(c.token),
+            teamKeyWrap: c.teamKeyWrap,
+            videoCount: c._count.videos,
+          }))}
           initialSeats={seats}
           includedSeats={plan.clientSeats}
           extraSeats={workspace.extraClientSeats}

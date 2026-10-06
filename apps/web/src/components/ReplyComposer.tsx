@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import * as store from "@/lib/recorder/store";
 import { ChunkedUploader, lockName, type UploadState } from "@/lib/recorder/uploader";
 import { bitrateFor, pickMimeType, stopAll } from "@/lib/recorder/media";
+import { encryptFrame, encryptText, generateKey, wrapKey } from "@/lib/e2e/crypto";
 import type { ReplyDTO } from "@/lib/replies";
 
 type Mode = "TEXT" | "VIDEO" | "AUDIO";
@@ -22,10 +23,13 @@ const fmt = (ms: number) => {
 
 export default function ReplyComposer({
   videoId,
+  conversationKey,
   currentTimeMs,
   onReplied,
 }: {
   videoId: string;
+  /** The conversation's video key: seals text replies and wraps each reply's media key. */
+  conversationKey: CryptoKey;
   currentTimeMs: () => number | undefined;
   onReplied: (r: ReplyDTO) => void;
 }) {
@@ -41,7 +45,14 @@ export default function ReplyComposer({
 
   const preview = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
-  const live = useRef<{ recorder: MediaRecorder; uploader: ChunkedUploader; mediaId: string; startedAt: number; release: () => void } | null>(null);
+  const live = useRef<{
+    recorder: MediaRecorder;
+    uploader: ChunkedUploader;
+    mediaId: string;
+    startedAt: number;
+    release: () => void;
+    sealing: Promise<void>;
+  } | null>(null);
 
   // Live camera/mic preview while a media mode is selected.
   // Re-acquired when the mode or camera changes, and after each sent reply.
@@ -97,7 +108,7 @@ export default function ReplyComposer({
     const res = await fetch(`/api/videos/${videoId}/replies`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind: "TEXT", body: text, timestampMs: currentTimeMs() }),
+      body: JSON.stringify({ kind: "TEXT", body: await encryptText(text, conversationKey), encrypted: true, timestampMs: currentTimeMs() }),
     });
     const data = await res.json().catch(() => ({}));
     setPhase("idle");
@@ -110,10 +121,11 @@ export default function ReplyComposer({
     if (!stream.current) return;
     setError(undefined);
     const mimeType = mode === "VIDEO" ? pickMimeType() : pickAudioType();
+    const mediaKey = await generateKey();
     const res = await fetch(`/api/videos/${videoId}/replies`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind: mode, mimeType }),
+      body: JSON.stringify({ kind: mode, mimeType, parentKeyWrap: await wrapKey(mediaKey, conversationKey) }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return setError(data.error ?? "Could not start your reply");
@@ -145,10 +157,13 @@ export default function ReplyComposer({
       ...(mode === "VIDEO" ? { videoBitsPerSecond: bitrateFor(1080) } : { audioBitsPerSecond: 128_000 }),
     });
     recorder.ondataavailable = (e) => {
-      void uploader.push(e.data);
+      const l = live.current;
+      if (!l || e.data.size === 0) return;
+      // Encrypted on this device, in order, before it is saved or sent.
+      l.sealing = l.sealing.then(() => encryptFrame(e.data, mediaKey)).then((frame) => uploader.push(new Blob([frame as BlobPart])));
     };
+    live.current = { recorder, uploader, mediaId, startedAt: performance.now(), release, sealing: Promise.resolve() };
     recorder.start(2000);
-    live.current = { recorder, uploader, mediaId, startedAt: performance.now(), release };
     setElapsed(0);
     setPhase("recording");
   }
@@ -161,6 +176,7 @@ export default function ReplyComposer({
     const stopped = new Promise<void>((r) => l.recorder.addEventListener("stop", () => r(), { once: true }));
     l.recorder.stop();
     await stopped;
+    await l.sealing;
     stopAll(stream.current);
     stream.current = null;
     try {

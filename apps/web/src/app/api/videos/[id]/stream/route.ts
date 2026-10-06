@@ -8,6 +8,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   const video = await db.video.findUnique({ where: { id } });
   if (!video || video.status === "RECORDING" || !(await viewerFor(video))) return new Response("Not found", { status: 404 });
   if (video.expiresAt && video.expiresAt < new Date()) return new Response("Link expired", { status: 410 });
+  if (video.status === "EXPIRED") return new Response("Relay copy expired", { status: 410 });
 
   const driver = storage();
   const remote = await driver.playbackUrl(video.storageKey);

@@ -19,7 +19,7 @@ export const PLANS: Record<Plan, PlanLimits> = {
     maxDurationMin: 5,
     maxResolution: 720,
     clientSeats: 3,
-    features: ["25 videos", "Up to 5 minutes per video", "720p recording", "3 client accounts", "Video, voice and text replies"],
+    features: ["25 videos", "Up to 5 minutes per video", "720p recording", "3 client accounts", "Video, voice and text replies", "End-to-end encrypted"],
   },
   PRO: {
     name: "Pro",
@@ -40,6 +40,9 @@ export const PLANS: Record<Plan, PlanLimits> = {
     features: ["Everything in Pro", "25 client accounts included", "SSO (SAML / OIDC)", "Viewer analytics", "Retention policies", "Admin controls", "Priority support"],
   },
 };
+
+/** Optional add-on: keep encrypted copies on our servers instead of the 30-day relay window. */
+export const CLOUD_BACKUP_PRICE = 5;
 
 /** Price of each extra client seat, per month. */
 export const EXTRA_SEAT_PRICE = 2;

@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import AppHeader from "@/components/AppHeader";
 import ManageBillingButton from "@/components/ManageBillingButton";
-import { PLANS } from "@/lib/plans";
+import CloudBackupToggle from "@/components/CloudBackupToggle";
+import { RETENTION_DAYS } from "@/lib/retention";
+import { CLOUD_BACKUP_PRICE, PLANS } from "@/lib/plans";
 import { requirePageUser } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Billing" };
@@ -39,6 +41,7 @@ export default async function Billing({ searchParams }: { searchParams: Promise<
             )}
           </div>
         </div>
+        <CloudBackupToggle enabled={workspace.cloudBackup} canEnable={workspace.plan !== "FREE"} price={CLOUD_BACKUP_PRICE} days={RETENTION_DAYS} />
       </main>
     </>
   );

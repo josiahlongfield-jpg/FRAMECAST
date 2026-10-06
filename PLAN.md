@@ -6,7 +6,7 @@
 
 Async video messaging for teams (record screen + camera, share a link, get viewed/commented) that **never loses a recording** and works the same on web, iOS and Android.
 
-First target customer: coaches and service businesses doing client check-ins (for example a personal trainer and her clients). The coach and client trade videos back and forth, and either can reply with video, voice or text. See [RESEARCH-AND-FEATURES.md](RESEARCH-AND-FEATURES.md) for the review research and the feature list built on it.
+Target market: a broad range of businesses that work with clients, customers, students or patients. A personal trainer doing client check-ins is the first example, not a niche focus. The business and client trade videos back and forth, and either can reply with video, voice or text. See [RESEARCH-AND-FEATURES.md](RESEARCH-AND-FEATURES.md) for the review research and the feature list built on it.
 
 Pitch line for businesses: *"Loom, but it doesn't crash, it doesn't lose your take, and it's priced per active creator, not per seat you forgot to remove."*
 
@@ -52,6 +52,7 @@ Pitch line for businesses: *"Loom, but it doesn't crash, it doesn't lose your ta
 | Pro | $12 / creator / mo | Unlimited videos, 4h length, 1080p/4K, editing, branding, 10 client accounts |
 | Business | $20 / creator / mo | Pro + SSO, analytics, retention, admin controls, priority support, 25 client accounts |
 | Extra client seats | $2 / seat / mo | Paid plans only |
+| Cloud backup | $5 / workspace / mo | Optional; keeps encrypted copies past the 30-day relay window |
 
 **Clients never pay.** A client account can watch and reply (video, voice, text) to what's sent to them, but can't create videos. Seats are capped per plan so the free side can't be abused; creators buy more as needed.
 
@@ -97,17 +98,24 @@ Annual billing at ~20% off. Viewers are always free.
 4. On stop, the client completes the multipart upload; the share link is already valid.
 5. On next load, any unfinished session in IndexedDB is offered for recovery.
 
-## 6. Open items
-- **Storage model** (decision pending): encrypted relay with the master copy on the device and optional paid cloud backup is recommended; see the thread.
-- Mux playback is currently set to public URLs; switch to signed playback before launch so HLS streams follow the same privacy rules.
-- Mobile app still shares the plain video link; switch it to the client's personal link.
-- Built-in to-do list, notes and schedules per client (requested).
+## 6. Privacy: encrypted relay (chosen 2026-10-06)
+- Every recording and reply is **end-to-end encrypted on the device** (AES-256-GCM, per-chunk) before it is saved locally or uploaded. The server stores only ciphertext and wrapped keys, so we cannot watch anyone's videos.
+- Keys: a team key per workspace (on the team's devices only, restorable with a recovery key shown once), a key per client (travels only in the personal link's #fragment, which browsers never send to servers), and a random key per video.
+- The server keeps its encrypted copy for **30 days** (configurable), then a daily job deletes it. The original stays on the device ("Save to device" on every video). **Cloud backup** ($5/month add-on) keeps encrypted copies until deleted.
+- Trade-offs: no server-side transcoding, captions or AI on video content (the server can't read it); a lost recovery key means old videos can't be opened on a new device.
 
-## 7. App store notes
+## 7. Open items
+- Mobile app must adopt the same encryption before release (it currently uploads unencrypted and is blocked by the server).
+- Video titles and client names are not encrypted (needed for lists and search); consider encrypting titles.
+- Built-in to-do list, notes and schedules per client (requested).
+- Point-and-draw on a paused frame (general replacement for form review).
+- S3/R2 bucket needs CORS for the browser to fetch encrypted files when using signed URLs.
+
+## 8. App store notes
 - iOS in-app subscriptions must use Apple IAP (or link out under current US rules); RevenueCat handles both stores and syncs to Stripe entitlements.
 - Screen recording on iOS requires a Broadcast Upload Extension (ReplayKit); this needs a custom dev build, not Expo Go.
 
-## 8. Delivery phases
+## 9. Delivery phases
 
 | Phase | Scope |
 |---|---|
@@ -116,7 +124,7 @@ Annual billing at ~20% off. Viewers are always free.
 | 2 | Mobile apps, editor, analytics, public launch |
 | 3 | Enterprise features, desktop app, AI |
 
-## 9. Decisions needed from you
+## 10. Decisions needed from you
 1. Product name and domain.
 2. GitHub repository for the code (new repo recommended).
 3. Accounts to create when we wire real services: Stripe, Mux (or AWS/R2), a Postgres host, Apple Developer ($99/yr), Google Play Console ($25 one-time).

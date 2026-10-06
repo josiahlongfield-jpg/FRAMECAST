@@ -2,13 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import Logo from "@/components/Logo";
+import ClientKeyCapture from "@/components/ClientKeyCapture";
 import { db } from "@/lib/db";
 
 export const metadata: Metadata = { title: "Your videos" };
 
 /** A client's view: every video their coach (or coaches) sent them. */
-export default async function Inbox({ searchParams }: { searchParams: Promise<{ invalid?: string }> }) {
-  const { invalid } = await searchParams;
+export default async function Inbox({ searchParams }: { searchParams: Promise<{ invalid?: string; c?: string }> }) {
+  const { invalid, c: arrivedAs } = await searchParams;
   const tokens = (await cookies())
     .getAll()
     .filter((c) => c.name.startsWith("fc_client_"))
@@ -25,6 +26,7 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
 
   return (
     <div className="min-h-screen bg-slate-50">
+      {arrivedAs && clients.some((c) => c.id === arrivedAs) && <ClientKeyCapture clientId={arrivedAs} />}
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex h-16 max-w-4xl items-center px-4 sm:px-6">
           <Logo href="/inbox" />

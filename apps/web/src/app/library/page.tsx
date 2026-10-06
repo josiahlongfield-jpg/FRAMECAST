@@ -46,9 +46,16 @@ export default async function Library() {
                     {v.thumbnailUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={v.thumbnailUrl} alt="" className="h-full w-full object-cover transition group-hover:scale-105" />
+                    ) : v.encrypted ? (
+                      <span className="absolute inset-0 grid place-items-center text-slate-400">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-label="Encrypted"><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg>
+                      </span>
                     ) : v.status !== "RECORDING" ? (
                       <video src={`/api/videos/${v.id}/stream#t=0.5`} preload="metadata" muted className="h-full w-full object-cover" />
                     ) : null}
+                    {v.status === "EXPIRED" && (
+                      <span className="absolute left-2 top-2 rounded bg-black/70 px-1.5 py-0.5 text-xs text-white">Server copy expired</span>
+                    )}
                     {v.status === "RECORDING" && (
                       <span className="absolute inset-0 grid place-items-center text-sm text-slate-300">Incomplete upload</span>
                     )}

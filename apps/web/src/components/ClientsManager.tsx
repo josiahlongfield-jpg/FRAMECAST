@@ -1,25 +1,47 @@
 "use client";
 
 import { useState } from "react";
+import { exportKey, generateKey, unwrapKey, wrapKey } from "@/lib/e2e/crypto";
+import TeamKeyGate from "./TeamKeyGate";
 
-type Client = { id: string; name: string; email: string | null; link: string; videoCount: number };
 type Seats = { used: number; limit: number };
+type Client = { id: string; name: string; email: string | null; link: string; teamKeyWrap: string | null; videoCount: number };
 
-export default function ClientsManager({
-  initialClients,
-  initialSeats,
-  includedSeats,
-  extraSeats,
-  seatPrice,
-  canBuySeats,
-}: {
+/** A client's personal link, with their decryption key in the #fragment (never sent to the server). */
+export async function personalLink(link: string, teamKeyWrap: string | null, teamKey: CryptoKey) {
+  if (!teamKeyWrap) return link;
+  const clientKey = await unwrapKey(teamKeyWrap, teamKey);
+  return `${link}#k=${await exportKey(clientKey)}`;
+}
+
+type Props = {
+  workspaceId: string;
+  fingerprint: string | null;
   initialClients: Client[];
   initialSeats: Seats;
   includedSeats: number;
   extraSeats: number;
   seatPrice: number;
   canBuySeats: boolean;
-}) {
+};
+
+export default function ClientsManager({ workspaceId, fingerprint, ...rest }: Props) {
+  return (
+    <TeamKeyGate workspaceId={workspaceId} fingerprint={fingerprint}>
+      {(teamKey) => <Manager {...rest} teamKey={teamKey} />}
+    </TeamKeyGate>
+  );
+}
+
+function Manager({
+  teamKey,
+  initialClients,
+  initialSeats,
+  includedSeats,
+  extraSeats,
+  seatPrice,
+  canBuySeats,
+}: Omit<Props, "workspaceId" | "fingerprint"> & { teamKey: CryptoKey }) {
   const [clients, setClients] = useState(initialClients);
   const [seats, setSeats] = useState(initialSeats);
   const [name, setName] = useState("");
@@ -37,7 +59,8 @@ export default function ClientsManager({
     const res = await fetch("/api/clients", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email }),
+      // Each client gets their own key, created here and stored only wrapped with the team key.
+      body: JSON.stringify({ name, email, teamKeyWrap: await wrapKey(await generateKey(), teamKey) }),
     });
     const data = await res.json().catch(() => ({}));
     setBusy(false);
@@ -57,7 +80,7 @@ export default function ClientsManager({
   }
 
   async function copy(c: Client) {
-    await navigator.clipboard.writeText(c.link);
+    await navigator.clipboard.writeText(await personalLink(c.link, c.teamKeyWrap, teamKey));
     setCopied(c.id);
     setTimeout(() => setCopied(undefined), 2000);
   }

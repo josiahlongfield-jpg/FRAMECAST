@@ -75,8 +75,12 @@ export default async function Watch({ params }: Props) {
           <WatchView
             video={publicVideo(video)}
             ownerName={video.owner.name ?? video.owner.email.split("@")[0]}
-            canEdit={isMember}
-            clients={clients.map((c) => ({ id: c.id, name: c.name, link: clientLink(c.token, video.id) }))}
+            viewer={
+              viewer.kind === "member"
+                ? { kind: "member", workspaceId: video.workspaceId, fingerprint: (await db.workspace.findUniqueOrThrow({ where: { id: video.workspaceId } })).keyFingerprint }
+                : { kind: "client", clientId: viewer.client.id }
+            }
+            clients={clients.map((c) => ({ id: c.id, name: c.name, link: clientLink(c.token, video.id), teamKeyWrap: c.teamKeyWrap }))}
             sentToId={video.clientId}
             initialReplies={replies.map((r) => replyDTO(r, video.ownerId))}
           />

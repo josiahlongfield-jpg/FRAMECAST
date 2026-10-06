@@ -79,6 +79,10 @@ model Workspace {
   currentPeriodEnd     DateTime?
   /// Client seats bought on top of the plan's included seats.
   extraClientSeats     Int          @default(0)
+  /// Paid add-on: keep encrypted copies on the server instead of expiring them.
+  cloudBackup          Boolean      @default(false)
+  /// Fingerprint of the team's end-to-end key. The key itself never reaches the server.
+  keyFingerprint       String?
   createdAt            DateTime     @default(now())
   members              Membership[]
   videos               Video[]
@@ -104,6 +108,7 @@ enum VideoStatus {
   PROCESSING // transcoding to HLS
   READY // HLS available
   FAILED
+  EXPIRED // server copy deleted after the relay window; originals live on devices
 }
 
 model Video {
@@ -128,6 +133,14 @@ model Video {
   /// members and this client can watch them.
   clientId        String?
   client          Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  /// End-to-end encryption. The server stores only ciphertext and these
+  /// wrapped (encrypted) copies of the video's key:
+  encrypted       Boolean      @default(false)
+  teamKeyWrap     String? /// video key, wrapped with the team key
+  clientKeyWrap   String? /// video key, wrapped with the recipient client's key
+  parentKeyWrap   String? /// reply media key, wrapped with the conversation's video key
+  /// When the relay copy is deleted (null = kept, e.g. cloud backup).
+  purgeAt         DateTime?
   /// Set when this video is the media of a reply in another video's conversation.
   replyToId       String?
   /// sha256 of a one-time token that lets a guest (no account) upload this reply's media.
@@ -163,7 +176,9 @@ enum ReplyKind {
 model Reply {
   id           String    @id @default(cuid())
   kind         ReplyKind
+  /// Ciphertext when encrypted (sealed with the conversation's video key).
   body         String?
+  encrypted    Boolean   @default(false)
   timestampMs  Int?
   authorName   String
   createdAt    DateTime  @default(now())
@@ -195,6 +210,9 @@ model Client {
   email       String?
   /// Secret in the client's personal link. Treat like a password.
   token       String    @unique
+  /// The client's end-to-end key, wrapped with the team key. The unwrapped key
+  /// travels only in the link fragment (#k=…), which browsers never send to servers.
+  teamKeyWrap String?
   createdAt   DateTime  @default(now())
   removedAt   DateTime?
   workspaceId String

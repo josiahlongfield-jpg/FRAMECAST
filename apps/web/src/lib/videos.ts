@@ -60,6 +60,10 @@ export function publicVideo(v: {
   thumbnailUrl: string | null;
   viewCount: number;
   createdAt: Date;
+  encrypted: boolean;
+  teamKeyWrap: string | null;
+  clientKeyWrap: string | null;
+  purgeAt: Date | null;
 }) {
   return {
     id: v.id,
@@ -73,5 +77,9 @@ export function publicVideo(v: {
     thumbnailUrl: v.thumbnailUrl,
     viewCount: v.viewCount,
     createdAt: v.createdAt.toISOString(),
+    encrypted: v.encrypted,
+    teamKeyWrap: v.teamKeyWrap,
+    clientKeyWrap: v.clientKeyWrap,
+    purgeAt: v.purgeAt?.toISOString() ?? null,
   };
 }

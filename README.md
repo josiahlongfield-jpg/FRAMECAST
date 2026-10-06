@@ -41,10 +41,14 @@ The camera and secure storage need a development build (`expo run:*` or `eas bui
 4. On the next visit to the recorder, anything left over is uploaded and the video is finished automatically.
 5. On mobile, the finished file is moved to the app's documents folder with a manifest and uploaded the same way; uploads resume on next launch.
 
+## Privacy
+
+Videos and replies are end-to-end encrypted in the browser before upload; see section 6 of PLAN.md. The first device to record creates the team key and shows a recovery key once. Clients get their key inside their personal link's `#k=` fragment. Schedule `GET /api/cron/purge` daily (`vercel.json` does this on Vercel) to delete expired relay copies.
+
 ## Tests
 
 `apps/web/e2e/record.mjs` drives Chromium with a fake camera through sign in, recording, playback, commenting, and a crash mid-recording followed by recovery.
-`apps/web/e2e/replies.mjs` has a client on a phone-sized screen reply with text, voice and video without an account, recovers an interrupted video reply, and checks a forged upload token is refused.
+`apps/web/e2e/replies.mjs` covers the encrypted conversation: the server only stores ciphertext, a client on a phone-sized screen opens their personal link and replies with text, voice and video, an interrupted reply is recovered, a second device needs the recovery key, seats are capped and expired relay copies are deleted.
 `apps/web/e2e/multipart.mjs` checks the upload protocol (out-of-order parts, retries, missing-part rejection, byte-exact assembly, range requests, auth).
 
 ```bash

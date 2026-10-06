@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import * as store from "@/lib/recorder/store";
+import { encryptFrame, generateKey, wrapKey } from "@/lib/e2e/crypto";
 import { ChunkedUploader, lockName, recoverInterrupted, type UploadState } from "@/lib/recorder/uploader";
 import {
   bitrateFor,
@@ -30,7 +31,15 @@ const fmt = (ms: number) => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 };
 
-export default function Recorder({ maxResolution, maxDurationMin }: { maxResolution: Quality; maxDurationMin: number }) {
+export default function Recorder({
+  maxResolution,
+  maxDurationMin,
+  teamKey,
+}: {
+  maxResolution: Quality;
+  maxDurationMin: number;
+  teamKey: CryptoKey;
+}) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("screen+camera");
   const [quality, setQuality] = useState<Quality>(Math.min(1080, maxResolution) as Quality);
@@ -58,6 +67,8 @@ export default function Recorder({ maxResolution, maxDurationMin }: { maxResolut
     videoId: string;
     startedAt: number;
     accumulated: number;
+    /** Chunks are encrypted in order before they are saved or uploaded. */
+    sealing: Promise<void>;
   } | null>(null);
 
   // Finish anything a previous crash left behind.
@@ -154,11 +165,13 @@ export default function Recorder({ maxResolution, maxDurationMin }: { maxResolut
       const audio = mixAudio(streams);
       const tracks = [video, ...(audio.track ? [audio.track] : [])];
       const mimeType = pickMimeType();
+      // A fresh key for this recording; the server only gets it wrapped with the team key.
+      const videoKey = await generateKey();
 
       const res = await fetch("/api/videos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mimeType }),
+        body: JSON.stringify({ mimeType, teamKeyWrap: await wrapKey(videoKey, teamKey) }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not start recording");
@@ -183,11 +196,17 @@ export default function Recorder({ maxResolution, maxDurationMin }: { maxResolut
       const uploader = new ChunkedUploader(videoId, {}, setUpload);
       const recorder = new MediaRecorder(new MediaStream(tracks), { mimeType, videoBitsPerSecond: bitrateFor(quality) });
       recorder.ondataavailable = (e) => {
-        void uploader.push(e.data).then(() => store.updateSession(videoId, { durationMs: durationNow() }));
+        const l = live.current;
+        if (!l || e.data.size === 0) return;
+        // Encrypt on this device before the chunk is stored or sent anywhere.
+        l.sealing = l.sealing
+          .then(() => encryptFrame(e.data, videoKey))
+          .then((frame) => uploader.push(new Blob([frame as BlobPart])))
+          .then(() => store.updateSession(videoId, { durationMs: durationNow() }));
       };
       recorder.onerror = () => setError("The browser stopped the recorder. Your recording so far has been saved.");
 
-      live.current = { recorder, uploader, streams, closeAudio: audio.close, closeBubble, releaseLock, videoId, startedAt: 0, accumulated: 0 };
+      live.current = { recorder, uploader, streams, closeAudio: audio.close, closeBubble, releaseLock, videoId, startedAt: 0, accumulated: 0, sealing: Promise.resolve() };
 
       setPhase("countdown");
       for (let n = 3; n > 0; n--) {
@@ -228,6 +247,7 @@ export default function Recorder({ maxResolution, maxDurationMin }: { maxResolut
     const stopped = new Promise<void>((r) => l.recorder.addEventListener("stop", () => r(), { once: true }));
     l.recorder.stop();
     await stopped;
+    await l.sealing;
     cleanup();
     try {
       await store.updateSession(l.videoId, { durationMs, stopped: true });

@@ -8,6 +8,8 @@ import { ALLOWED_MIME, extensionFor, newVideoId, publicVideo } from "@/lib/video
 const CreateBody = z.object({
   mimeType: z.string().regex(ALLOWED_MIME),
   title: z.string().trim().min(1).max(200).optional(),
+  /** Recordings must be end-to-end encrypted; this is the video key wrapped with the team key. */
+  teamKeyWrap: z.string().min(40).max(200),
 });
 
 /** Start a recording: creates the video row and opens a multipart upload. */
@@ -15,6 +17,7 @@ export const POST = handle(async (req: Request) => {
   const { user, workspace } = await requireUser();
   const body = CreateBody.safeParse(await req.json());
   if (!body.success) throw new HttpError(400, "Invalid request");
+  if (!workspace.keyFingerprint) throw new HttpError(409, "Set up your encryption key before recording");
 
   const limit = PLANS[workspace.plan].maxVideos;
   if (limit !== null) {
@@ -30,6 +33,8 @@ export const POST = handle(async (req: Request) => {
       id,
       title: body.data.title ?? `Recording ${new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}`,
       mimeType: body.data.mimeType,
+      encrypted: true,
+      teamKeyWrap: body.data.teamKeyWrap,
       storageKey,
       uploadId,
       ownerId: user.id,
