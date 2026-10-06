@@ -43,7 +43,7 @@ export default function Home() {
               Built so you never have to record it twice
             </p>
             <h1 className="mx-auto max-w-3xl text-4xl font-semibold tracking-tight text-slate-900 sm:text-6xl">
-              Record it once. <span className="block text-brand-600">It&apos;s already safe.</span>
+              One take is <span className="block text-brand-600 sm:inline">all it takes.</span>
             </h1>
             <p className="mx-auto mt-6 max-w-2xl text-lg text-slate-600">
               Your recording is saved on your device and uploaded as you talk, so a crash, a dropped connection or a
