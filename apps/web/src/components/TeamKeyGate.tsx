@@ -10,6 +10,33 @@ type State =
   | { kind: "recover"; error?: string };
 
 /**
+ * Creating the team key must happen once per workspace even if the gate
+ * mounts twice at the same moment (React dev mode, a quick navigation).
+ * Otherwise two keys race, one loses with a 409, and a brand-new account is
+ * asked for a recovery key it was never shown.
+ */
+const creating = new Map<string, Promise<{ key: CryptoKey; recoveryKey: string } | null>>();
+function createTeamKey(workspaceId: string) {
+  let pending = creating.get(workspaceId);
+  if (!pending) {
+    pending = (async () => {
+      const key = await generateKey();
+      const res = await fetch("/api/workspace/key", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fingerprint: await keyFingerprint(key) }),
+      });
+      if (!res.ok) return null;
+      await saveKey(teamKeyName(workspaceId), key);
+      return { key, recoveryKey: await exportKey(key) };
+    })();
+    creating.set(workspaceId, pending);
+    pending.then((r) => r || creating.delete(workspaceId));
+  }
+  return pending;
+}
+
+/**
  * Makes sure this device holds the team's end-to-end key before rendering
  * children that record, send or play videos. The first device creates the
  * key and shows a recovery key once; other devices enter that recovery key.
@@ -39,18 +66,8 @@ export default function TeamKeyGate({
         return;
       }
       // First device for this workspace: create the team key.
-      const key = await generateKey();
-      const res = await fetch("/api/workspace/key", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fingerprint: await keyFingerprint(key) }),
-      });
-      if (!res.ok) {
-        if (!cancelled) setState({ kind: "recover" });
-        return;
-      }
-      await saveKey(teamKeyName(workspaceId), key);
-      if (!cancelled) setState({ kind: "ready", key, recoveryKey: await exportKey(key) });
+      const created = await createTeamKey(workspaceId);
+      if (!cancelled) setState(created ? { kind: "ready", ...created } : { kind: "recover" });
     })();
     return () => {
       cancelled = true;

@@ -262,8 +262,8 @@ function WatchBody({
           </div>
         </div>
 
-        <div className="mt-5 flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0 flex-1">
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+          <div className="min-w-0 sm:flex-1">
             {canEdit ? (
               <input
                 value={title}
@@ -279,7 +279,7 @@ function WatchBody({
               {ownerName} · {new Date(video.createdAt).toLocaleDateString("en-US", { dateStyle: "medium" })} · {video.viewCount} views
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 sm:shrink-0">
             {canEdit && recipient && (
               <button onClick={copyLink} className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
                 {copied ? "Link copied" : `Copy ${recipient.name.split(" ")[0]}'s link`}
