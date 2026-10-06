@@ -1,7 +1,6 @@
 import Link from "next/link";
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
-import { BRAND } from "@/lib/brand";
 
 const PILLARS = [
   {
@@ -41,14 +40,14 @@ export default function Home() {
           <div className="absolute inset-x-0 top-0 -z-10 h-[520px] bg-gradient-to-b from-brand-50 to-white" />
           <div className="mx-auto max-w-6xl px-4 pb-20 pt-20 text-center sm:px-6 sm:pt-28">
             <p className="mx-auto mb-5 inline-flex rounded-full border border-brand-100 bg-white px-3 py-1 text-xs font-medium text-brand-700">
-              Async video for teams that can&apos;t afford a lost recording
+              Built so you never have to record it twice
             </p>
             <h1 className="mx-auto max-w-3xl text-4xl font-semibold tracking-tight text-slate-900 sm:text-6xl">
-              Say it once on video. <span className="text-brand-600">Skip the meeting.</span>
+              Record it once. <span className="block text-brand-600">It&apos;s already safe.</span>
             </h1>
             <p className="mx-auto mt-6 max-w-2xl text-lg text-slate-600">
-              {BRAND.name} records your screen and camera in one click and gives you a link the second you stop.
-              Built from the ground up for reliability, so the video you recorded is the video your team sees.
+              Your recording is saved on your device and uploaded as you talk, so a crash, a dropped connection or a
+              flat battery never costs you a take. Stop recording and your client&apos;s private link is ready.
             </p>
             <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
               <Link href="/record" className="rounded-xl bg-brand-600 px-6 py-3 font-semibold text-white shadow-sm hover:bg-brand-700">
