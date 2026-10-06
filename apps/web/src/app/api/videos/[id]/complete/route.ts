@@ -2,20 +2,19 @@ import { after } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { storage } from "@/lib/storage";
-import { handle, HttpError, requireUser } from "@/lib/session";
+import { handle, HttpError } from "@/lib/session";
 import { startTranscode } from "@/lib/transcode";
-import { ownedVideo, publicVideo } from "@/lib/videos";
+import { publicVideo, uploadableVideo } from "@/lib/videos";
 
 const Body = z.object({ partCount: z.number().int().min(1), durationMs: z.number().int().min(0).optional() });
 
 /** Finish the upload. Every part 1..partCount must be present. */
 export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
   const { id } = await ctx.params;
-  const { workspace } = await requireUser();
   const body = Body.safeParse(await req.json());
   if (!body.success) throw new HttpError(400, "Invalid request");
 
-  const video = await ownedVideo(id, workspace.id);
+  const video = await uploadableVideo(req, id);
   if (video.status !== "RECORDING") return Response.json({ video: publicVideo(video) }); // already done, idempotent
 
   const parts = await db.uploadPart.findMany({ where: { videoId: id }, orderBy: { partNumber: "asc" } });
@@ -32,6 +31,7 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
       durationMs: body.data.durationMs,
       sizeBytes: used.reduce((sum, p) => sum + BigInt(p.sizeBytes), BigInt(0)),
       uploadId: null,
+      uploadTokenHash: null, // a guest's token is single-use
     },
   });
   await db.uploadPart.deleteMany({ where: { videoId: id } });

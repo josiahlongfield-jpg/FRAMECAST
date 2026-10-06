@@ -5,6 +5,7 @@ import WatchView from "@/components/WatchView";
 import { db } from "@/lib/db";
 import { currentUser } from "@/lib/session";
 import { publicVideo } from "@/lib/videos";
+import { replyDTO, visibleReplies } from "@/lib/replies";
 import { BRAND } from "@/lib/brand";
 
 type Props = { params: Promise<{ id: string }> };
@@ -25,12 +26,12 @@ export default async function Watch({ params }: Props) {
     db.video.findUnique({ where: { id }, include: { owner: { select: { name: true, email: true } } } }),
     currentUser(),
   ]);
-  if (!video) notFound();
+  if (!video || video.replyToId) notFound();
   const expired = !!video.expiresAt && video.expiresAt < new Date();
-  const comments = await db.comment.findMany({
-    where: { videoId: id },
+  const replies = await db.reply.findMany({
+    where: { videoId: id, ...visibleReplies },
     orderBy: { createdAt: "asc" },
-    include: { author: { select: { name: true, email: true } } },
+    include: { media: true },
   });
 
   return (
@@ -50,13 +51,7 @@ export default async function Watch({ params }: Props) {
             ownerName={video.owner.name ?? video.owner.email.split("@")[0]}
             canEdit={me?.workspace.id === video.workspaceId}
             signedIn={!!me}
-            initialComments={comments.map((c) => ({
-              id: c.id,
-              body: c.body,
-              timestampMs: c.timestampMs,
-              createdAt: c.createdAt.toISOString(),
-              author: c.author.name ?? c.author.email.split("@")[0],
-            }))}
+            initialReplies={replies.map((r) => replyDTO(r, video.ownerId))}
           />
         )}
       </main>

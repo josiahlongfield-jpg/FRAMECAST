@@ -44,11 +44,12 @@ The camera and secure storage need a development build (`expo run:*` or `eas bui
 ## Tests
 
 `apps/web/e2e/record.mjs` drives Chromium with a fake camera through sign in, recording, playback, commenting, and a crash mid-recording followed by recovery.
+`apps/web/e2e/replies.mjs` has a client on a phone-sized screen reply with text, voice and video without an account, recovers an interrupted video reply, and checks a forged upload token is refused.
 `apps/web/e2e/multipart.mjs` checks the upload protocol (out-of-order parts, retries, missing-part rejection, byte-exact assembly, range requests, auth).
 
 ```bash
 cd apps/web && npm run build && npm start &
-node e2e/record.mjs /tmp && node e2e/multipart.mjs
+node e2e/record.mjs /tmp && node e2e/replies.mjs /tmp && node e2e/multipart.mjs
 ```
 
 ## Going to production

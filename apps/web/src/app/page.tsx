@@ -29,7 +29,7 @@ const PILLARS = [
 const STEPS = [
   ["Record", "Pick screen, camera, or both. Press start."],
   ["Share", "Copy the link. It works instantly for anyone you send it to."],
-  ["Discuss", "Viewers react and leave comments pinned to the exact moment."],
+  ["Reply", "Viewers answer with their own video, a voice note or a message. No account needed."],
 ];
 
 export default function Home() {

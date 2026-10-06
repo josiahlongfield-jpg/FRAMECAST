@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { storage } from "@/lib/storage";
-import { handle, HttpError, requireUser } from "@/lib/session";
-import { ownedVideo } from "@/lib/videos";
+import { handle, HttpError } from "@/lib/session";
+import { uploadableVideo } from "@/lib/videos";
 
 const MAX_PART_BYTES = 64 * 1024 * 1024;
 
@@ -14,8 +14,7 @@ export const PUT = handle(async (req: Request, ctx: { params: Promise<{ id: stri
   const partNumber = Number(part);
   if (!Number.isInteger(partNumber) || partNumber < 1 || partNumber > 10000) throw new HttpError(400, "Bad part number");
 
-  const { workspace } = await requireUser();
-  const video = await ownedVideo(id, workspace.id);
+  const video = await uploadableVideo(req, id);
   if (video.status !== "RECORDING") throw new HttpError(409, "Upload already completed");
 
   const body = new Uint8Array(await req.arrayBuffer());

@@ -16,7 +16,7 @@ const fmt = (ms: number | null) => {
 export default async function Library() {
   const { user, workspace } = await requirePageUser("/library");
   const plan = PLANS[workspace.plan];
-  const videos = await db.video.findMany({ where: { workspaceId: workspace.id }, orderBy: { createdAt: "desc" } });
+  const videos = await db.video.findMany({ where: { workspaceId: workspace.id, replyToId: null }, orderBy: { createdAt: "desc" } });
 
   return (
     <>

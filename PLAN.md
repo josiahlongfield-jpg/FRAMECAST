@@ -6,6 +6,8 @@
 
 Async video messaging for teams (record screen + camera, share a link, get viewed/commented) that **never loses a recording** and works the same on web, iOS and Android.
 
+First target customer: coaches and service businesses doing client check-ins (for example a personal trainer and her clients). The coach and client trade videos back and forth, and either can reply with video, voice or text. See [RESEARCH-AND-FEATURES.md](RESEARCH-AND-FEATURES.md) for the review research and the feature list built on it.
+
 Pitch line for businesses: *"Loom, but it doesn't crash, it doesn't lose your take, and it's priced per active creator, not per seat you forgot to remove."*
 
 ## 2. Loom's known pain points → our answer

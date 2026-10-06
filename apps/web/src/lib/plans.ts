@@ -16,7 +16,7 @@ export const PLANS: Record<Plan, PlanLimits> = {
     maxVideos: 25,
     maxDurationMin: 5,
     maxResolution: 720,
-    features: ["25 videos", "Up to 5 minutes per video", "720p recording", "Share links, comments and reactions"],
+    features: ["25 videos", "Up to 5 minutes per video", "720p recording", "Video, voice and text replies"],
   },
   PRO: {
     name: "Pro",

@@ -20,7 +20,7 @@ model User {
   sessions      Session[]
   memberships   Membership[]
   videos        Video[]
-  comments      Comment[]
+  replies       Reply[]
 }
 
 model Account {
@@ -104,30 +104,36 @@ enum VideoStatus {
 }
 
 model Video {
-  id            String       @id // short public id used in share links
-  title         String       @default("Untitled recording")
-  status        VideoStatus  @default(RECORDING)
-  mimeType      String
-  durationMs    Int?
-  sizeBytes     BigInt       @default(0)
-  storageKey    String
-  uploadId      String? // S3 multipart upload id
-  playbackUrl   String? // HLS url once transcoded
-  thumbnailUrl  String?
-  viewCount     Int          @default(0)
-  password      String?
-  expiresAt     DateTime?
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-  ownerId       String
-  workspaceId   String
-  owner         User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  workspace     Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  parts         UploadPart[]
-  comments      Comment[]
-  reactions     Reaction[]
+  id              String       @id // short public id used in share links
+  title           String       @default("Untitled recording")
+  status          VideoStatus  @default(RECORDING)
+  mimeType        String
+  durationMs      Int?
+  sizeBytes       BigInt       @default(0)
+  storageKey      String
+  uploadId        String? // S3 multipart upload id
+  playbackUrl     String? // HLS url once transcoded
+  thumbnailUrl    String?
+  viewCount       Int          @default(0)
+  password        String?
+  expiresAt       DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  ownerId         String
+  workspaceId     String
+  /// Set when this video is the media of a reply in another video's conversation.
+  replyToId       String?
+  /// sha256 of a one-time token that lets a guest (no account) upload this reply's media.
+  uploadTokenHash String?
+  owner           User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  workspace       Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parts           UploadPart[]
+  replies         Reply[]      @relation("Conversation")
+  asReply         Reply?       @relation("ReplyMedia")
+  reactions       Reaction[]
 
   @@index([workspaceId, createdAt])
+  @@index([replyToId])
 }
 
 model UploadPart {
@@ -135,20 +141,33 @@ model UploadPart {
   partNumber Int
   etag       String?
   sizeBytes  Int
-  video      Video  @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  video      Video   @relation(fields: [videoId], references: [id], onDelete: Cascade)
 
   @@id([videoId, partNumber])
 }
 
-model Comment {
-  id          String   @id @default(cuid())
-  body        String
-  timestampMs Int?
-  createdAt   DateTime @default(now())
-  videoId     String
-  authorId    String
-  video       Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
-  author      User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+enum ReplyKind {
+  TEXT
+  VIDEO
+  AUDIO
+}
+
+/// One message in a video's conversation. Viewers can reply without an account.
+model Reply {
+  id           String    @id @default(cuid())
+  kind         ReplyKind
+  body         String?
+  timestampMs  Int?
+  authorName   String
+  createdAt    DateTime  @default(now())
+  videoId      String
+  mediaId      String?   @unique
+  authorUserId String?
+  video        Video     @relation("Conversation", fields: [videoId], references: [id], onDelete: Cascade)
+  media        Video?    @relation("ReplyMedia", fields: [mediaId], references: [id], onDelete: Cascade)
+  authorUser   User?     @relation(fields: [authorUserId], references: [id], onDelete: SetNull)
+
+  @@index([videoId, createdAt])
 }
 
 model Reaction {

@@ -24,8 +24,8 @@ async function withRetry<T>(fn: () => Promise<T>, onRetry: (retrying: boolean) =
 
 export class FatalUploadError extends Error {}
 
-async function sendPart(videoId: string, partNumber: number, body: Blob) {
-  const res = await fetch(`/api/videos/${videoId}/parts/${partNumber}`, { method: "PUT", body });
+async function sendPart(videoId: string, partNumber: number, body: Blob, headers: HeadersInit) {
+  const res = await fetch(`/api/videos/${videoId}/parts/${partNumber}`, { method: "PUT", body, headers });
   if (res.ok) return;
   if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) {
     const msg = (await res.json().catch(() => null))?.error ?? `Upload rejected (${res.status})`;
@@ -34,10 +34,10 @@ async function sendPart(videoId: string, partNumber: number, body: Blob) {
   throw new Error(`Upload failed (${res.status})`);
 }
 
-async function sendComplete(videoId: string, partCount: number, durationMs: number) {
+async function sendComplete(videoId: string, partCount: number, durationMs: number, headers: HeadersInit) {
   const res = await fetch(`/api/videos/${videoId}/complete`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { ...headers, "Content-Type": "application/json" },
     body: JSON.stringify({ partCount, durationMs }),
   });
   if (res.ok) return;
@@ -62,14 +62,16 @@ export class ChunkedUploader {
   private intake: Promise<void> = Promise.resolve();
   private uploadedBytes = 0;
   private fatal?: Error;
+  private headers: Record<string, string>;
 
   constructor(
     private videoId: string,
-    opts: { nextPart?: number; startSeq?: number } = {},
+    opts: { nextPart?: number; startSeq?: number; uploadToken?: string } = {},
     private onState: (s: UploadState) => void = () => {},
   ) {
     this.nextPart = opts.nextPart ?? 1;
     this.seq = opts.startSeq ?? 0;
+    this.headers = opts.uploadToken ? { "x-upload-token": opts.uploadToken } : {};
   }
 
   /** Add a recorded chunk. Resolves once it is safely in IndexedDB. Chunks are kept in arrival order. */
@@ -103,7 +105,7 @@ export class ChunkedUploader {
     if (this.fatal) throw this.fatal;
     const partCount = this.nextPart - 1;
     if (partCount === 0) throw new FatalUploadError("Nothing was recorded");
-    await withRetry(() => sendComplete(this.videoId, partCount, durationMs), (r) => this.emit(r));
+    await withRetry(() => sendComplete(this.videoId, partCount, durationMs, this.headers), (r) => this.emit(r));
     await store.removeSession(this.videoId);
   }
 
@@ -119,7 +121,7 @@ export class ChunkedUploader {
     this.queue = this.queue.then(async () => {
       if (this.fatal) return;
       try {
-        await withRetry(() => sendPart(this.videoId, partNumber, body), (r) => this.emit(r));
+        await withRetry(() => sendPart(this.videoId, partNumber, body, this.headers), (r) => this.emit(r));
         await store.confirmPart(this.videoId, lastSeq, partNumber + 1);
         this.uploadedBytes += body.size;
         this.emit(false);
@@ -140,7 +142,7 @@ export class ChunkedUploader {
  * Leftover chunks are re-sent starting at the first unconfirmed part number,
  * which the server treats idempotently.
  */
-export async function recoverInterrupted(onRecovered: (videoId: string) => void) {
+export async function recoverInterrupted(onRecovered: (videoId: string, s: store.PendingSession) => void) {
   const sessions = await store.listSessions();
   for (const s of sessions) {
     // A recording still running in another tab holds this lock; leave it alone.
@@ -148,10 +150,14 @@ export async function recoverInterrupted(onRecovered: (videoId: string) => void)
       if (!lock) return;
       const chunks = await store.getChunks(s.videoId);
       try {
-        const up = new ChunkedUploader(s.videoId, { nextPart: s.nextPart, startSeq: (chunks.at(-1)?.seq ?? -1) + 1 });
+        const up = new ChunkedUploader(s.videoId, {
+          nextPart: s.nextPart,
+          startSeq: (chunks.at(-1)?.seq ?? -1) + 1,
+          uploadToken: s.uploadToken,
+        });
         up.restore(chunks);
         await up.finish(s.durationMs);
-        onRecovered(s.videoId);
+        onRecovered(s.videoId, s);
       } catch (err) {
         if (err instanceof FatalUploadError) await store.removeSession(s.videoId);
         else console.warn("Recovery deferred", s.videoId, err);

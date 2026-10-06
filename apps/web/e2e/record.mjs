@@ -39,9 +39,9 @@ const dur = await page.$eval("video", (v) => new Promise((r) => {
   setTimeout(() => r(v.duration), 10000);
 }));
 console.log("watch url", firstUrl, "player duration", dur);
-await page.fill("textarea", "Looks great, ship it");
-await page.click("button:has-text('Comment')");
-await page.waitForSelector("text=Looks great, ship it");
+await page.fill('textarea[aria-label="Reply"]', "Looks great, ship it");
+await page.click("button:has-text('Send reply')");
+await page.waitForSelector("aside ul >> text=Looks great, ship it");
 await page.screenshot({ path: `${shots}/watch.png` });
 
 // 2) Crash mid-recording: record 25s (>5MB => at least one part uploaded), then kill the page.

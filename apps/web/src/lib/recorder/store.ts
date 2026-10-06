@@ -14,6 +14,10 @@ export type PendingSession = {
   nextPart: number;
   durationMs: number;
   stopped: boolean;
+  /** Guest replies upload with a one-time token instead of a session. */
+  uploadToken?: string;
+  /** For replies: the video being replied to. */
+  replyTo?: string;
 };
 
 type ChunkRow = { videoId: string; seq: number; blob: Blob };

@@ -62,7 +62,7 @@ export default function Recorder({ maxResolution, maxDurationMin }: { maxResolut
 
   // Finish anything a previous crash left behind.
   useEffect(() => {
-    recoverInterrupted((id) => setRecovered((r) => [...r, id])).catch(() => {});
+    recoverInterrupted((id, s) => setRecovered((r) => [...r, s.replyTo ?? id])).catch(() => {});
   }, []);
 
   const loadDevices = useCallback(async () => {

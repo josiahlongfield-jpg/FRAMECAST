@@ -1,15 +1,44 @@
+import crypto from "node:crypto";
 import { customAlphabet } from "nanoid";
 import { db } from "@/lib/db";
-import { HttpError } from "@/lib/session";
+import { HttpError, requireUser } from "@/lib/session";
 
 export const newVideoId = customAlphabet("23456789abcdefghijkmnpqrstuvwxyz", 12);
 
-export const ALLOWED_MIME = /^video\/(webm|mp4|quicktime)(;.*)?$/;
+export const ALLOWED_MIME = /^(video\/(webm|mp4|quicktime)|audio\/(webm|mp4|ogg))(;.*)?$/;
 
 export function extensionFor(mimeType: string) {
   if (mimeType.startsWith("video/mp4")) return "mp4";
+  if (mimeType.startsWith("audio/mp4")) return "m4a";
+  if (mimeType.startsWith("audio/ogg")) return "ogg";
   if (mimeType.startsWith("video/quicktime")) return "mov";
   return "webm";
+}
+
+export const hashToken = (token: string) => crypto.createHash("sha256").update(token).digest("hex");
+
+export function newUploadToken() {
+  const token = crypto.randomBytes(24).toString("base64url");
+  return { token, hash: hashToken(token) };
+}
+
+/**
+ * Who may upload parts to a video: its workspace members, or a guest holding
+ * the one-time upload token issued when they started a reply.
+ */
+export async function uploadableVideo(req: Request, id: string) {
+  const token = req.headers.get("x-upload-token");
+  if (token) {
+    const video = await db.video.findUnique({ where: { id } });
+    const expected = video?.uploadTokenHash;
+    const given = hashToken(token);
+    if (!video || !expected || !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(given))) {
+      throw new HttpError(404, "Video not found");
+    }
+    return video;
+  }
+  const { workspace } = await requireUser();
+  return ownedVideo(id, workspace.id);
 }
 
 /** Load a video the current user is allowed to modify. */

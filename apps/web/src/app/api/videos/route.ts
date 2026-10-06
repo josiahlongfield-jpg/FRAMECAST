@@ -18,7 +18,7 @@ export const POST = handle(async (req: Request) => {
 
   const limit = PLANS[workspace.plan].maxVideos;
   if (limit !== null) {
-    const count = await db.video.count({ where: { workspaceId: workspace.id } });
+    const count = await db.video.count({ where: { workspaceId: workspace.id, replyToId: null } });
     if (count >= limit) throw new HttpError(402, `The ${PLANS[workspace.plan].name} plan allows ${limit} videos. Upgrade to record more.`);
   }
 
@@ -44,6 +44,6 @@ export const POST = handle(async (req: Request) => {
 
 export const GET = handle(async () => {
   const { workspace } = await requireUser();
-  const videos = await db.video.findMany({ where: { workspaceId: workspace.id }, orderBy: { createdAt: "desc" } });
+  const videos = await db.video.findMany({ where: { workspaceId: workspace.id, replyToId: null }, orderBy: { createdAt: "desc" } });
   return Response.json({ videos: videos.map(publicVideo) });
 });

@@ -27,8 +27,12 @@ export const DELETE = handle(async (_req: Request, ctx: { params: Promise<{ id: 
   const { id } = await ctx.params;
   const { workspace } = await requireUser();
   const video = await ownedVideo(id, workspace.id);
-  if (video.status === "RECORDING") await storage().abort(video.storageKey, video.uploadId);
-  else await storage().delete(video.storageKey);
-  await db.video.delete({ where: { id } });
+  // Remove the conversation's reply media along with the video itself.
+  const media = await db.video.findMany({ where: { replyToId: id } });
+  for (const v of [video, ...media]) {
+    if (v.status === "RECORDING") await storage().abort(v.storageKey, v.uploadId);
+    else await storage().delete(v.storageKey);
+  }
+  await db.video.deleteMany({ where: { id: { in: [id, ...media.map((m) => m.id)] } } });
   return new Response(null, { status: 204 });
 });
