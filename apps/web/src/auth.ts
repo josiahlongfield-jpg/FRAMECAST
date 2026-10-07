@@ -25,6 +25,9 @@ if (emailLinks) {
       apiKey: process.env.RESEND_API_KEY ?? "unused",
       from: process.env.MAIL_FROM,
       async sendVerificationRequest({ identifier, url }) {
+        const { limitByIp, rateLimit } = await import("@/lib/rateLimit");
+        await limitByIp("signin-email", 10, 3600);
+        await rateLimit(`signin-email:to:${identifier.toLowerCase()}`, 5, 3600);
         const { sendMail } = await import("@/lib/mail");
         const { signInEmail } = await import("@/lib/signInEmail");
         await sendMail({ to: identifier, ...signInEmail(url, new URL(url).host) });
@@ -39,7 +42,9 @@ export const previewPassword = process.env.PREVIEW_PASSWORD || null;
 // Email-only sign in for local development and demos. Never enable in
 // production; on a hosted preview, also set PREVIEW_PASSWORD. Switched off
 // automatically once real email links are configured.
-const devLogin = process.env.AUTH_DEV_LOGIN === "true" && !emailLinks;
+// A production deploy only allows it behind PREVIEW_PASSWORD.
+const isProduction = process.env.VERCEL_ENV === "production" || (process.env.NODE_ENV === "production" && !process.env.VERCEL_ENV);
+const devLogin = process.env.AUTH_DEV_LOGIN === "true" && !emailLinks && (!isProduction || !!previewPassword);
 if (devLogin) {
   providers.push(
     Credentials({
@@ -49,7 +54,14 @@ if (devLogin) {
       async authorize(creds) {
         const email = String(creds?.email ?? "").trim().toLowerCase();
         if (!email.includes("@")) return null;
-        if (previewPassword && String(creds?.password ?? "") !== previewPassword) return null;
+        const { limitByIp } = await import("@/lib/rateLimit");
+        const { safeEqual } = await import("@/lib/secrets");
+        try {
+          await limitByIp("dev-login", 20, 900);
+        } catch {
+          return null;
+        }
+        if (previewPassword && !safeEqual(String(creds?.password ?? ""), previewPassword)) return null;
         return db.user.upsert({ where: { email }, update: {}, create: { email, name: email.split("@")[0] } });
       },
     }),

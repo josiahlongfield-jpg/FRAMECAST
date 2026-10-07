@@ -83,3 +83,23 @@ export function publicVideo(v: {
     purgeAt: v.purgeAt?.toISOString() ?? null,
   };
 }
+
+const GB = 1024 ** 3;
+
+/**
+ * Most bytes one upload may hold: generous for real recordings at the plan's
+ * longest length and best quality, but a ceiling against filling storage.
+ */
+export async function uploadBudget(video: { replyToId: string | null; workspaceId: string }) {
+  if (video.replyToId) return 2 * GB; // replies are capped at 15 minutes
+  const w = await db.workspace.findUnique({ where: { id: video.workspaceId }, select: { plan: true } });
+  return w?.plan === "FREE" ? 2 * GB : 40 * GB;
+}
+
+/** Refuse a part that would take the upload past its budget. Parts are recorded as they're accepted. */
+export async function checkUploadBudget(video: { id: string; replyToId: string | null; workspaceId: string }, partNumber: number, size: number) {
+  const others = await db.uploadPart.aggregate({ where: { videoId: video.id, partNumber: { not: partNumber } }, _sum: { sizeBytes: true } });
+  if ((others._sum.sizeBytes ?? 0) + size > (await uploadBudget(video))) {
+    throw new HttpError(413, "This recording is larger than your plan allows.");
+  }
+}

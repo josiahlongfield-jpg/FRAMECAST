@@ -6,6 +6,8 @@ function verify(raw: string, header: string | null) {
   if (!secret) return false;
   const parts = Object.fromEntries((header ?? "").split(",").map((kv) => kv.split("=") as [string, string]));
   if (!parts.t || !parts.v1) return false;
+  // Refuse replays of old captured events.
+  if (Math.abs(Date.now() / 1000 - Number(parts.t)) > 300) return false;
   const expected = crypto.createHmac("sha256", secret).update(`${parts.t}.${raw}`).digest("hex");
   return expected.length === parts.v1.length && crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(parts.v1));
 }

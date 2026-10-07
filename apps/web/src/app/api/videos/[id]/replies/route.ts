@@ -54,6 +54,10 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
     return Response.json({ reply: replyDTO(reply, root.ownerId) }, { status: 201 });
   }
 
+  // A conversation can't hold endless unfinished uploads.
+  const open = await db.video.count({ where: { replyToId: id, status: "RECORDING", createdAt: { gt: new Date(Date.now() - 86_400_000) } } });
+  if (open >= 5) throw new HttpError(429, "Finish or cancel your other replies first.");
+
   const mediaId = newVideoId();
   const storageKey = `videos/${root.workspaceId}/${root.id}/replies/${mediaId}.${extensionFor(body.mimeType)}`;
   const uploadId = await storage().begin(storageKey, body.mimeType);

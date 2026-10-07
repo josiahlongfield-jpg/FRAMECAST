@@ -321,3 +321,12 @@ model RateLimit {
   @@id([key, windowStart])
   @@index([windowStart])
 }
+
+/// One-time code handing a web sign-in to the mobile app (PKCE, see /mobile/handoff).
+model MobileCode {
+  codeHash  String    @id
+  challenge String
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+}

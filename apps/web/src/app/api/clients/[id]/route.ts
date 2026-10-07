@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { handle, HttpError, requireUser } from "@/lib/session";
+import { rateLimit } from "@/lib/rateLimit";
 
 const Patch = z.object({
   name: z.string().trim().min(1).max(80).optional(),
@@ -13,6 +14,7 @@ export const PATCH = handle(async (req: Request, ctx: { params: Promise<{ id: st
   const { workspace } = await requireUser();
   const body = Patch.safeParse(await req.json());
   if (!body.success) throw new HttpError(400, "Enter a valid email address");
+  await rateLimit(`client-edit:${workspace.id}`, 30, 3600);
   const res = await db.client.updateMany({
     where: { id, workspaceId: workspace.id, removedAt: null },
     data: { name: body.data.name, email: body.data.email === undefined ? undefined : body.data.email || null },

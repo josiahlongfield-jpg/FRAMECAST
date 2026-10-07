@@ -5,6 +5,8 @@ import { appUrl } from "@/lib/stripe";
 import { sendMail } from "@/lib/mail";
 import { reminderEmail } from "@/lib/reminderEmail";
 import { brandOf } from "@/lib/branding";
+import { appSecret } from "@/lib/secrets";
+import { rateLimit } from "@/lib/rateLimit";
 import { DEFAULT_REMINDERS, isTimeZone, nextOccurrence, reminderTime, type ReminderRule } from "@/lib/schedule";
 import { Repeat, ReminderRules } from "@/lib/scheduleSchema";
 
@@ -82,7 +84,7 @@ export async function spawnNext(item: Item, tz: string) {
 
 // ---- Client opt-out links ----
 
-const sign = (clientId: string) => crypto.createHmac("sha256", process.env.AUTH_SECRET ?? "dev").update(`reminders:${clientId}`).digest("base64url").slice(0, 22);
+const sign = (clientId: string) => crypto.createHmac("sha256", appSecret()).update(`reminders:${clientId}`).digest("base64url").slice(0, 22);
 export const unsubscribeUrl = (clientId: string) => appUrl(`/reminders/off?c=${clientId}&s=${sign(clientId)}`);
 export const validUnsubscribe = (clientId: string, sig: string) => {
   const a = Buffer.from(sign(clientId));
@@ -142,6 +144,13 @@ export async function runReminders(now = new Date()) {
       for (const mem of ws.members) {
         mails.push({ to: mem.user.email, m: reminderEmail({ ...base, link, team: true, clientName: item.client?.name }) });
       }
+    }
+    // A daily ceiling per business keeps reminders from being used to send bulk mail.
+    try {
+      await rateLimit(`reminder-mail:${ws.id}`, ws.plan === "FREE" ? 100 : 2000, 86_400);
+    } catch {
+      await skip("daily email limit");
+      continue;
     }
     try {
       for (const { to, m, replyTo } of mails) {

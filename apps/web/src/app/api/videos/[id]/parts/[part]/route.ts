@@ -2,7 +2,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { storage } from "@/lib/storage";
 import { handle, HttpError } from "@/lib/session";
-import { uploadableVideo } from "@/lib/videos";
+import { checkUploadBudget, uploadableVideo } from "@/lib/videos";
 
 const MAX_PART_BYTES = 64 * 1024 * 1024;
 
@@ -17,9 +17,13 @@ export const PUT = handle(async (req: Request, ctx: { params: Promise<{ id: stri
   const video = await uploadableVideo(req, id);
   if (video.status !== "RECORDING") throw new HttpError(409, "Upload already completed");
 
+  // Refuse oversized parts before reading them into memory.
+  const declared = Number(req.headers.get("content-length") ?? "0");
+  if (declared > MAX_PART_BYTES) throw new HttpError(413, "Part too large");
   const body = new Uint8Array(await req.arrayBuffer());
   if (body.length === 0) throw new HttpError(400, "Empty part");
   if (body.length > MAX_PART_BYTES) throw new HttpError(413, "Part too large");
+  await checkUploadBudget(video, partNumber, body.length);
 
   const etag = await storage().putPart(video.storageKey, video.uploadId, partNumber, body);
   await db.uploadPart.upsert({
@@ -47,6 +51,13 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
   if (video.status !== "RECORDING") throw new HttpError(409, "Upload already completed");
   const driver = storage();
   if (!driver.presignPart) return Response.json({ url: null });
+  await checkUploadBudget(video, partNumber, body.data.size);
+  // Record the planned size so the budget counts parts that go straight to the bucket.
+  await db.uploadPart.upsert({
+    where: { videoId_partNumber: { videoId: id, partNumber } },
+    create: { videoId: id, partNumber, etag: null, sizeBytes: body.data.size },
+    update: { sizeBytes: body.data.size },
+  });
   return Response.json({ url: await driver.presignPart(video.storageKey, video.uploadId, partNumber, body.data.size) });
 });
 

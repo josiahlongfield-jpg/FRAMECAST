@@ -35,4 +35,13 @@ const other = await (await browser.newContext()).newPage();
 await other.goto(link);
 await other.waitForURL("**/login**");
 ok("a used link is refused with a clear message", await other.isVisible("text=expired or was already used"));
+// Five links per address per hour: the sixth request is refused politely.
+const spam = await (await browser.newContext()).newPage();
+for (let i = 0; i < 5; i++) {
+  await spam.goto(BASE + "/login");
+  await spam.fill('input[name="email"]', email);
+  await spam.click("text=Email me a sign-in link");
+  await spam.waitForURL((u) => u.pathname === "/login/check" || u.searchParams.get("error") === "rate");
+}
+ok("sign-in emails to one address are limited", await spam.waitForSelector("text=Too many sign-in emails", { timeout: 5000 }).then(() => true, () => false));
 await browser.close();

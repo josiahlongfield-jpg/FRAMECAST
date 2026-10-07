@@ -21,6 +21,24 @@ export async function purgeExpired(now = new Date()) {
   return due.length;
 }
 
+/**
+ * Uploads that never finished (a recording abandoned for good) are aborted
+ * after a week so their parts stop costing storage. Recovery after a crash
+ * normally happens within minutes, the next time the app is opened.
+ */
+export async function abortStaleUploads(now = new Date()) {
+  const stale = await db.video.findMany({
+    where: { status: "RECORDING", updatedAt: { lt: new Date(now.getTime() - 7 * 86_400_000) } },
+    take: 200,
+  });
+  for (const v of stale) {
+    await storage().abort(v.storageKey, v.uploadId).catch(() => {});
+    await db.uploadPart.deleteMany({ where: { videoId: v.id } });
+    await db.video.update({ where: { id: v.id }, data: { status: "EXPIRED", uploadTokenHash: null } });
+  }
+  return stale.length;
+}
+
 /** Turning cloud backup on keeps everything; turning it off starts the clock again. */
 export async function applyBackupSetting(workspaceId: string, cloudBackup: boolean) {
   await db.video.updateMany({

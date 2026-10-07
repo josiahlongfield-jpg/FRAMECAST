@@ -52,6 +52,8 @@ export function handle<A extends unknown[]>(fn: (...args: A) => Promise<Response
       return await fn(...args);
     } catch (err) {
       if (err instanceof HttpError) return Response.json({ error: err.message }, { status: err.status });
+      // A missing or malformed JSON body (req.json()) is the caller's mistake, not ours.
+      if (err instanceof SyntaxError) return Response.json({ error: "Invalid request body" }, { status: 400 });
       console.error(err);
       return Response.json({ error: "Internal error" }, { status: 500 });
     }

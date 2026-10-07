@@ -7,7 +7,7 @@ import { startTranscode } from "@/lib/transcode";
 import { purgeDate } from "@/lib/retention";
 import { publicVideo, uploadableVideo } from "@/lib/videos";
 
-const Body = z.object({ partCount: z.number().int().min(1), durationMs: z.number().int().min(0).optional() });
+const Body = z.object({ partCount: z.number().int().min(1).max(10_000), durationMs: z.number().int().min(0).optional() });
 
 /** Finish the upload. Every part 1..partCount must be present. */
 export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
@@ -23,8 +23,9 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
   const parts = driver.listParts
     ? (await driver.listParts(video.storageKey, video.uploadId)).sort((a, b) => a.partNumber - b.partNumber)
     : await db.uploadPart.findMany({ where: { videoId: id }, orderBy: { partNumber: "asc" } });
+  const have = new Set(parts.map((p) => p.partNumber));
   const missing: number[] = [];
-  for (let n = 1; n <= body.data.partCount; n++) if (!parts.some((p) => p.partNumber === n)) missing.push(n);
+  for (let n = 1; n <= body.data.partCount; n++) if (!have.has(n)) missing.push(n);
   if (missing.length) return Response.json({ error: "Missing parts", missing }, { status: 409 });
 
   const used = parts.filter((p) => p.partNumber <= body.data.partCount);

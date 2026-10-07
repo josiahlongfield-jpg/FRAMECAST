@@ -55,7 +55,10 @@ await pro.waitForSelector("text=Prefers morning calls");
 ok("overdue due date shown in red", (await pro.getAttribute("text=/^Due .*Jan 5/", "class"))?.includes("text-red-600"));
 await pro.screenshot({ path: `${shots}/client-space.png`, fullPage: true });
 
-const bodies = sql(`select string_agg(body, '|') from "Item" where "workspaceId"=(select "workspaceId" from "Client" where id='${clientId}')`);
+// The list updates before the save finishes, so wait for all three rows.
+const itemsSql = (what) => sql(`select ${what} from "Item" where "workspaceId"=(select "workspaceId" from "Client" where id='${clientId}')`);
+for (let i = 0; i < 50 && Number(itemsSql("count(*)")) < 3; i++) await new Promise((r) => setTimeout(r, 100));
+const bodies = itemsSql("string_agg(body, '|')");
 ok("server stores only ciphertext", !/stock|check-in|stretch|morning/i.test(bodies) && bodies.length > 100);
 
 await pro.click("text=Copy personal link");

@@ -5,7 +5,7 @@
 // another device needs the recovery key, videos are private, seats are
 // capped, and expired relay copies are cleaned up.
 import { chromium, devices } from "@playwright/test";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { execSync } from "node:child_process";
 

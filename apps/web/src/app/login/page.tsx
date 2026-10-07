@@ -4,13 +4,13 @@ import Link from "next/link";
 import Logo from "@/components/Logo";
 import { AuthError } from "next-auth";
 import { auth, authProviders, previewPassword, signIn } from "@/auth";
-import { limitByIp, rateLimit } from "@/lib/rateLimit";
+import { safeNext } from "@/lib/secrets";
 
 export const metadata: Metadata = { title: "Sign in" };
 
 export default async function Login({ searchParams }: { searchParams: Promise<{ next?: string; error?: string }> }) {
   const { next, error } = await searchParams;
-  const redirectTo = next?.startsWith("/") && !next.startsWith("//") ? next : "/library";
+  const redirectTo = safeNext(next);
   if ((await auth())?.user) redirect(redirectTo);
   const hasGoogle = authProviders.some((p) => p.id === "google");
   const hasEmail = authProviders.some((p) => p.id === "email");
@@ -40,13 +40,16 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
               action={async (fd: FormData) => {
                 "use server";
                 const email = String(fd.get("email") ?? "").trim().toLowerCase();
+                // Sending is rate limited inside the provider (src/auth.ts), so direct API calls are limited too.
+                let failed = false;
                 try {
-                  await limitByIp("signin-email", 10, 3600);
-                  await rateLimit(`signin-email:to:${email}`, 5, 3600);
+                  // With redirect off, Auth.js reports a failed send as an error URL instead of throwing.
+                  const url = await signIn("email", { email, redirectTo, redirect: false });
+                  failed = typeof url === "string" && /[?&]error=/.test(url);
                 } catch {
-                  redirect(`/login?error=rate&next=${encodeURIComponent(redirectTo)}`);
+                  failed = true;
                 }
-                await signIn("email", { email, redirectTo, redirect: false });
+                if (failed) redirect(`/login?error=rate&next=${encodeURIComponent(redirectTo)}`);
                 redirect("/login/check");
               }}
             >
