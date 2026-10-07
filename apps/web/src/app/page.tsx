@@ -5,7 +5,7 @@ import SiteFooter from "@/components/SiteFooter";
 const PILLARS = [
   {
     title: "Protected from crashes",
-    body: "Recordings upload while you talk and are backed up on your device. If the browser crashes or Wi-Fi drops, reopen it on the same device and your video carries on uploading by itself.",
+    body: "Videos upload as you record and are backed up on your device. If the browser crashes or Wi-Fi drops, reopen it on the same device and your video carries on uploading by itself.",
     icon: "M12 3l8 4v5c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V7z",
   },
   {
