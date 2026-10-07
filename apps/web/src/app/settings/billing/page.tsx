@@ -11,7 +11,7 @@ export const metadata: Metadata = { title: "Billing" };
 
 export default async function Billing({ searchParams }: { searchParams: Promise<{ upgraded?: string }> }) {
   const { upgraded } = await searchParams;
-  const { user, workspace, role } = await requirePageUser("/settings/billing");
+  const { user, workspace, role } = await requirePageUser(upgraded ? "/settings/billing?upgraded=1" : "/settings/billing");
   const plan = PLANS[workspace.plan];
   if (role !== "OWNER") {
     return (

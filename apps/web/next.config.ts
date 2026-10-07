@@ -16,7 +16,15 @@ const securityHeaders = [
   { key: "Permissions-Policy", value: "camera=(self), microphone=(self), display-capture=(self), geolocation=(), payment=()" },
 ];
 
+// Sign-ins and on-device keys belong to one web address, so the old project
+// addresses send people to the main one (API calls are left alone).
+const oldHosts = "framecast-(five|hoardconquer|git-main-hoardconquer)\\.vercel\\.app";
+
 const nextConfig: NextConfig = {
+  async redirects() {
+    if (process.env.VERCEL_ENV !== "production" || !process.env.APP_URL) return [];
+    return [{ source: "/:path((?!api/).*)", has: [{ type: "host", value: oldHosts }], destination: `${process.env.APP_URL}/:path`, permanent: true }];
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
