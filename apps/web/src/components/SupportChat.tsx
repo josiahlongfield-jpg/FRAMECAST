@@ -64,7 +64,11 @@ export function SupportChat({ signedIn, className = "" }: { signedIn: boolean; c
     return () => clearInterval(id);
   }, [token, ticket, refresh]);
 
-  useEffect(() => end.current?.scrollIntoView({ block: "end" }), [ticket?.messages.length, busy]);
+  // Braces matter: newer Chrome returns a Promise from scrollIntoView, which
+  // React would otherwise try to call as the effect's cleanup.
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: "end" });
+  }, [ticket?.messages.length, busy]);
 
   async function send(body: string) {
     if (!body.trim() || busy) return;
