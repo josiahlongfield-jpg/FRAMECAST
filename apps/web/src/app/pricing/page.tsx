@@ -49,7 +49,7 @@ export default function Pricing() {
             );
           })}
         </div>
-        <p className="mt-10 text-center text-sm text-slate-500">Save 20% with annual billing. Need 100+ seats, invoicing or a security review? Contact sales.</p>
+        <p className="mt-10 text-center text-sm text-slate-500">Need 100+ client seats, invoicing or a security review? Contact sales.</p>
       </main>
       <SiteFooter />
     </>

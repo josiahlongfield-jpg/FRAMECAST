@@ -28,7 +28,7 @@ export const PLANS: Record<Plan, PlanLimits> = {
     maxDurationMin: 240,
     maxResolution: 2160,
     clientSeats: 10,
-    features: ["Unlimited videos", "10 client accounts included", "Up to 4 hours per video", "1080p and 4K recording", "Trim and edit", "Custom branding", "Download control"],
+    features: ["Unlimited videos", "10 client accounts included", "Up to 4 hours per video", "1080p and 4K recording", "Custom branding", "Extra client seats $2/month each", "Optional cloud backup"],
   },
   BUSINESS: {
     name: "Business",
@@ -37,7 +37,7 @@ export const PLANS: Record<Plan, PlanLimits> = {
     maxDurationMin: 240,
     maxResolution: 2160,
     clientSeats: 25,
-    features: ["Everything in Pro", "25 client accounts included", "SSO (SAML / OIDC)", "Viewer analytics", "Retention policies", "Admin controls", "Priority support"],
+    features: ["Everything in Pro", "25 client accounts included"],
   },
 };
 
