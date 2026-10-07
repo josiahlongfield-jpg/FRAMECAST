@@ -23,3 +23,13 @@ body {
   from { transform: translateY(0); opacity: 1; }
   to { transform: translateY(-120px); opacity: 0; }
 }
+
+/* Draws the eye to a note when someone picks an option it explains is unavailable. */
+@keyframes notice-flash {
+  0%, 30% { border-color: #ef4444; box-shadow: 0 0 0 1px #ef4444; }
+  100% { border-color: var(--color-slate-200); box-shadow: 0 0 0 0 transparent; }
+}
+.notice-flash { animation: notice-flash 1.2s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .notice-flash { animation-duration: 2.4s; }
+}

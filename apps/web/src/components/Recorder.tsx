@@ -54,6 +54,9 @@ export default function Recorder({
   const [upload, setUpload] = useState<UploadState>({ uploadedBytes: 0, bufferedBytes: 0, retrying: false });
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
+  // Set once we know there's no camera: camera options then flash the notice instead of retrying.
+  const [noCamera, setNoCamera] = useState(false);
+  const [flash, setFlash] = useState(0);
   const [recovered, setRecovered] = useState<string[]>([]);
   const [bubbleOpen, setBubbleOpen] = useState(false);
   // Phones and tablets can't share their screen from a browser, so they only get camera mode.
@@ -118,6 +121,7 @@ export default function Recorder({
         // No camera at all (common on desktop computers): fall back to recording the screen.
         if (err.name === "NotFoundError" && canShareScreen) {
           setMode("screen");
+          setNoCamera(true);
           setNotice("No camera found, so Screen only is selected. You can still talk over your screen.");
           return;
         }
@@ -353,15 +357,17 @@ export default function Recorder({
           </div>
         )}
         {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div>}
-        {notice && !error && phase === "setup" && <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">{notice}</div>}
+        {notice && !error && phase === "setup" && (
+          <div key={flash} className={`rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 ${flash ? "notice-flash" : ""}`}>{notice}</div>
+        )}
 
         {phase === "setup" && (
           <>
             <fieldset className="flex flex-col gap-2">
               <legend className="mb-2 text-sm font-semibold text-slate-900">What do you want to record?</legend>
               {MODES.filter((m) => canShareScreen || m.id === "camera").map((m) => (
-                <label key={m.id} className={`cursor-pointer rounded-xl border p-3 transition ${mode === m.id ? "border-brand-600 bg-brand-50 ring-1 ring-brand-600" : "border-slate-200 hover:border-slate-300"}`}>
-                  <input type="radio" name="mode" className="sr-only" checked={mode === m.id} onChange={() => setMode(m.id)} />
+                <label key={m.id} className={`cursor-pointer rounded-xl border p-3 transition ${noCamera && m.id !== "screen" ? "opacity-60 " : ""}${mode === m.id ? "border-brand-600 bg-brand-50 ring-1 ring-brand-600" : "border-slate-200 hover:border-slate-300"}`}>
+                  <input type="radio" name="mode" className="sr-only" checked={mode === m.id} onChange={() => (noCamera && m.id !== "screen" ? setFlash((n) => n + 1) : setMode(m.id))} />
                   <span className="block text-sm font-medium text-slate-900">{m.label}</span>
                   <span className="block text-xs text-slate-500">{m.hint}</span>
                 </label>
