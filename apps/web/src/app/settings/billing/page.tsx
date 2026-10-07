@@ -6,6 +6,7 @@ import CloudBackupToggle from "@/components/CloudBackupToggle";
 import { RETENTION_DAYS } from "@/lib/retention";
 import { CLOUD_BACKUP_PRICE, PLANS } from "@/lib/plans";
 import { requirePageUser } from "@/lib/session";
+import { BRAND } from "@/lib/brand";
 
 export const metadata: Metadata = { title: "Billing" };
 
@@ -13,6 +14,7 @@ export default async function Billing({ searchParams }: { searchParams: Promise<
   const { upgraded } = await searchParams;
   const { user, workspace, role } = await requirePageUser(upgraded ? "/settings/billing?upgraded=1" : "/settings/billing");
   const plan = PLANS[workspace.plan];
+  const comp = !!workspace.complimentaryPlan && !workspace.stripeSubscriptionId;
   if (role !== "OWNER") {
     return (
       <>
@@ -39,6 +41,9 @@ export default async function Billing({ searchParams }: { searchParams: Promise<
         <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
           <p className="text-sm text-slate-500">{workspace.name}</p>
           <p className="mt-1 text-xl font-semibold text-slate-900">{plan.name} plan</p>
+          {comp && (
+            <p className="mt-1 text-sm text-emerald-700">Complimentary from {BRAND.name}. No card needed. Upgrading starts a paid subscription and keeps everything as it is.</p>
+          )}
           {workspace.currentPeriodEnd && (
             <p className="mt-1 text-sm text-slate-500">
               Renews {workspace.currentPeriodEnd.toLocaleDateString("en-US", { dateStyle: "long" })}
@@ -54,8 +59,8 @@ export default async function Billing({ searchParams }: { searchParams: Promise<
           </ul>
           <div className="mt-6 flex gap-3">
             {workspace.stripeCustomerId && <ManageBillingButton />}
-            {workspace.plan !== "AGENCY" && (
-              <Link href="/pricing" className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">Upgrade</Link>
+            {(workspace.plan !== "AGENCY" || comp) && (
+              <Link href="/pricing" className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">{comp ? "Choose a paid plan" : "Upgrade"}</Link>
             )}
           </div>
         </div>

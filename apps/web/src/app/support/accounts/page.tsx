@@ -1,0 +1,47 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { db } from "@/lib/db";
+import { PLANS } from "@/lib/plans";
+import { requirePageUser } from "@/lib/session";
+import { isSupportAgent } from "@/lib/support/tickets";
+import CompForm from "./CompForm";
+
+export const metadata: Metadata = { title: "Free plans" };
+
+/** Founder-only: give a paid plan free of charge, for trials and partners. */
+export default async function Accounts() {
+  const { user } = await requirePageUser("/support/accounts");
+  if (!isSupportAgent(user.email)) notFound();
+  const comped = await db.workspace.findMany({
+    where: { complimentaryPlan: { not: null } },
+    orderBy: { createdAt: "desc" },
+    include: { members: { where: { role: "OWNER" }, include: { user: { select: { email: true } } } } },
+  });
+  return (
+    <main className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
+      <Link href="/support" className="text-sm text-brand-700 hover:underline">← Support inbox</Link>
+      <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">Free plans</h1>
+      <p className="mt-2 text-sm text-slate-600">
+        Give someone a paid plan without a card. They keep everything if they later pay, and nothing changes for them in the meantime. Ask them to sign in once
+        first so their workspace exists.
+      </p>
+      <CompForm plans={Object.entries(PLANS).map(([id, p]) => ({ id, name: p.name }))} />
+      <h2 className="mt-8 text-lg font-semibold text-slate-900">Currently free</h2>
+      {comped.length === 0 ? (
+        <p className="mt-2 text-sm text-slate-600">No one yet.</p>
+      ) : (
+        <ul className="mt-2 divide-y divide-slate-200 rounded-2xl border border-slate-200 bg-white">
+          {comped.map((w) => (
+            <li key={w.id} className="flex justify-between gap-3 p-4 text-sm">
+              <span className="text-slate-900">
+                {w.name} <span className="text-slate-500">({w.members[0]?.user.email})</span>
+              </span>
+              <span className="text-slate-600">{w.stripeSubscriptionId ? `Paying, ${PLANS[w.plan].name}` : PLANS[w.complimentaryPlan!].name}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </main>
+  );
+}

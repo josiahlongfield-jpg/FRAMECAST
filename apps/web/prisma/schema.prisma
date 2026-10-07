@@ -84,6 +84,8 @@ model Workspace {
   stripeCustomerId     String?       @unique
   stripeSubscriptionId String?       @unique
   subscriptionStatus   String?
+  /// A paid plan given free by the founder (trials, partners). Used whenever there's no active subscription.
+  complimentaryPlan    Plan?
   currentPeriodEnd     DateTime?
   /// Client seats bought on top of the plan's included seats.
   extraClientSeats     Int           @default(0)

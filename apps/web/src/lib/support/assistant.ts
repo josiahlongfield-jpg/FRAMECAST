@@ -77,7 +77,10 @@ async function accountOverview(ticket: SupportTicket) {
     role: membership.role,
     workspaceName: workspace.name,
     plan: p.name,
-    subscriptionStatus: workspace.subscriptionStatus ?? (workspace.plan === "FREE" ? "free plan" : "unknown"),
+    subscriptionStatus:
+      workspace.complimentaryPlan && !workspace.stripeSubscriptionId
+        ? "complimentary (given free by the team, no card needed)"
+        : (workspace.subscriptionStatus ?? (workspace.plan === "FREE" ? "free plan" : "unknown")),
     renewsOn: workspace.currentPeriodEnd?.toISOString().slice(0, 10) ?? null,
     clients: { used: clients, limit: p.clientSeats + workspace.extraClientSeats },
     staffLogins: { used: staff, limit: staffSeatLimit(workspace) },

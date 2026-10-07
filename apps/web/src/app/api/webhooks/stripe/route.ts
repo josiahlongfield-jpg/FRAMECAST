@@ -20,7 +20,9 @@ async function syncSubscription(sub: Stripe.Subscription) {
   await db.workspace.update({
     where: { id: workspaceId },
     data: {
-      plan: active && planItem ? planOf(planItem.price)! : "FREE",
+      // A free plan we gave stays in place until they pay, and comes back if a subscription ends.
+      plan: active && planItem ? planOf(planItem.price)! : (workspace.complimentaryPlan ?? "FREE"),
+      ...(active && planItem ? { complimentaryPlan: null } : {}),
       stripeSubscriptionId: active ? sub.id : null,
       stripeCustomerId: typeof sub.customer === "string" ? sub.customer : sub.customer.id,
       subscriptionStatus: sub.status,

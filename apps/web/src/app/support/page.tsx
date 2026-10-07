@@ -26,9 +26,12 @@ export default async function SupportInbox({ searchParams }: { searchParams: Pro
     <main className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
       <div className="flex items-baseline justify-between gap-4">
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Support inbox</h1>
-        <Link href={show === "all" ? "/support" : "/support?show=all"} className="text-sm text-brand-700 hover:underline">
-          {show === "all" ? "Only ones needing you" : "Show every conversation"}
-        </Link>
+        <div className="flex gap-4">
+          <Link href="/support/accounts" className="text-sm text-brand-700 hover:underline">Free plans</Link>
+          <Link href={show === "all" ? "/support" : "/support?show=all"} className="text-sm text-brand-700 hover:underline">
+            {show === "all" ? "Only ones needing you" : "Show every conversation"}
+          </Link>
+        </div>
       </div>
       {tickets.length === 0 && <p className="mt-8 text-slate-600">Nothing needs you right now. The assistant is handling everything else.</p>}
       <ul className="mt-6 divide-y divide-slate-200 rounded-2xl border border-slate-200 bg-white">
