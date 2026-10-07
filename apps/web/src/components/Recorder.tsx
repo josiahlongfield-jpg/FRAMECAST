@@ -404,7 +404,7 @@ export default function Recorder({
               Start recording
             </button>
             <p className="text-xs text-slate-500">
-              Your recording uploads while you talk and is backed up on this device, so a crash or dropped connection won't cost you your take.
+              Your recording uploads while you talk and is backed up on this device, so a crash or dropped connection won&rsquo;t cost you your take.
             </p>
           </>
         )}
