@@ -54,6 +54,14 @@ export default function Recorder({
   const [error, setError] = useState<string>();
   const [recovered, setRecovered] = useState<string[]>([]);
   const [bubbleOpen, setBubbleOpen] = useState(false);
+  // Phones and tablets can't share their screen from a browser, so they only get camera mode.
+  const [canShareScreen, setCanShareScreen] = useState(true);
+  useEffect(() => {
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      setCanShareScreen(false);
+      setMode("camera");
+    }
+  }, []);
 
   const preview = useRef<HTMLVideoElement>(null);
   const camStream = useRef<MediaStream | null>(null);
@@ -329,7 +337,7 @@ export default function Recorder({
           <>
             <fieldset className="flex flex-col gap-2">
               <legend className="mb-2 text-sm font-semibold text-slate-900">What do you want to record?</legend>
-              {MODES.map((m) => (
+              {MODES.filter((m) => canShareScreen || m.id === "camera").map((m) => (
                 <label key={m.id} className={`cursor-pointer rounded-xl border p-3 transition ${mode === m.id ? "border-brand-600 bg-brand-50 ring-1 ring-brand-600" : "border-slate-200 hover:border-slate-300"}`}>
                   <input type="radio" name="mode" className="sr-only" checked={mode === m.id} onChange={() => setMode(m.id)} />
                   <span className="block text-sm font-medium text-slate-900">{m.label}</span>
