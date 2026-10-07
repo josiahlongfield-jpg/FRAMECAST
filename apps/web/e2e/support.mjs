@@ -56,12 +56,12 @@ const link = mail.text.match(/https?:\/\/\S+\/support\/\S+/)?.[0];
 ok("email links to the conversation", !!link, link);
 await visitor.screenshot({ path: `${shots}/support-visitor.png` });
 
-// 3. More from the customer goes to the person, not the assistant
-const calls = requests.length;
-await visitor.fill('textarea[aria-label="Your message"]', "It was on 3 October.");
-await visitor.keyboard.press("Enter");
-await visitor.waitForFunction(() => [...document.querySelectorAll("[aria-live=polite] .whitespace-pre-wrap")].some((e) => e.textContent.includes("3 October")) && !document.querySelector("[aria-live=polite] p.text-sm.text-slate-500"));
-ok("assistant stays out once a person has it", requests.length === calls);
+// 3. Before a person replies, the assistant keeps helping, and the team hears about it
+const mailsBefore = outbox().length;
+const a3b = await ask(visitor, "Also, how do I add a client?");
+ok("assistant still answers while waiting for a person", a3b.includes("Clients page"), a3b);
+ok("system note says it's already with the team", requests.at(-1).body.messages.some((m) => m.role === "system" && m.content.includes("already been passed to the team")));
+ok("inbox told about the new message", outbox().slice(mailsBefore).some((m) => m.to === AGENT && m.subject.includes("(new message)")));
 
 // 4. Not an agent: the inbox is hidden
 const other = await (await browser.newContext()).newPage();
@@ -96,6 +96,9 @@ await fromEmail.waitForSelector("text=SureFrame team");
 ok("reply shows in the chat", (await fromEmail.textContent("main")).includes("refunded the second charge"));
 ok("summary never reaches the customer", !(await fromEmail.content()).includes("Customer wants a refund"));
 ok("token removed from the address bar", !fromEmail.url().includes("#t="));
+const callsBeforeFollowUp = requests.length;
+const ack = await ask(fromEmail, "Thanks! Will it show on my statement?");
+ok("after a person replies, follow-ups go to them", ack.includes("added that to your conversation") && requests.length === callsBeforeFollowUp, ack);
 await fromEmail.screenshot({ path: `${shots}/support-help-page.png` });
 
 // 7. A signed-in customer asks about their plan

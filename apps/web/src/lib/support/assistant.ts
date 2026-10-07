@@ -92,13 +92,19 @@ async function accountOverview(ticket: SupportTicket) {
  * Lets the assistant answer the latest customer message on a ticket, using
  * its tools as needed, and stores the reply. Returns the reply text.
  */
-export async function answer(ticketId: string): Promise<string> {
+export async function answer(ticketId: string): Promise<{ reply: string; handedOver: boolean }> {
   const ticket = await db.supportTicket.findUniqueOrThrow({ where: { id: ticketId }, include: { messages: { orderBy: { createdAt: "asc" } } } });
   const messages: Anthropic.Beta.BetaMessageParam[] = ticket.messages
     .filter((m) => m.author !== "STAFF")
     .map((m) => ({ role: m.author === "CUSTOMER" ? ("user" as const) : ("assistant" as const), content: m.body }));
-  const signedIn = ticket.userId ? "The customer is signed in." : "The customer is not signed in (a website visitor).";
-  messages.push({ role: "system", content: signedIn });
+  const notes = [ticket.userId ? "The customer is signed in." : "The customer is not signed in (a website visitor)."];
+  if (ticket.status === "NEEDS_HUMAN") {
+    notes.push(
+      "This conversation has already been passed to the team, and a person will reply by email. Keep helping with anything you can in the meantime. Don't hand over again unless something new comes up that needs a person; the team sees every message.",
+    );
+  }
+  messages.push({ role: "system", content: notes.join(" ") });
+  let handedOver = false;
 
   let reply = "";
   for (let turn = 0; turn < 5; turn++) {
@@ -116,6 +122,7 @@ export async function answer(ticketId: string): Promise<string> {
     console.log("[support] assistant turn", JSON.stringify({ ticket: ticket.id, stop: response.stop_reason, model: response.model, blocks: response.content.map((b) => (b.type === "tool_use" ? `tool:${b.name}` : b.type)) }));
     if (response.stop_reason === "refusal") {
       await handToHuman(ticket.id, "The assistant couldn't answer this message. Please read the conversation.", false);
+      handedOver = true;
       reply = "I've passed this to the team, and a person will get back to you by email.";
       break;
     }
@@ -130,6 +137,7 @@ export async function answer(ticketId: string): Promise<string> {
       } else if (call.name === "hand_to_human") {
         const input = call.input as { summary?: unknown; urgent?: unknown };
         await handToHuman(ticket.id, String(input.summary ?? "").slice(0, 2000), input.urgent === true);
+        handedOver = true;
         results.push({ type: "tool_result", tool_use_id: call.id, content: "Handed over. The team has been notified and will reply by email." });
       } else {
         results.push({ type: "tool_result", tool_use_id: call.id, content: "Unknown tool", is_error: true });
@@ -139,5 +147,5 @@ export async function answer(ticketId: string): Promise<string> {
   }
   reply ||= "Sorry, I couldn't put an answer together just then. Could you try asking another way, or ask me to pass it to the team?";
   await db.supportMessage.create({ data: { ticketId, author: "ASSISTANT", body: reply } });
-  return reply;
+  return { reply, handedOver };
 }

@@ -27,9 +27,9 @@ export const GET = handle(async (req: Request) => {
 });
 
 /**
- * A customer's message. Starts a conversation when there's no token. While the
- * assistant has it, the assistant answers; once a person is involved, new
- * messages wait for them and the support inbox hears about it.
+ * A customer's message. Starts a conversation when there's no token. The
+ * assistant answers until a person has replied; after that, new messages go
+ * to the person and the support inbox hears about each one.
  */
 export const POST = handle(async (req: Request) => {
   const parsed = Body.safeParse(await req.json().catch(() => null));
@@ -51,24 +51,28 @@ export const POST = handle(async (req: Request) => {
   await rateLimit(`support:ticket:${ticket.id}`, 20, 600);
   await db.supportMessage.create({ data: { ticketId: ticket.id, author: "CUSTOMER", body } });
 
-  if (ticket.status === "OPEN" || ticket.status === "CLOSED") {
+  const say = (body: string) => db.supportMessage.create({ data: { ticketId: ticket.id, author: "ASSISTANT", body } });
+
+  if (ticket.status === "ANSWERED") {
+    // A person is talking with them now: pass it on rather than have the assistant cut in.
+    await handToHuman(ticket.id, null, ticket.urgent);
+    await say("Thanks, I've added that to your conversation with the team. They'll reply here and by email.");
+  } else if (assistantEnabled()) {
+    // Before a person has replied, the assistant keeps helping, even once the team has been told.
+    const waiting = ticket.status === "NEEDS_HUMAN";
     if (ticket.status === "CLOSED") await db.supportTicket.update({ where: { id: ticket.id }, data: { status: "OPEN" } });
-    if (assistantEnabled()) {
-      try {
-        await answer(ticket.id);
-      } catch (e) {
-        const err = e as { status?: number; message?: string; error?: unknown };
-        console.error("[support] assistant failed", JSON.stringify({ ticket: ticket.id, status: err.status, message: err.message?.slice(0, 500), error: err.error }));
-        await handToHuman(ticket.id, "The assistant had a technical problem answering. Please reply to the customer.", false);
-        await db.supportMessage.create({ data: { ticketId: ticket.id, author: "ASSISTANT", body: "Sorry, I hit a problem answering that. I've passed your message to the team, and a person will reply." } });
-      }
-    } else {
-      await handToHuman(ticket.id, "New message (the assistant is switched off).", false);
-      await db.supportMessage.create({ data: { ticketId: ticket.id, author: "ASSISTANT", body: "Thanks. Your message is with the team, and a person will reply." } });
+    try {
+      const { handedOver } = await answer(ticket.id);
+      if (waiting && !handedOver) await handToHuman(ticket.id, null, ticket.urgent);
+    } catch (e) {
+      const err = e as { status?: number; message?: string; error?: unknown };
+      console.error("[support] assistant failed", JSON.stringify({ ticket: ticket.id, status: err.status, message: err.message?.slice(0, 500), error: err.error }));
+      await handToHuman(ticket.id, waiting ? null : "The assistant had a technical problem answering. Please reply to the customer.", ticket.urgent);
+      await say("Sorry, I hit a problem answering that. I've passed your message to the team, and a person will reply.");
     }
   } else {
-    // A person is handling it: tell them there's more, without the assistant jumping back in.
-    await handToHuman(ticket.id, null, ticket.urgent);
+    await handToHuman(ticket.id, ticket.status === "NEEDS_HUMAN" ? null : "New message (the assistant is switched off).", ticket.urgent);
+    await say("Thanks. Your message is with the team, and a person will reply.");
   }
   const fresh = await load(ticket.accessToken);
   return Response.json({ token: fresh.accessToken, ...publicTicket(fresh) });
