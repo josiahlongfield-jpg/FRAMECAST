@@ -37,10 +37,10 @@ export default function AppHeader({ email, plan }: { email: string; plan: string
           </form>
         </div>
       </div>
-      {/* On phones the links get their own row so the top bar never squeezes. */}
-      <nav className="flex gap-1 overflow-x-auto border-t border-slate-100 px-2 text-sm sm:hidden">
+      {/* On phones the links get their own rows, wrapping so every one stays visible. */}
+      <nav className="flex flex-wrap border-t border-slate-100 px-2 text-sm sm:hidden">
         {LINKS.map(([href, label]) => (
-          <Link key={href} href={href} className="shrink-0 px-3 py-2.5 text-slate-600 hover:text-slate-900">{label}</Link>
+          <Link key={href} href={href} className="px-3 py-2 text-slate-600 hover:text-slate-900">{label}</Link>
         ))}
       </nav>
       <SupportWidget signedIn />
