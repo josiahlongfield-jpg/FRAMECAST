@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import Logo from "@/components/Logo";
+import AppHeader from "@/components/AppHeader";
 import BrandMark from "@/components/BrandMark";
 import MadeWith from "@/components/MadeWith";
 import { brandOf, brandStyle } from "@/lib/branding";
@@ -66,19 +67,23 @@ export default async function Watch({ params }: Props) {
   const workspace = await db.workspace.findUniqueOrThrow({ where: { id: video.workspaceId } });
   // Clients see the business's branding; the team sees the normal app.
   const brand = isMember ? null : brandOf(workspace);
+  const memberEmail = viewer.kind === "member" ? (await db.user.findUnique({ where: { id: viewer.userId }, select: { email: true } }))?.email : null;
 
   return (
     <div className="min-h-screen bg-slate-50" style={brandStyle(brand?.color ?? null)}>
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
-          {isMember ? <Logo href="/library" /> : <BrandMark brand={brand} href="/inbox" />}
-          {!isMember && (
+      {isMember ? (
+        // The team gets the normal app menu, so they can get back to the Library and everything else.
+        <AppHeader email={memberEmail ?? ""} plan={PLANS[workspace.plan].name} />
+      ) : (
+        <header className="border-b border-slate-200 bg-white">
+          <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
+            <BrandMark brand={brand} href="/inbox" />
             <Link href="/inbox" className="shrink-0 text-sm font-medium text-slate-600 hover:text-slate-900">
               All my videos
             </Link>
-          )}
-        </div>
-      </header>
+          </div>
+        </header>
+      )}
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
         {expired ? (
           <p className="rounded-2xl border border-slate-200 bg-white p-16 text-center text-slate-600">This link has expired.</p>
