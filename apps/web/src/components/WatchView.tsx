@@ -29,7 +29,17 @@ type Video = {
   purgeAt: string | null;
 };
 
-type ClientOption = { id: string; name: string; link: string; teamKeyWrap: string | null };
+type ClientOption = { id: string; name: string; link: string; teamKeyWrap: string | null; assignedToId?: string | null };
+
+/** Members only: what's needed to send this recording to several clients at once. */
+type SendMany = {
+  meId: string;
+  /** Set when this page is one client's copy of another video. */
+  sourceId: string | null;
+  staff: { id: string; name: string }[];
+  /** Copies already sent to other clients. */
+  copies: { id: string; clientId: string }[];
+};
 
 export type WatchViewer = { kind: "member"; workspaceId: string; fingerprint: string | null } | { kind: "client"; clientId: string };
 
@@ -41,6 +51,7 @@ type Props = {
   clients: ClientOption[];
   sentToId: string | null;
   initialReplies: ReplyDTO[];
+  sendMany?: SendMany;
 };
 
 /**
@@ -112,6 +123,7 @@ function WatchBody({
   clients,
   sentToId,
   initialReplies,
+  sendMany,
   rootKey,
   teamKey,
 }: Props & { canEdit: boolean; rootKey: CryptoKey; teamKey?: CryptoKey }) {
@@ -205,7 +217,8 @@ function WatchBody({
   }
 
   async function remove() {
-    if (!confirm("Delete this video? This can't be undone.")) return;
+    const others = sendMany && !sendMany.sourceId && sendMany.copies.length ? " The copies sent to other clients are deleted too." : "";
+    if (!confirm(`Delete this video?${others} This can't be undone.`)) return;
     await fetch(`/api/videos/${video.id}`, { method: "DELETE" });
     router.push("/library");
   }
@@ -308,7 +321,13 @@ function WatchBody({
           </p>
         )}
 
-        {canEdit && (
+        {canEdit && sendMany?.sourceId && (
+          <p className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
+            This is {recipient?.name ?? "a client"}&apos;s own conversation about this recording.{" "}
+            <Link href={`/v/${sendMany.sourceId}`} className="font-medium text-brand-700 hover:underline">See the original</Link>
+          </p>
+        )}
+        {canEdit && !sendMany?.sourceId && (
           <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
             <label className="flex flex-wrap items-center gap-3 text-sm">
               <span className="font-medium text-slate-900">Send to</span>
@@ -331,6 +350,9 @@ function WatchBody({
                 ? `Only your team and ${recipient.name} can watch this. Send them their personal link.`
                 : "Nobody outside your team can watch this until you send it to a client."}
             </p>
+            {sendMany && teamKey && video.encrypted && video.status !== "RECORDING" && (
+              <SendToMany videoId={video.id} clients={clients} primaryId={sentTo} sendMany={sendMany} rootKey={rootKey} teamKey={teamKey} />
+            )}
           </div>
         )}
 
@@ -407,4 +429,116 @@ function ReplyMedia({ reply, conversationKey }: { reply: ReplyDTO; conversationK
     return <p className="rounded-lg bg-slate-100 px-3 py-3 text-xs text-slate-500">This reply has expired from our servers.</p>;
   }
   return <SecureMedia url={media.url} mediaKey={key} mimeType={media.mimeType} kind={reply.kind === "AUDIO" ? "AUDIO" : "VIDEO"} />;
+}
+
+/**
+ * Send this recording to several clients at once. Each gets their own copy
+ * and a private conversation; quick picks select everyone, your own clients,
+ * or the clients a staff member looks after.
+ */
+function SendToMany({ videoId, clients, primaryId, sendMany, rootKey, teamKey }: { videoId: string; clients: ClientOption[]; primaryId: string | null; sendMany: SendMany; rootKey: CryptoKey; teamKey: CryptoKey }) {
+  const [open, setOpen] = useState(false);
+  const [copies, setCopies] = useState(sendMany.copies);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [notify, setNotify] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string>();
+  const [copied, setCopied] = useState<string>();
+  const has = new Set([primaryId, ...copies.map((c) => c.clientId)].filter(Boolean));
+  const available = clients.filter((c) => !has.has(c.id));
+  const team = sendMany.staff.length > 1;
+  const name = (id: string) => clients.find((c) => c.id === id)?.name ?? "Client";
+  const pick = (ids: string[]) => setPicked(new Set(ids.filter((id) => !has.has(id))));
+  const toggle = (id: string) => setPicked((cur) => { const next = new Set(cur); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+
+  async function send() {
+    setBusy(true);
+    setNote(undefined);
+    try {
+      // Each client's copy of this video's key, wrapped with their own key here on this device.
+      const recipients = await Promise.all(
+        clients.filter((c) => picked.has(c.id) && c.teamKeyWrap).map(async (c) => ({ clientId: c.id, clientKeyWrap: await wrapKey(rootKey, await unwrapKey(c.teamKeyWrap!, teamKey)) })),
+      );
+      const res = await fetch(`/api/videos/${videoId}/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recipients, notify, keyFingerprint: await fingerprint(teamKey) }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Could not send");
+      setCopies((cur) => [...cur, ...data.sent]);
+      setPicked(new Set());
+      setNote(`Sent to ${data.sent.length} ${data.sent.length === 1 ? "client" : "clients"}${data.emailed ? `, ${data.emailed} emailed` : ""}.`);
+    } catch (err) {
+      setNote((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function copyLink(copy: { id: string; clientId: string }) {
+    const c = clients.find((x) => x.id === copy.clientId);
+    if (!c) return;
+    const url = new URL(c.link);
+    url.searchParams.set("v", copy.id);
+    await navigator.clipboard.writeText(await personalLink(url.toString(), c.teamKeyWrap, teamKey));
+    setCopied(copy.id);
+    setTimeout(() => setCopied(undefined), 2000);
+  }
+
+  return (
+    <div className="mt-4 border-t border-slate-100 pt-4 text-sm">
+      {copies.length > 0 && (
+        <div className="mb-3">
+          <p className="font-medium text-slate-900">Also sent to</p>
+          <ul className="mt-2 grid gap-1.5" data-testid="sent-copies">
+            {copies.map((c) => (
+              <li key={c.id} className="flex flex-wrap items-center justify-between gap-2">
+                <Link href={`/v/${c.id}`} className="text-slate-800 hover:text-brand-700 hover:underline">{name(c.clientId)}</Link>
+                <button onClick={() => copyLink(c)} className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs hover:bg-slate-50">{copied === c.id ? "Copied" : "Copy their link"}</button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {!open ? (
+        available.length > 0 && (
+          <button onClick={() => setOpen(true)} className="rounded-lg border border-slate-300 px-3 py-1.5 font-medium hover:bg-slate-50">Send to more clients</button>
+        )
+      ) : (
+        <div className="grid gap-3">
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Quick picks">
+            <button onClick={() => pick(available.map((c) => c.id))} className="rounded-full border border-slate-300 px-3 py-1 hover:bg-slate-50">All clients</button>
+            {team && <button onClick={() => pick(available.filter((c) => c.assignedToId === sendMany.meId).map((c) => c.id))} className="rounded-full border border-slate-300 px-3 py-1 hover:bg-slate-50">My clients</button>}
+            {team && sendMany.staff.filter((s) => s.id !== sendMany.meId).map((s) => (
+              <button key={s.id} onClick={() => pick(available.filter((c) => c.assignedToId === s.id).map((c) => c.id))} className="rounded-full border border-slate-300 px-3 py-1 hover:bg-slate-50">{s.name}&apos;s clients</button>
+            ))}
+            {picked.size > 0 && <button onClick={() => setPicked(new Set())} className="rounded-full px-3 py-1 text-slate-500 hover:text-slate-900">Clear</button>}
+          </div>
+          <ul className="grid max-h-64 gap-1 overflow-y-auto rounded-lg border border-slate-200 p-2 sm:grid-cols-2">
+            {available.map((c) => (
+              <li key={c.id}>
+                <label className="flex items-center gap-2 rounded px-2 py-1 hover:bg-slate-50">
+                  <input type="checkbox" checked={picked.has(c.id)} onChange={() => toggle(c.id)} disabled={!c.teamKeyWrap} />
+                  <span>{c.name}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+          <label className="flex items-center gap-2 text-slate-700">
+            <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} />
+            Email clients who have an address on file
+          </label>
+          <div className="flex items-center gap-3">
+            <button onClick={send} disabled={busy || picked.size === 0} className="rounded-lg bg-brand-600 px-4 py-2 font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
+              {busy ? "Sending…" : `Send to ${picked.size} ${picked.size === 1 ? "client" : "clients"}`}
+            </button>
+            <button onClick={() => setOpen(false)} className="text-slate-500 hover:text-slate-900">Done</button>
+          </div>
+          <p className="text-xs text-slate-500">Each client gets a private copy. They can reply, but never see each other&apos;s replies.</p>
+        </div>
+      )}
+      {note && <p role="status" className="mt-2 text-slate-700">{note}</p>}
+    </div>
+  );
 }

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import Logo from "@/components/Logo";
 import BrandMark from "@/components/BrandMark";
+import MadeWith from "@/components/MadeWith";
 import { brandOf, brandStyle } from "@/lib/branding";
 import WatchView from "@/components/WatchView";
 import SureFramePromo from "@/components/SureFramePromo";
@@ -52,11 +53,14 @@ export default async function Watch({ params }: Props) {
   }
 
   const isMember = viewer.kind === "member";
-  const [replies, clients] = await Promise.all([
+  const [replies, clients, staff, copies] = await Promise.all([
     db.reply.findMany({ where: { videoId: id, ...visibleReplies }, orderBy: { createdAt: "asc" }, include: { media: true } }),
     isMember
       ? db.client.findMany({ where: { workspaceId: video.workspaceId, removedAt: null }, orderBy: { name: "asc" } })
       : Promise.resolve([]),
+    isMember ? db.membership.findMany({ where: { workspaceId: video.workspaceId }, include: { user: true }, orderBy: { id: "asc" } }) : Promise.resolve([]),
+    // The other clients this recording went to, each with their own conversation.
+    isMember && !video.sourceId ? db.video.findMany({ where: { sourceId: video.id }, select: { id: true, clientId: true }, orderBy: { createdAt: "asc" } }) : Promise.resolve([]),
   ]);
   const expired = !!video.expiresAt && video.expiresAt < new Date();
   const workspace = await db.workspace.findUniqueOrThrow({ where: { id: video.workspaceId } });
@@ -89,13 +93,24 @@ export default async function Watch({ params }: Props) {
                 ? { kind: "member", workspaceId: video.workspaceId, fingerprint: workspace.keyFingerprint }
                 : { kind: "client", clientId: viewer.client.id }
             }
-            clients={clients.map((c) => ({ id: c.id, name: c.name, link: clientLink(c.token, video.id), teamKeyWrap: c.teamKeyWrap }))}
+            clients={clients.map((c) => ({ id: c.id, name: c.name, link: clientLink(c.token, video.id), teamKeyWrap: c.teamKeyWrap, assignedToId: c.assignedToId }))}
+            sendMany={
+              viewer.kind === "member"
+                ? {
+                    meId: viewer.userId,
+                    sourceId: video.sourceId,
+                    staff: staff.map((m) => ({ id: m.userId, name: m.user.name ?? m.user.email.split("@")[0] })),
+                    copies: copies.filter((c) => c.clientId).map((c) => ({ id: c.id, clientId: c.clientId! })),
+                  }
+                : undefined
+            }
             sentToId={video.clientId}
             initialReplies={replies.map((r) => replyDTO(r, video.ownerId))}
           />
           </>
         )}
       </main>
+      {!isMember && <MadeWith />}
     </div>
   );
 }

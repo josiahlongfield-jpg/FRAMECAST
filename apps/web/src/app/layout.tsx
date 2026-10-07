@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(process.env.APP_URL ?? "http://localhost:3000"),
   title: { default: `${BRAND.name}: ${BRAND.tagline}`, template: `%s · ${BRAND.name}` },
   description:
-    "Record your screen and camera in the browser or on your phone, and share a link instantly. Crash-proof recording, crisp quality, simple pricing.",
+    "Private, end-to-end encrypted video messages between your business and your clients. Recordings that never get lost, clients who never pay.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

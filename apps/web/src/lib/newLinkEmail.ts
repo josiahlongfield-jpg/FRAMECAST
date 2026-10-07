@@ -15,6 +15,7 @@ ${o.logoUrl ? `<p style="margin:0 0 20px"><img src="${esc(o.logoUrl)}" alt="${es
 <p style="font-size:16px;margin:0 0 16px">${esc(lead)}</p>
 <p style="margin:24px 0"><a href="${esc(o.link)}" style="background:${accent};color:#fff;text-decoration:none;padding:10px 18px;border-radius:10px;font-weight:600;display:inline-block">Open your page</a></p>
 <p style="font-size:12px;color:#64748b;margin:0">${esc(after)}</p>
+<p style="font-size:11px;color:#94a3b8;margin:24px 0 0">Sent with SureFrame</p>
 </div>`;
   return { subject, text, html };
 }

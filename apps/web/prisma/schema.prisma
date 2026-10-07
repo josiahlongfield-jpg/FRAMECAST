@@ -196,6 +196,12 @@ model Video {
   parentKeyWrap   String? /// reply media key, wrapped with the conversation's video key
   /// When the relay copy is deleted (null = kept, e.g. cloud backup).
   purgeAt         DateTime?
+  /// Set on a copy made to send the same recording to another client. The
+  /// copy shares the original's stored file and key but has its own private
+  /// conversation, so clients never see each other's replies.
+  sourceId        String?
+  source          Video?       @relation("VideoCopies", fields: [sourceId], references: [id], onDelete: Cascade)
+  copies          Video[]      @relation("VideoCopies")
   /// Set when this video is the media of a reply in another video's conversation.
   replyToId       String?
   /// sha256 of a one-time token that lets a guest (no account) upload this reply's media.
@@ -209,6 +215,7 @@ model Video {
 
   @@index([workspaceId, createdAt])
   @@index([replyToId])
+  @@index([sourceId])
 }
 
 model UploadPart {

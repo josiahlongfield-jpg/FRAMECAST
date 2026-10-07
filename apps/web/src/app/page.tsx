@@ -10,25 +10,43 @@ const PILLARS = [
   },
   {
     title: "Share in a second",
-    body: "Your link is ready the moment you hit stop. No “processing” screen, no waiting for a render before your teammate can watch.",
+    body: "Your link is ready the moment you hit stop. No “processing” screen, no waiting for a render before your client can watch.",
     icon: "M10 14l11-11M21 3l-7 18-3-8-8-3z",
   },
   {
-    title: "Crisp on every screen",
-    body: "Up to 4K screen capture with adaptive streaming, so viewers get sharp text on desktop and smooth playback on a phone.",
-    icon: "M3 5h18v12H3zM8 21h8M12 17v4",
+    title: "Private by design",
+    body: "Every video is encrypted on your device before it uploads. Only you, your team and the client you send it to can open it. Not even we can.",
+    icon: "M6 11h12v10H6zM9 11V7a3 3 0 0 1 6 0v4",
   },
   {
-    title: "Web, iPhone and Android",
-    body: "Record from any browser with nothing to install, or from our native mobile apps. Your library stays in sync everywhere.",
+    title: "Works in any browser",
+    body: "Record on a computer or a phone with nothing to install. iPhone and Android apps are coming soon.",
     icon: "M7 2h10v20H7zM11 18h2",
   },
+  {
+    title: "Everything for each client in one place",
+    body: "Send a video, add their to-dos and notes, and set email reminders, all private to you and them.",
+    icon: "M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01",
+  },
+  {
+    title: "Your brand, front and centre",
+    body: "On paid plans, your logo and colours are on every page and email your clients see.",
+    icon: "M12 3a9 9 0 1 0 0 18c1 0 1.5-.7 1.5-1.5 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.8.7-1.5 1.5-1.5H16a5 5 0 0 0 5-5c0-4-4-7.8-9-7.8zM7.5 11h.01M10.5 7.5h.01M15 8h.01",
+  },
+];
+
+const AUDIENCES = "Coaches, personal trainers, consultants, tutors, agencies, clinics and many more.";
+
+const PRIVACY = [
+  ["Encrypted on your device", "Videos, replies, to-dos and notes are locked before they leave your phone or computer. Our servers only ever hold scrambled data."],
+  ["Every client gets their own copy", "Send one video to one client or a hundred. Each opens it from their own private link, and nobody sees anyone else's replies."],
+  ["Staff who leave are locked out", "Remove someone from your team and every key and client link is reset, so they can't open anything again."],
 ];
 
 const STEPS = [
   ["Record", "Pick screen, camera, or both. Press start."],
-  ["Share", "Copy the link. It works instantly for anyone you send it to."],
-  ["Reply", "Viewers answer with their own video, a voice note or a message. No account needed."],
+  ["Send", "Pick a client, or several at once. Only they can open it, from their own private link."],
+  ["Reply", "Clients answer with their own video, a voice note or a message. No account needed."],
 ];
 
 export default function Home() {
@@ -60,6 +78,7 @@ export default function Home() {
               </Link>
             </div>
             <p className="mt-4 text-sm text-slate-500">No download. No credit card.</p>
+            <p className="mx-auto mt-6 max-w-2xl text-sm font-medium text-slate-700">{AUDIENCES}</p>
 
             <div className="mx-auto mt-16 max-w-4xl rounded-2xl border border-slate-200 bg-white p-2 shadow-xl shadow-brand-900/5">
               <div className="relative aspect-video overflow-hidden rounded-xl bg-gradient-to-br from-slate-800 to-slate-950">
@@ -77,7 +96,7 @@ export default function Home() {
         </section>
 
         <section className="border-t border-slate-100 bg-white py-20">
-          <div className="mx-auto grid max-w-6xl gap-8 px-4 sm:grid-cols-2 sm:px-6 lg:grid-cols-4">
+          <div className="mx-auto grid max-w-6xl gap-8 px-4 sm:grid-cols-2 sm:px-6 lg:grid-cols-3">
             {PILLARS.map((p) => (
               <div key={p.title}>
                 <div className="mb-4 grid h-10 w-10 place-items-center rounded-lg bg-brand-50 text-brand-600">
@@ -105,13 +124,32 @@ export default function Home() {
           </div>
         </section>
 
+        <section className="border-t border-slate-100 bg-white py-20">
+          <div className="mx-auto max-w-6xl px-4 sm:px-6">
+            <h2 className="text-center text-3xl font-semibold tracking-tight text-slate-900">How we keep it private</h2>
+            <div className="mt-12 grid gap-6 sm:grid-cols-3">
+              {PRIVACY.map(([t, b]) => (
+                <div key={t} className="rounded-2xl border border-slate-200 p-6">
+                  <h3 className="font-semibold text-slate-900">{t}</h3>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">{b}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="bg-brand-600 py-10 text-center text-white">
+          <p className="mx-auto max-w-3xl px-4 text-lg font-medium sm:px-6">Your clients never pay, never sign up and never see third-party ads.</p>
+        </section>
+
         <section className="py-20">
           <div className="mx-auto max-w-4xl px-4 text-center sm:px-6">
             <h2 className="text-3xl font-semibold tracking-tight text-slate-900">Ready for your whole team</h2>
             <p className="mt-4 text-slate-600">
-              Workspaces, shared libraries, SSO and admin controls on the Business plan. Viewers never need an account or a seat.
+              Studio includes 3 staff logins and Agency includes 10. Share one client list, assign clients to staff, and keep billing with the owner. Clients never need an account.
             </p>
-            <Link href="/pricing" className="mt-8 inline-block rounded-xl bg-slate-900 px-6 py-3 font-semibold text-white hover:bg-slate-800">
+            <p className="mt-6 font-medium text-slate-900">Free for 3 clients. Paid plans from $15 a month.</p>
+            <Link href="/pricing" className="mt-6 inline-block rounded-xl bg-slate-900 px-6 py-3 font-semibold text-white hover:bg-slate-800">
               Compare plans
             </Link>
           </div>

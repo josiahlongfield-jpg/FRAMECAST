@@ -22,7 +22,7 @@ export default async function Library({ searchParams }: { searchParams: Promise<
   // On a team, "Mine" is what I recorded plus anything for the clients I look after.
   const mine = team && (await searchParams).show === "mine";
   const videos = await db.video.findMany({
-    where: { workspaceId: workspace.id, replyToId: null, ...(mine ? { OR: [{ ownerId: user.id }, { client: { assignedToId: user.id } }] } : {}) },
+    where: { workspaceId: workspace.id, replyToId: null, sourceId: null, ...(mine ? { OR: [{ ownerId: user.id }, { client: { assignedToId: user.id } }, { copies: { some: { client: { assignedToId: user.id } } } }] } : {}) },
     orderBy: { createdAt: "desc" },
   });
 

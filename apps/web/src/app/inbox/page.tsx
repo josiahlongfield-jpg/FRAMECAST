@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import BrandMark from "@/components/BrandMark";
+import MadeWith from "@/components/MadeWith";
 import { brandOf, brandStyle } from "@/lib/branding";
 import ClientKeyCapture from "@/components/ClientKeyCapture";
 import ClientPlanner from "@/components/ClientPlanner";
@@ -80,6 +81,7 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
           ))
         )}
       </main>
+      <MadeWith />
     </div>
   );
 }

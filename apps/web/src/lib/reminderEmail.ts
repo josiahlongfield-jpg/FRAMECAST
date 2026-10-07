@@ -45,6 +45,7 @@ ${message ? `<p style="font-size:15px;white-space:pre-wrap;margin:0 0 16px;color
 <p style="margin:24px 0"><a href="${esc(o.link)}" style="background:${accent};color:#fff;text-decoration:none;padding:10px 18px;border-radius:10px;font-weight:600;display:inline-block">Open your list</a></p>
 <p style="font-size:12px;color:#64748b;margin:0">For privacy, the details are only shown in the app.</p>
 ${o.unsubscribe ? `<p style="font-size:12px;color:#64748b;margin:8px 0 0"><a href="${esc(o.unsubscribe)}" style="color:#64748b">Stop these reminders</a></p>` : ""}
+<p style="font-size:11px;color:#94a3b8;margin:24px 0 0">Sent with SureFrame</p>
 </div>`;
   return { subject, text, html, when };
 }
