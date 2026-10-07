@@ -58,7 +58,7 @@ export default function Home() {
           <div className="absolute inset-x-0 top-0 -z-10 h-[520px] bg-gradient-to-b from-brand-50 to-white" />
           <div className="mx-auto max-w-6xl px-4 pb-20 pt-20 text-center sm:px-6 sm:pt-28">
             <p className="mx-auto mb-5 inline-flex rounded-full border border-brand-100 bg-white px-3 py-1 text-xs font-medium text-brand-700">
-              Built so you never have to record it twice
+              Crash-safe. Client-ready. Private by design.
             </p>
             <h1 className="mx-auto max-w-3xl text-4xl font-semibold tracking-tight text-slate-900 sm:text-6xl">
               One take is <span className="block text-brand-600 sm:inline">all it takes.</span>
