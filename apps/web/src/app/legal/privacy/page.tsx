@@ -1,17 +1,126 @@
-import SiteHeader from "@/components/SiteHeader";
-import SiteFooter from "@/components/SiteFooter";
+import LegalPage from "@/components/LegalPage";
+import { LEGAL, operatorLine } from "@/lib/legal";
 
 export const metadata = { title: "Privacy Policy" };
 
 export default function Page() {
+  const mail = <a href={`mailto:${LEGAL.email}`}>{LEGAL.email}</a>;
   return (
-    <>
-      <SiteHeader />
-      <main className="mx-auto max-w-3xl px-4 py-16 sm:px-6">
-        <h1 className="text-3xl font-semibold text-slate-900">Privacy Policy</h1>
-        <p className="mt-6 text-slate-600">This page will hold the final Privacy Policy, reviewed by counsel before public launch.</p>
-      </main>
-      <SiteFooter />
-    </>
+    <LegalPage title="Privacy Policy">
+      <p>
+        {operatorLine()} (&ldquo;we&rdquo;, &ldquo;us&rdquo;). This policy explains what personal information we collect when you use {LEGAL.product}, why, and what
+        choices you have. We handle personal information in line with the Australian Privacy Principles in the Privacy Act 1988 (Cth).
+      </p>
+
+      <h2>The short version</h2>
+      <ul>
+        <li>Your videos, replies, to-dos and notes are end-to-end encrypted in your browser. We can&rsquo;t open them, and neither can anyone we work with.</li>
+        <li>We collect only what we need to run your account, bill you and help you.</li>
+        <li>We don&rsquo;t sell personal information, show ads or use advertising trackers.</li>
+      </ul>
+
+      <h2>What we collect</h2>
+      <ul>
+        <li><strong>Account details:</strong> your name, email address, business name, branding and settings.</li>
+        <li><strong>Client details you add:</strong> the names and email addresses of clients you invite, so we can send them links and reminders.</li>
+        <li>
+          <strong>Encrypted content:</strong> videos, replies, to-dos, notes and schedules. These are encrypted on your device before they reach us, and the keys stay with
+          you and your clients, so we only ever hold scrambled data. We do keep basic information about them, such as when they were created, their size and length,
+          and who they were sent to.
+        </li>
+        <li>
+          <strong>Billing:</strong> your plan and subscription status. Card details go straight to our payment provider, Stripe, and we never see or store them.
+        </li>
+        <li>
+          <strong>Support conversations:</strong> what you type into our help chat, and the email address you give us there.
+        </li>
+        <li>
+          <strong>Technical information:</strong> IP address, browser type and logs of requests, used to keep the service secure, prevent abuse and fix problems.
+        </li>
+      </ul>
+
+      <h2>How we use it</h2>
+      <ul>
+        <li>To provide {LEGAL.product}: storing and delivering your videos, sending client links, reminders and sign-in emails.</li>
+        <li>To bill you and manage your subscription.</li>
+        <li>To answer support requests.</li>
+        <li>To keep the service secure, prevent misuse and meet our legal obligations.</li>
+        <li>To tell you about important changes to the service. We&rsquo;ll only send marketing emails if you&rsquo;ve agreed to them, and you can opt out at any time.</li>
+      </ul>
+
+      <h2>Our AI support assistant</h2>
+      <p>
+        The help chat is answered first by an AI assistant provided by Anthropic. Your messages, and for signed-in customers a summary of your plan and usage, are sent
+        to Anthropic to generate replies. The assistant can&rsquo;t see your videos, replies, to-dos or notes. Anything it can&rsquo;t resolve is passed to a person on our
+        team, who can read the conversation. Please don&rsquo;t share passwords, recovery keys or card numbers in the chat.
+      </p>
+
+      <h2>Who we share it with</h2>
+      <p>We use trusted service providers to run {LEGAL.product}. They may only use your information to provide their service to us:</p>
+      <ul>
+        <li>Vercel (hosting) and our database and file storage providers, which store your account data and encrypted content.</li>
+        <li>Stripe (payments and subscription management).</li>
+        <li>Our email delivery provider (sign-in links, client links and reminders).</li>
+        <li>Anthropic (the AI support assistant).</li>
+        <li>Google Workspace (our support inbox).</li>
+      </ul>
+      <p>We may also disclose information if the law requires it, or to protect the rights and safety of our users or others.</p>
+
+      <h2>Overseas storage</h2>
+      <p>
+        Our providers store and process information outside Australia, mainly in the United States. We choose providers with strong security and privacy practices.
+        Your encrypted content stays encrypted wherever it&rsquo;s stored.
+      </p>
+
+      <h2>How long we keep it</h2>
+      <ul>
+        <li>
+          Without cloud backup, the encrypted copy of a video on our servers is deleted {LEGAL.retentionDays} days after it&rsquo;s recorded. The original stays on the
+          device it was recorded on.
+        </li>
+        <li>With cloud backup, encrypted content is kept until you delete it or close your account.</li>
+        <li>Account details are kept while your account is open. When you delete your account, we delete your workspace and its content.</li>
+        <li>We keep billing records for as long as tax law requires, usually 5 years.</li>
+      </ul>
+
+      <h2>Cookies and local storage</h2>
+      <p>
+        We use a cookie to keep you signed in, and your browser&rsquo;s local storage to hold your encryption keys and unsent recordings on your device. We don&rsquo;t use
+        advertising or tracking cookies.
+      </p>
+
+      <h2>Your choices and rights</h2>
+      <ul>
+        <li>You can view and update your account details in Settings.</li>
+        <li>You can export your data, or delete your account, from Settings &gt; Account.</li>
+        <li>You can ask us for a copy of the personal information we hold about you, or ask us to correct it, by emailing {mail}.</li>
+        <li>Clients can turn off reminder emails from the link in any reminder.</li>
+      </ul>
+
+      <h2>Clients of businesses using {LEGAL.product}</h2>
+      <p>
+        If a business invited you as a client, that business decides what to send you and holds your details. Contact them first about your information. You can also
+        email us and we&rsquo;ll help.
+      </p>
+
+      <h2>Security</h2>
+      <p>
+        We use end-to-end encryption for content, encryption in transit, and access controls on our systems. No system is perfectly secure. If a data breach is likely
+        to cause you serious harm, we&rsquo;ll notify you and the Office of the Australian Information Commissioner as the law requires.
+      </p>
+
+      <h2>Age</h2>
+      <p>{LEGAL.product} is for people aged {LEGAL.minimumAge} and over. We don&rsquo;t knowingly collect information from children.</p>
+
+      <h2>Changes</h2>
+      <p>We&rsquo;ll update this page when our practices change, and tell you by email about significant changes.</p>
+
+      <h2>Contact and complaints</h2>
+      <p>
+        Email {mail} with any question or complaint about privacy, and we&rsquo;ll reply within 30 days. If you&rsquo;re not satisfied with our response, you can
+        contact the Office of the Australian Information Commissioner at <a href="https://www.oaic.gov.au">oaic.gov.au</a>.
+      </p>
+      {LEGAL.postalAddress && <p>Postal address: {LEGAL.postalAddress}</p>}
+    </LegalPage>
   );
 }
