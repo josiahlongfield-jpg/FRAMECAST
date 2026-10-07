@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { ACTIVE_STATUSES, catalogKey, catalogOf, MANAGED_PAYMENTS, PLAN_ITEM, planOf, priceId } from "@/lib/billing";
-import { PAID_PLANS, PLANS, staffSeatLimit, TEAM_PLANS } from "@/lib/plans";
+import { catalogKey, MANAGED_PAYMENTS, PLAN_ITEM, priceId } from "@/lib/billing";
+import { PAID_PLANS } from "@/lib/plans";
+import { planChange } from "@/lib/planChange";
 import { handle, HttpError, requireRole, requireUser } from "@/lib/session";
 import { appUrl, stripe } from "@/lib/stripe";
 import { limitByIp } from "@/lib/rateLimit";
@@ -19,38 +20,28 @@ export const POST = handle(async (req: Request) => {
   const price = await priceId(catalogKey(PLAN_ITEM[plan], interval));
 
   // Already subscribed: switch plans on the existing subscription instead of starting a second one.
-  if (workspace.stripeSubscriptionId) {
-    const sub = await stripe().subscriptions.retrieve(workspace.stripeSubscriptionId);
-    if (ACTIVE_STATUSES.has(sub.status)) {
-      const item = sub.items.data.find((i) => planOf(i.price));
-      if (item?.price.id !== price) {
-        const used = await db.client.count({ where: { workspaceId: workspace.id, removedAt: null } });
-        if (PLANS[plan].clientSeats + workspace.extraClientSeats < used) {
-          throw new HttpError(400, `You have ${used} clients, more than ${PLANS[plan].name} allows. Remove some or add seats first.`);
-        }
-        const staff = await db.membership.count({ where: { workspaceId: workspace.id } });
-        if (staffSeatLimit({ plan, extraStaffSeats: workspace.extraStaffSeats }) < staff) {
-          throw new HttpError(400, `You have ${staff} people on your team, more than ${PLANS[plan].name} allows. Remove some first.`);
-        }
-        // Every item on a subscription bills on the same interval, so extras move with the plan.
-        const extras = await Promise.all(
-          sub.items.data
-            .filter((i) => i !== item)
-            .map(async (i) => {
-              const entry = catalogOf(i.price);
-              // Extra staff only exist on team plans.
-              if (entry?.item === "staff_seat" && !TEAM_PLANS.includes(plan)) return { id: i.id, deleted: true as const };
-              return entry && entry.interval !== interval ? { id: i.id, price: await priceId(catalogKey(entry.item, interval)) } : null;
-            }),
-        );
-        await stripe().subscriptions.update(sub.id, {
-          items: [item ? { id: item.id, price } : { price, quantity: 1 }, ...extras.filter((x) => x !== null)],
-          proration_behavior: "create_prorations",
-        });
-        await db.workspace.update({ where: { id: workspace.id }, data: { plan } });
-      }
-      return Response.json({ url: appUrl("/settings/billing?upgraded=1") });
+  // It's paid for now, and an upgrade only applies once that payment succeeds.
+  const change = await planChange(workspace, plan, interval);
+  if (change) {
+    if (change.same) return Response.json({ url: appUrl("/settings/billing") });
+    const updated = await stripe().subscriptions.update(change.sub.id, {
+      items: change.items,
+      // The new plan starts today at its full price, less a credit for the unused part of the old one.
+      billing_cycle_anchor: { type: "now" },
+      proration_behavior: "always_invoice",
+      // Pending updates can't remove items; those changes are downgrades with nothing to pay.
+      ...(change.removesItems ? {} : { payment_behavior: "pending_if_incomplete" as const }),
+      expand: ["latest_invoice"],
+    });
+    if (updated.pending_update) {
+      // The card was declined or needs confirming: pay on Stripe's invoice page, then the change applies.
+      const invoice = updated.latest_invoice;
+      const pay = invoice && typeof invoice !== "string" ? invoice.hosted_invoice_url : null;
+      if (pay) return Response.json({ url: pay });
+      throw new HttpError(402, "Your payment didn't go through. Update your card and try again.");
     }
+    await db.workspace.update({ where: { id: workspace.id }, data: { plan } });
+    return Response.json({ url: appUrl("/settings/billing?upgraded=1") });
   }
 
   let customer = workspace.stripeCustomerId;

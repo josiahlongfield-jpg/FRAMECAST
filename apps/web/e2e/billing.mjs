@@ -4,7 +4,7 @@
 import { chromium } from "@playwright/test";
 import Stripe from "stripe";
 import { PrismaClient } from "@prisma/client";
-import { start, state, createSubscription } from "./fake-stripe.mjs";
+import { start, state, control, createSubscription } from "./fake-stripe.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const ok = (label, cond) => {
@@ -66,15 +66,44 @@ res = await api("/api/billing/backup", { enabled: true });
 ok("cloud backup added", res.ok() && sub.items.data.some((i) => i.price.lookup_key === "sureframe_cloud_backup_monthly"));
 await webhook("customer.subscription.updated", sub);
 
-// 4) Upgrading switches the plan in place instead of opening a second checkout.
+// 4) Upgrading switches the plan in place, after the owner confirms what's charged and to which card.
 const sessionsBefore = state.sessions.length;
-res = await api("/api/billing/checkout", { plan: "STUDIO" });
-const up = await res.json();
-ok("upgrade goes straight back to billing", res.ok() && up.url.endsWith("/settings/billing?upgraded=1") && state.sessions.length === sessionsBefore);
+const updateBefore = sub.lastUpdate;
+await page.route("https://billing.stripe.test/**", (r) => r.fulfill({ body: "portal" }));
+await page.goto(BASE + "/pricing");
+await page.click("button:has-text('Get Studio')");
+const dialog = await page.waitForSelector("[data-testid=plan-confirm]");
+const confirmText = await dialog.textContent();
+ok("nothing changes before confirming", sub.items.data.some((i) => i.price.lookup_key === "sureframe_solo_monthly") && sub.lastUpdate === updateBefore);
+ok("confirm shows the card on file", /Visa ending 4242/.test(confirmText));
+ok("confirm shows full price, credit and amount due", /Studio, from today/.test(confirmText) && /Unused time on your current plan/.test(confirmText) && /Due today/.test(confirmText), confirmText);
+ok("confirm says billing restarts today", /renews on this date each month/.test(confirmText));
+await page.click("text=Use a different card");
+await page.waitForURL("https://billing.stripe.test/**");
+const cardFlow = state.portalSessions.at(-1);
+ok("different card opens Stripe's card update", cardFlow.flow_data?.type === "payment_method_update" && cardFlow.flow_data.after_completion.redirect.return_url.endsWith("/pricing"));
+await page.goto(BASE + "/pricing");
+await page.click("button:has-text('Get Studio')");
+await page.waitForSelector("[data-testid=plan-confirm]");
+await page.click("button:has-text('and switch')");
+await page.waitForURL((u) => u.pathname === "/settings/billing" && u.searchParams.get("upgraded") === "1");
+ok("upgrade goes straight back to billing, no second checkout", state.sessions.length === sessionsBefore);
+ok("upgrade charges now and restarts the billing date", sub.lastUpdate.billing_cycle_anchor?.type === "now" && sub.lastUpdate.proration_behavior === "always_invoice");
+ok("upgrade only applies once paid", sub.lastUpdate.payment_behavior === "pending_if_incomplete");
 ok("plan item switched to Studio", sub.items.data.some((i) => i.price.lookup_key === "sureframe_studio_monthly") && !sub.items.data.some((i) => i.price.lookup_key === "sureframe_solo_monthly"));
 ok("seats kept through the upgrade", sub.items.data.find((i) => i.price.lookup_key === "sureframe_client_seat_monthly")?.quantity === 3);
 await webhook("customer.subscription.updated", sub);
 ok("billing page shows Studio", /Studio plan/.test(await planText()));
+await page.goto(BASE + "/pricing");
+await page.click("button:has-text('Get Studio')");
+ok("current plan isn't offered again", !!(await page.waitForSelector("text=You're already on Studio", { timeout: 5000 }).catch(() => null)));
+
+// 4a) A declined card leaves the plan as it was and sends the owner to pay the invoice.
+control.declineNext = true;
+res = await api("/api/billing/checkout", { plan: "AGENCY" });
+const declined = await res.json();
+ok("declined upgrade goes to Stripe's invoice page", res.ok() && declined.url === "https://invoice.stripe.test/pay");
+ok("declined upgrade keeps Studio", /Studio plan/.test(await planText()) && sub.items.data.some((i) => i.price.lookup_key === "sureframe_studio_monthly"));
 
 // 4b) Switching to yearly moves the plan and every add-on to yearly prices together.
 res = await api("/api/billing/checkout", { plan: "STUDIO", interval: "year" });

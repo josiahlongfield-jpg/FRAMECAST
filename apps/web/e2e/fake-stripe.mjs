@@ -11,7 +11,9 @@ const saved = existsSync(FILE) ? JSON.parse(readFileSync(FILE, "utf8")) : {};
 let n = saved.n ?? 0;
 const RUN = Math.random().toString(36).slice(2, 8);
 const id = (p) => `${p}_${RUN}${(++n).toString().padStart(6, "0")}`;
-export const state = { products: [], prices: [], customers: [], sessions: [], subs: [], portalConfigs: [], deletedCustomers: [], ...saved.state };
+export const state = { products: [], prices: [], customers: [], sessions: [], subs: [], portalConfigs: [], portalSessions: [], deletedCustomers: [], ...saved.state };
+// Set to true to make the next payment on a subscription change fail.
+export const control = { declineNext: false };
 const persist = () => writeFileSync(FILE, JSON.stringify({ n, state }));
 
 // Decode Stripe's form encoding (a[b][0][c]=x) into nested objects.
@@ -45,7 +47,8 @@ function subItem(price, quantity, end) {
 export function createSubscription(customer, workspaceId, lookupKey, status = "active") {
   const price = state.prices.find((p) => p.lookup_key === lookupKey);
   const end = Math.floor(Date.now() / 1000) + 30 * 86400;
-  const sub = { id: id("sub"), object: "subscription", customer, status, metadata: { workspaceId }, items: list([subItem(price, 1, end)]) };
+  const card = { id: id("pm"), object: "payment_method", type: "card", card: { brand: "visa", last4: "4242" } };
+  const sub = { id: id("sub"), object: "subscription", customer, status, metadata: { workspaceId }, default_payment_method: card, items: list([subItem(price, 1, end)]) };
   state.subs.push(sub);
   return sub;
 }
@@ -83,6 +86,26 @@ export function start(port = 12111) {
       state.customers.push(c);
       return send(200, c);
     }
+    if ((m = p.match(/^\/v1\/customers\/([^/]+)$/)) && req.method === "GET") {
+      return send(200, { id: m[1], object: "customer", invoice_settings: { default_payment_method: null } });
+    }
+    if (p === "/v1/invoices/create_preview" && req.method === "POST") {
+      // Half the difference in price, as if switching halfway through the period.
+      const sub = state.subs.find((s) => s.id === form.subscription);
+      const cost = (items) => items.reduce((t, i) => t + (i.price?.unit_amount ?? 0) * (i.quantity ?? 1), 0);
+      const after = sub.items.data
+        .filter((i) => !(form.subscription_details.items ?? []).some((x) => x.id === i.id && x.deleted === "true"))
+        .map((i) => {
+          const change = (form.subscription_details.items ?? []).find((x) => x.id === i.id);
+          return change?.price ? { price: state.prices.find((x) => x.id === change.price), quantity: i.quantity } : i;
+        });
+      // The new items in full from today, less half the current ones as unused time.
+      const full = cost(after);
+      const credit = -Math.round(cost(sub.items.data) / 2);
+      state.previews = [...(state.previews ?? []), form];
+      const lines = list([{ amount: full }, { amount: credit }]);
+      return send(200, { object: "invoice", amount_due: Math.max(0, full + credit), total: full + credit, currency: "usd", lines });
+    }
     if ((m = p.match(/^\/v1\/customers\/([^/]+)$/)) && req.method === "DELETE") {
       state.deletedCustomers.push(m[1]);
       for (const s of state.subs) if (s.customer === m[1]) s.status = "canceled";
@@ -97,6 +120,11 @@ export function start(port = 12111) {
       const sub = state.subs.find((s) => s.id === m[1]);
       if (!sub) return send(404, { error: { type: "invalid_request_error", code: "resource_missing", message: "No such subscription" } });
       if (req.method === "POST") {
+        sub.lastUpdate = form;
+        if (control.declineNext && form.payment_behavior === "pending_if_incomplete") {
+          control.declineNext = false;
+          return send(200, { ...sub, pending_update: { expires_at: 0 }, latest_invoice: { id: id("in"), hosted_invoice_url: "https://invoice.stripe.test/pay" } });
+        }
         for (const it of [].concat(form.items ?? [])) {
           const existing = sub.items.data.find((i) => i.id === it.id);
           const price = it.price ? state.prices.find((x) => x.id === it.price) : existing?.price;
@@ -105,7 +133,7 @@ export function start(port = 12111) {
           else sub.items.data.push(subItem(price, Number(it.quantity ?? 1), sub.items.data[0]?.current_period_end));
         }
       }
-      return send(200, sub);
+      return send(200, req.method === "POST" ? { ...sub, pending_update: null, latest_invoice: { id: id("in"), hosted_invoice_url: null } } : sub);
     }
     if (p === "/v1/billing_portal/configurations" && req.method === "GET") return send(200, list(state.portalConfigs));
     if (p === "/v1/billing_portal/configurations" && req.method === "POST") {
@@ -114,6 +142,7 @@ export function start(port = 12111) {
       return send(200, c);
     }
     if (p === "/v1/billing_portal/sessions" && req.method === "POST") {
+      state.portalSessions.push(form);
       return send(200, { id: id("bps"), object: "billing_portal.session", url: "https://billing.stripe.test/portal", configuration: form.configuration });
     }
     send(404, { error: { type: "invalid_request_error", message: `fake-stripe: no route ${req.method} ${p}` } });
