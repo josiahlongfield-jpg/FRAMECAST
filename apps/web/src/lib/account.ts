@@ -32,8 +32,9 @@ export async function deleteAccount(userId: string) {
     }
     if (w.stripeCustomerId && process.env.STRIPE_SECRET_KEY) {
       // Deleting the customer cancels its subscriptions immediately and removes saved cards.
+      // Best effort: a Stripe hiccup mustn't leave someone unable to delete their account.
       await stripe().customers.del(w.stripeCustomerId).catch((err) => {
-        if (err?.code !== "resource_missing") throw err;
+        if (err?.code !== "resource_missing") console.log("[account] stripe customer delete failed", JSON.stringify({ customer: w.stripeCustomerId, error: String(err?.message ?? err) }));
       });
     }
     await deleteVideoFiles({ workspaceId: w.id });

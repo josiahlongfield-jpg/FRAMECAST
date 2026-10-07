@@ -31,7 +31,7 @@ for (const bad of ["/%5Cevil.com", "//evil.com", "/\\evil.com", "https://evil.co
 const verifier = crypto.randomBytes(32).toString("base64url");
 const challenge = crypto.createHash("sha256").update(verifier).digest("base64url");
 await page.goto(`${BASE}/mobile/handoff?challenge=${challenge}`);
-ok("handoff asks before signing the app in", await page.isVisible("text=Sign in to the SureFrame app?"));
+ok("handoff asks before signing the app in", !!(await page.waitForSelector("text=Sign in to the SureFrame app?", { timeout: 10000 }).catch(() => null)));
 // The server action answers with a redirect to the app's scheme.
 const appRedirect = (p) =>
   p.waitForResponse((r) => (r.headers()["x-action-redirect"] ?? "").startsWith("sureframe://"), { timeout: 10000 })
@@ -58,7 +58,7 @@ ok("right verifier gets a session", good.ok() && sess.token?.length > 50, JSON.s
 ok("code works only once", (await ex({ code: fresh, verifier })).status() === 400);
 const me = await anon.request.get(BASE + "/api/clients", { headers: { cookie: `${sess.cookie}=${sess.token}` } });
 ok("the app's session works on the API", me.ok());
-ok("handoff without a challenge refuses", await (async () => { await page.goto(`${BASE}/mobile/handoff`); return page.isVisible("text=Update the SureFrame app"); })());
+ok("handoff without a challenge refuses", await (async () => { await page.goto(`${BASE}/mobile/handoff`); return !!(await page.waitForSelector("text=Update the SureFrame app", { timeout: 10000 }).catch(() => null)); })());
 
 // Upload bounds.
 const v = await (await page.request.post(BASE + "/api/videos", { data: { mimeType: "video/webm" } })).json();

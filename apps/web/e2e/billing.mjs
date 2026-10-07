@@ -147,7 +147,8 @@ await page.click("text=Delete my account");
 await page.waitForURL((u) => u.pathname === "/");
 ok("deleting cancels billing in Stripe", state.deletedCustomers.includes(session.customer));
 await page.goto(BASE + "/settings/billing");
-ok("signed out after deletion", page.url().includes("/login"));
+// Pages stream behind a loading state, so the sign-in redirect can land just after the load.
+ok("signed out after deletion", !!(await page.waitForURL("**/login**", { timeout: 10000 }).then(() => true).catch(() => null)));
 
 // 9) Rate limits.
 let limited = false;
