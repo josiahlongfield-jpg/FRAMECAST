@@ -26,3 +26,20 @@ export async function setStatus(ticketId: string, status: "CLOSED" | "OPEN") {
   revalidatePath(`/support/${ticketId}`);
   revalidatePath("/support");
 }
+
+/** Permanently removes one conversation (for test chats and spam). */
+export async function deleteTicket(ticketId: string) {
+  await requireAgent();
+  await db.supportTicket.deleteMany({ where: { id: ticketId } });
+  revalidatePath("/support");
+  redirect("/support?show=all");
+}
+
+/** Permanently removes every conversation. The form must carry confirm=DELETE. */
+export async function deleteAllTickets(form: FormData) {
+  await requireAgent();
+  if (String(form.get("confirm") ?? "").trim() !== "DELETE") redirect("/support?show=all&error=confirm");
+  await db.supportTicket.deleteMany({});
+  revalidatePath("/support");
+  redirect("/support?show=all&cleared=1");
+}

@@ -38,7 +38,8 @@ export const POST = handle(async (req: Request) => {
   const { token, body, email } = parsed.data;
   const me = await currentUser().catch(() => null);
 
-  let ticket = token ? await load(token) : null;
+  // A token for a conversation that's since been deleted just starts a new one.
+  let ticket = token ? await load(token).catch(() => null) : null;
   if (!ticket) {
     ticket = await db.supportTicket.create({
       data: { accessToken: newAccessToken(), userId: me?.user.id, workspaceId: me?.workspace.id, email: me ? null : email },

@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { PLANS } from "@/lib/plans";
 import { requirePageUser } from "@/lib/session";
 import { isSupportAgent } from "@/lib/support/tickets";
-import { reply, setStatus } from "../actions";
+import { deleteTicket, reply, setStatus } from "../actions";
 
 export const metadata: Metadata = { title: "Support conversation" };
 
@@ -53,6 +53,10 @@ export default async function SupportTicketPage({ params }: { params: Promise<{ 
             <span className="text-sm text-slate-500">Closed. A new message from them reopens it with the assistant.</span>
           )}
         </div>
+      </form>
+      <form action={deleteTicket.bind(null, ticket.id)} className="mt-10 border-t border-slate-200 pt-6">
+        <button className="text-sm font-medium text-red-700 hover:underline">Delete this conversation</button>
+        <p className="mt-1 text-xs text-slate-500">Removes it for good, for you and the customer. Use it for test chats and spam.</p>
       </form>
     </main>
   );
