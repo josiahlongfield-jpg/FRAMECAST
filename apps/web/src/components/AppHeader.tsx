@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { signOut } from "@/auth";
 import Logo from "./Logo";
+import SupportWidget from "./SupportChat";
 
 const LINKS = [
   ["/library", "Library"],
@@ -42,6 +43,7 @@ export default function AppHeader({ email, plan }: { email: string; plan: string
           <Link key={href} href={href} className="shrink-0 px-3 py-2.5 text-slate-600 hover:text-slate-900">{label}</Link>
         ))}
       </nav>
+      <SupportWidget signedIn />
     </header>
   );
 }

@@ -27,6 +27,7 @@ model User {
   activeWorkspaceId String?
   assignedClients   Client[]     @relation("ClientAssignee")
   invitesSent       Invite[]     @relation("InviteSender")
+  supportTickets SupportTicket[]
 }
 
 model Account {
@@ -398,4 +399,49 @@ model KeyRotation {
   client          Client?   @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, clientId])
+}
+
+enum TicketStatus {
+  OPEN // the assistant is handling it
+  NEEDS_HUMAN // handed to the founder; waiting on a person
+  ANSWERED // a person replied
+  CLOSED
+}
+
+enum SupportAuthor {
+  CUSTOMER
+  ASSISTANT
+  STAFF
+}
+
+/// A support conversation. Starts with the AI assistant; escalated ones reach a person.
+model SupportTicket {
+  id          String           @id @default(cuid())
+  /// Unguessable id the browser keeps so a signed-out visitor can come back to their chat.
+  accessToken String           @unique
+  userId      String?
+  user        User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  workspaceId String?
+  email       String?
+  status      TicketStatus     @default(OPEN)
+  /// The assistant's one-paragraph summary when it hands over.
+  summary     String?
+  urgent      Boolean          @default(false)
+  messages    SupportMessage[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([status, updatedAt])
+  @@index([userId])
+}
+
+model SupportMessage {
+  id        String        @id @default(cuid())
+  ticketId  String
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author    SupportAuthor
+  body      String
+  createdAt DateTime      @default(now())
+
+  @@index([ticketId, createdAt])
 }
