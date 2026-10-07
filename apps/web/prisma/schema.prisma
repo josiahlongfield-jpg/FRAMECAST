@@ -77,27 +77,30 @@ enum Role {
 }
 
 model Workspace {
-  id                   String       @id @default(cuid())
+  id                   String        @id @default(cuid())
   name                 String
-  plan                 Plan         @default(FREE)
-  stripeCustomerId     String?      @unique
-  stripeSubscriptionId String?      @unique
+  plan                 Plan          @default(FREE)
+  stripeCustomerId     String?       @unique
+  stripeSubscriptionId String?       @unique
   subscriptionStatus   String?
   currentPeriodEnd     DateTime?
   /// Client seats bought on top of the plan's included seats.
-  extraClientSeats     Int          @default(0)
+  extraClientSeats     Int           @default(0)
   /// Staff seats bought on top of the plan's included staff (Studio and Agency).
-  extraStaffSeats      Int          @default(0)
+  extraStaffSeats      Int           @default(0)
   /// Paid add-on: keep encrypted copies on the server instead of expiring them.
-  cloudBackup          Boolean      @default(false)
+  cloudBackup          Boolean       @default(false)
   /// Fingerprint of the team's end-to-end key. The key itself never reaches the server.
   keyFingerprint       String?
+  /// Someone left without an admin removing them (deleted their account), so
+  /// the keys still need resetting. Holds their name for the prompt.
+  keyResetNeeded       String?
   /// IANA time zone used for due dates and reminders, e.g. "Australia/Sydney".
   timezone             String?
   /// Reminder rules pre-selected on new to-dos (see lib/schedule.ts ReminderRule[]).
   reminderDefaults     Json?
-  remindClientDefault  Boolean      @default(true)
-  remindTeamDefault    Boolean      @default(false)
+  remindClientDefault  Boolean       @default(true)
+  remindTeamDefault    Boolean       @default(false)
   /// Optional note the business adds to every reminder email.
   reminderMessage      String?
   /// Where client replies to reminder emails go.
@@ -107,13 +110,14 @@ model Workspace {
   brandLogoType        String?
   brandColor           String?
   /// Bumped on every branding change so logo URLs bust caches.
-  brandVersion         Int          @default(0)
-  createdAt            DateTime     @default(now())
+  brandVersion         Int           @default(0)
+  createdAt            DateTime      @default(now())
   members              Membership[]
   videos               Video[]
   clients              Client[]
   items                Item[]
   invites              Invite[]
+  keyRotations         KeyRotation[]
 }
 
 /// An invitation for a staff member to join a workspace. The link carries a
@@ -256,25 +260,29 @@ model Reaction {
 /// never pay: each uses one of the workspace's client seats and gets a
 /// private link to watch and reply to the videos sent to them.
 model Client {
-  id           String    @id @default(cuid())
-  name         String
-  email        String?
+  id             String        @id @default(cuid())
+  name           String
+  email          String?
   /// Secret in the client's personal link. Treat like a password.
-  token        String    @unique
+  token          String        @unique
   /// The client's end-to-end key, wrapped with the team key. The unwrapped key
   /// travels only in the link fragment (#k=…), which browsers never send to servers.
-  teamKeyWrap  String?
+  teamKeyWrap    String?
+  /// Fingerprint of the client's current key, set once it has been replaced.
+  /// Lets the client's device notice an old key and pick up the new one.
+  keyFingerprint String?
   /// The client turned reminder emails off (from an email's unsubscribe link or their inbox).
-  remindersOff Boolean   @default(false)
+  remindersOff   Boolean       @default(false)
   /// The staff member who looks after this client (Studio and Agency teams).
-  assignedToId String?
-  assignedTo   User?     @relation("ClientAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
-  createdAt    DateTime  @default(now())
-  removedAt    DateTime?
-  workspaceId  String
-  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  videos       Video[]
-  items        Item[]
+  assignedToId   String?
+  assignedTo     User?         @relation("ClientAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdAt      DateTime      @default(now())
+  removedAt      DateTime?
+  workspaceId    String
+  workspace      Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  videos         Video[]
+  items          Item[]
+  keyRotations   KeyRotation[]
 
   @@index([workspaceId, removedAt])
 }
@@ -364,4 +372,23 @@ model MobileCode {
   userId    String
   expiresAt DateTime
   usedAt    DateTime?
+}
+
+/// A key replaced after someone left the team: the new key, wrapped with the
+/// old one. Devices still holding the old key follow these to the current
+/// key. Served only to current members (team key) or the client themselves.
+model KeyRotation {
+  id              String    @id @default(cuid())
+  /// Fingerprint of the key that unwraps `wrap`.
+  fromFingerprint String
+  /// The next key, wrapped with the key named by fromFingerprint.
+  wrap            String
+  createdAt       DateTime  @default(now())
+  workspaceId     String
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  /// Set for a client's key; null for the team key.
+  clientId        String?
+  client          Client?   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, clientId])
 }

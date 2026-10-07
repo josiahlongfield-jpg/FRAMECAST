@@ -11,8 +11,8 @@ import SecureMedia, { useDecryptedUrl } from "./SecureMedia";
 import TeamKeyGate from "./TeamKeyGate";
 import { personalLink } from "./ClientsManager";
 import { recoverInterrupted } from "@/lib/recorder/uploader";
-import { decryptText, importKey, unwrapKey, wrapKey } from "@/lib/e2e/crypto";
-import { clientKeyName, loadKey, saveKey } from "@/lib/e2e/keystore";
+import { decryptText, importKey, unwrapKey, wrapKey, fingerprint } from "@/lib/e2e/crypto";
+import { clientKeyName, loadClientKey, saveKey } from "@/lib/e2e/keystore";
 
 type Video = {
   id: string;
@@ -86,7 +86,7 @@ function ClientUnlock({ clientId, ...props }: Props & { clientId: string }) {
         }
         history.replaceState(null, "", window.location.pathname + window.location.search);
       }
-      const clientKey = await loadKey(clientKeyName(clientId));
+      const clientKey = await loadClientKey(clientId);
       if (!clientKey || !props.video.clientKeyWrap) return setMissing(true);
       setRootKey(await unwrapKey(props.video.clientKeyWrap, clientKey));
     })().catch(() => setMissing(true));
@@ -222,7 +222,7 @@ function WatchBody({
     await fetch(`/api/videos/${video.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clientId, clientKeyWrap }),
+      body: JSON.stringify({ clientId, clientKeyWrap, keyFingerprint: await fingerprint(teamKey) }),
     });
   }
 

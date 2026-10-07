@@ -51,6 +51,7 @@ export default async function TeamSettings() {
           staffPrice={EXTRA_STAFF_PRICE}
           initialMembers={members.map((m) => ({ userId: m.userId, name: m.user.name ?? m.user.email.split("@")[0], email: m.user.email, role: m.role }))}
           initialInvites={invites.map((i) => ({ id: i.id, email: i.email, role: i.role, expiresAt: i.expiresAt.toISOString() }))}
+          keyResetNeeded={role === "MEMBER" ? null : workspace.keyResetNeeded}
           workspaces={mine.map((m) => ({ id: m.workspaceId, name: m.workspace.name, active: m.workspaceId === workspace.id }))}
         />
       </main>

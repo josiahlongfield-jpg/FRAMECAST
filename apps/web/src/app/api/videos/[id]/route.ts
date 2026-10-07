@@ -4,6 +4,7 @@ import { storage } from "@/lib/storage";
 import { handle, HttpError, requireUser } from "@/lib/session";
 import { ownedVideo, publicVideo } from "@/lib/videos";
 import { viewableVideo } from "@/lib/access";
+import { KeyFingerprint, requireCurrentKey } from "@/lib/keys";
 
 export const GET = handle(async (_req: Request, ctx: { params: Promise<{ id: string }> }) => {
   const { id } = await ctx.params;
@@ -17,6 +18,7 @@ const Patch = z.object({
   clientId: z.string().nullable().optional(),
   /** The video key wrapped with that client's key, made on the sender's device. */
   clientKeyWrap: z.string().min(40).max(200).optional(),
+  keyFingerprint: KeyFingerprint,
 });
 
 export const PATCH = handle(async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
@@ -25,6 +27,7 @@ export const PATCH = handle(async (req: Request, ctx: { params: Promise<{ id: st
   const current = await ownedVideo(id, workspace.id);
   const body = Patch.safeParse(await req.json());
   if (!body.success) throw new HttpError(400, "Invalid update");
+  if (body.data.clientKeyWrap) await requireCurrentKey(workspace, body.data.keyFingerprint);
   if (body.data.clientId) {
     const client = await db.client.findFirst({ where: { id: body.data.clientId, workspaceId: workspace.id, removedAt: null } });
     if (!client) throw new HttpError(400, "Unknown client");

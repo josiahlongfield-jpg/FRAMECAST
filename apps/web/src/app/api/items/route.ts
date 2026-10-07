@@ -7,6 +7,7 @@ import { ensureTimezone, scheduleReminders } from "@/lib/reminders";
 import { Repeat, ReminderRules } from "@/lib/scheduleSchema";
 import { handle, HttpError } from "@/lib/session";
 import { limitByIp } from "@/lib/rateLimit";
+import { KeyFingerprint, requireCurrentKey } from "@/lib/keys";
 
 const Create = z.object({
   kind: z.enum(["TASK", "NOTE"]),
@@ -20,6 +21,7 @@ const Create = z.object({
   remindTeam: z.boolean().optional(),
   /** The browser's time zone, adopted by the workspace if it has none yet. */
   tz: z.string().max(64).optional(),
+  keyFingerprint: KeyFingerprint,
 });
 
 /** Tasks and notes: general ones, or one client's. A client sees only what is shared with them. */
@@ -47,6 +49,7 @@ export const POST = handle(async (req: Request) => {
   const who = await memberOrClient(d.clientId ?? null);
   if (who.kind !== "member") throw new HttpError(403, "Only the business you work with can add items");
   if (d.shared && !d.clientId) throw new HttpError(400, "Only client items can be shared");
+  await requireCurrentKey(who.workspaceId, d.keyFingerprint);
   const isTask = d.kind === "TASK" && !!d.dueAt;
   const tz = await ensureTimezone(who.workspaceId, d.tz);
   const item = await db.item.create({

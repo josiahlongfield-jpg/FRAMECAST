@@ -1,0 +1,212 @@
+// Removing a staff member resets every key and client link. Remaining
+// devices and clients pick up the new keys on their own; the removed person's
+// copies of links and keys stop working. Run against a server using the fake
+// Stripe (same env as billing.mjs) and a fake camera.
+import { chromium } from "@playwright/test";
+import { readdirSync, readFileSync } from "node:fs";
+import Stripe from "stripe";
+import { PrismaClient } from "@prisma/client";
+import { start, state, createSubscription } from "./fake-stripe.mjs";
+
+const BASE = process.env.BASE ?? "http://localhost:3000";
+const shots = process.argv[2] ?? "/tmp";
+const ok = (label, cond, extra = "") => {
+  console.log(`${cond ? "PASS" : "FAIL"} ${label}${cond ? "" : ` ${extra}`}`);
+  if (!cond) process.exitCode = 1;
+};
+const prisma = new PrismaClient();
+await prisma.rateLimit.deleteMany();
+const server = await start();
+const sig = new Stripe("sk_test_fake");
+const args = ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"];
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM, args });
+const stamp = Date.now();
+const perms = { permissions: ["camera", "microphone", "clipboard-read", "clipboard-write"] };
+const clip = (p) => p.evaluate(() => navigator.clipboard.readText());
+const finiteDuration = (el) => new Promise((r) => {
+  const check = () => (Number.isFinite(el.duration) && el.duration > 0 ? r(el.duration) : setTimeout(check, 200));
+  check();
+  setTimeout(() => r(el.duration), 10000);
+});
+async function signIn(page, email, next) {
+  await page.goto(`${BASE}/login?next=${next}`);
+  await page.fill('input[name="email"]', email);
+  await page.click("text=Continue");
+  await page.waitForURL((u) => u.pathname === next);
+}
+
+// Owner on Studio, with a recording sent to Avery and a shared to-do.
+const owner = await (await browser.newContext(perms)).newPage();
+await signIn(owner, `rk-owner${stamp}@example.com`, "/record");
+const recoveryKey = await owner.getAttribute("[data-recovery-key]", "data-recovery-key");
+await owner.click("text=I've saved it");
+await owner.request.post(BASE + "/api/billing/checkout", { data: { plan: "STUDIO" } });
+const session = state.sessions.at(-1).params;
+const workspaceId = session.subscription_data.metadata.workspaceId;
+const sub = createSubscription(session.customer, workspaceId, "sureframe_studio_monthly");
+const payload = JSON.stringify({ id: `evt_${stamp}`, object: "event", type: "customer.subscription.created", data: { object: sub } });
+await owner.request.post(BASE + "/api/webhooks/stripe", { headers: { "stripe-signature": sig.webhooks.generateTestHeaderString({ payload, secret: "whsec_test" }), "content-type": "application/json" }, data: payload });
+
+await owner.goto(BASE + "/clients");
+for (const [name, email] of [["Avery", `avery${stamp}@example.com`], ["Blake", ""]]) {
+  await owner.fill('input[aria-label="Client name"]', name);
+  await owner.fill('input[aria-label="Client email"]', email);
+  await owner.click("button:has-text('Add client')");
+  await owner.waitForSelector(`a:has-text('${name}')`);
+}
+const avery = await prisma.client.findFirst({ where: { workspaceId, name: "Avery" } });
+const blake = await prisma.client.findFirst({ where: { workspaceId, name: "Blake" } });
+
+await owner.goto(BASE + "/record");
+await owner.click("text=Camera only");
+await owner.click("text=Start recording");
+await owner.waitForSelector("text=/Recording · \\d/", { timeout: 15000 });
+await owner.waitForTimeout(3000);
+await owner.click("button:has-text('Stop')");
+await owner.waitForURL("**/v/**", { timeout: 30000 });
+const videoUrl = owner.url().split("?")[0];
+await owner.selectOption("select:near(:text('Send to'))", avery.id);
+await owner.waitForTimeout(800);
+
+await owner.goto(`${BASE}/clients/${avery.id}`);
+await owner.fill('textarea[aria-label="New to-do"]', "Log your sleep");
+await owner.check("text=Share with Avery");
+await owner.click("form >> button:has-text('Add')");
+await owner.waitForSelector("text=Log your sleep");
+await owner.uncheck("text=Share with Avery");
+await owner.fill('textarea[aria-label="New to-do"]', "Team-only note on Avery");
+await owner.click("form >> button:has-text('Add')");
+await owner.waitForSelector("text=Team-only note on Avery");
+await owner.click("text=Copy personal link");
+const averyOldLink = await clip(owner);
+
+// Avery's phone opens their link and the video.
+const averyCtx = await browser.newContext(perms);
+const phone = await averyCtx.newPage();
+await phone.goto(averyOldLink);
+await phone.waitForURL("**/inbox**");
+await phone.waitForSelector("text=Log your sleep", { timeout: 15000 });
+ok("client reads their shared to-do before the reset", true);
+
+// A staff member joins, sees Avery and copies their link.
+await owner.goto(BASE + "/settings/team");
+await owner.click("text=Create invite link");
+const invite = await (await owner.waitForSelector("[data-testid=invite-link]")).textContent();
+const staffCtx = await browser.newContext(perms);
+const staff = await staffCtx.newPage();
+await staff.goto(invite);
+await staff.click("text=Sign in to join");
+await staff.fill('input[name="email"]', `rk-staff${stamp}@example.com`);
+await staff.click("text=Continue");
+await staff.waitForURL((u) => u.pathname.startsWith("/join/"));
+await staff.click("text=Join the team");
+await staff.waitForURL((u) => u.pathname === "/library");
+await staff.goto(`${BASE}/clients/${avery.id}`);
+await staff.waitForSelector("text=Team-only note on Avery");
+await staff.click("text=Copy personal link");
+const staffCopy = await clip(staff);
+ok("staff copied Avery's full link", staffCopy === averyOldLink);
+const staffUser = await prisma.user.findUnique({ where: { email: `rk-staff${stamp}@example.com` } });
+const pendingInvite = await owner.request.post(BASE + "/api/team/invites", { data: { teamKeyWrap: "x".repeat(44) } });
+ok("an invite is waiting", pendingInvite.status() === 201);
+
+// A second owner device, signed in but still holding no key, for the old recovery key later.
+const laptop = await (await browser.newContext()).newPage();
+await signIn(laptop, `rk-owner${stamp}@example.com`, "/library");
+
+// Remove the staff member.
+const before = await prisma.workspace.findUnique({ where: { id: workspaceId } });
+const outboxBefore = new Set(readdirSync(".data/outbox"));
+await owner.goto(BASE + "/settings/team");
+owner.once("dialog", (d) => d.accept());
+await owner.click("button:has-text('Remove')");
+await owner.waitForSelector("[data-testid=key-reset]", { timeout: 20000 });
+await owner.screenshot({ path: `${shots}/key-reset.png`, fullPage: true });
+const after = await prisma.workspace.findUnique({ where: { id: workspaceId } });
+ok("team key changed", after.keyFingerprint !== before.keyFingerprint && !!after.keyFingerprint);
+ok("staff removed", !(await prisma.membership.findFirst({ where: { workspaceId, userId: staffUser.id } })));
+ok("pending invites cancelled", (await prisma.invite.count({ where: { workspaceId, acceptedAt: null, revokedAt: null } })) === 0);
+const avery2 = await prisma.client.findUnique({ where: { id: avery.id } });
+ok("Avery has a new link token", avery2.token !== avery.token);
+ok("Avery has a new key", !!avery2.keyFingerprint && avery2.teamKeyWrap !== avery.teamKeyWrap);
+ok("panel lists Blake (no email) to send by hand", await owner.isVisible("[data-testid=key-reset] >> text=Blake"));
+ok("panel doesn't list Avery (emailed)", !(await owner.isVisible("[data-testid=key-reset] >> text=Avery")));
+ok("panel shows a new recovery key", (await owner.textContent("[data-testid=new-recovery-key]")).replace(/\s/g, "") !== recoveryKey);
+const newMail = readdirSync(".data/outbox").filter((f) => !outboxBefore.has(f)).map((f) => JSON.parse(readFileSync(`.data/outbox/${f}`, "utf8")));
+const averyMail = newMail.find((m) => m.to === `avery${stamp}@example.com`);
+ok("Avery emailed a new link", !!averyMail && averyMail.text.includes(`/c/${avery2.token}`));
+ok("emailed link carries no key", !!averyMail && !averyMail.text.includes("#k="));
+
+// The removed staff member's copies stop working.
+const staffTry = await (await browser.newContext()).newPage();
+await staffTry.goto(staffCopy);
+ok("old link refused", staffTry.url().includes("invalid=1"));
+ok("removed staff can't fetch Avery's key chain", (await staff.request.get(`${BASE}/api/clients/${avery.id}/key`)).status() === 404);
+await staff.goto(videoUrl);
+ok("removed staff can't open the video", !(await staff.isVisible("main video")));
+
+// Stale tabs can't write with the old key.
+const stale = await owner.request.post(BASE + "/api/clients", { data: { name: "Late", teamKeyWrap: "x".repeat(44), keyFingerprint: before.keyFingerprint } });
+ok("write sealed with the old key refused", stale.status() === 409);
+
+// Avery opens the emailed link (no key in it) on the same phone: the device's old key catches up.
+const newLink = averyMail.text.match(/https?:\/\/\S+\/c\/\S+/)[0];
+await phone.goto(newLink);
+await phone.waitForURL("**/inbox**");
+await phone.waitForSelector("text=Log your sleep", { timeout: 15000 });
+ok("client reads shared to-do after the reset", true);
+await phone.goto(videoUrl);
+await phone.waitForSelector("main video", { timeout: 20000 });
+ok("client plays the video after the reset", (await phone.$eval("main video", finiteDuration)) > 1);
+
+// Blake's new link from the panel works on a fresh device.
+await owner.click("[data-testid=key-reset] li:has-text('Blake') >> text=Copy new link");
+const blakeNew = await clip(owner);
+ok("Blake's new link carries a key", /\/c\/[\w-]+#k=/.test(blakeNew) && !blakeNew.includes(blake.token));
+
+// The owner still reads everything.
+await owner.goto(`${BASE}/clients/${avery.id}`);
+await owner.waitForSelector("text=Team-only note on Avery");
+ok("owner reads private and shared items", (await owner.isVisible("text=Log your sleep")) && !(await owner.isVisible("text=[Couldn't unlock]")));
+await owner.goto(videoUrl);
+await owner.waitForSelector("main video", { timeout: 20000 });
+ok("owner plays the video", (await owner.$eval("main video", finiteDuration)) > 1);
+
+// The owner's other device unlocks with the recovery key saved before the reset.
+await laptop.goto(BASE + "/library");
+await laptop.fill('input[aria-label="Recovery key"]', recoveryKey);
+await laptop.click("button:has-text('Unlock')");
+await laptop.waitForSelector("text=My to-dos & notes", { timeout: 10000 });
+const laptopKey = await laptop.evaluate((id) => localStorage.getItem(`framecast.key.team:${id}`), workspaceId);
+const ownerKey = await owner.evaluate((id) => localStorage.getItem(`framecast.key.team:${id}`), workspaceId);
+ok("old recovery key leads current members to the new key", laptopKey === ownerKey);
+
+// Someone who deletes their own account leaves holding the keys: admins are asked to reset.
+await owner.goto(BASE + "/settings/team");
+await owner.click("text=Create invite link");
+const invite2 = await (await owner.waitForSelector("[data-testid=invite-link]")).textContent();
+const leaver = await (await browser.newContext()).newPage();
+await leaver.goto(invite2);
+await leaver.click("text=Sign in to join");
+await leaver.fill('input[name="email"]', `rk-leaver${stamp}@example.com`);
+await leaver.click("text=Continue");
+await leaver.waitForURL((u) => u.pathname.startsWith("/join/"));
+await leaver.click("text=Join the team");
+await leaver.waitForURL((u) => u.pathname === "/library");
+await leaver.goto(BASE + "/settings/account");
+await leaver.fill('input[name="confirm"]', `rk-leaver${stamp}@example.com`);
+await leaver.click("text=Delete my account");
+await leaver.waitForURL((u) => u.pathname === "/");
+await owner.goto(BASE + "/settings/team");
+ok("owner asked to reset after a self-deletion", !!(await owner.waitForSelector("text=left the team and still holds its keys", { timeout: 10000 }).catch(() => null)));
+const fp2 = (await prisma.workspace.findUnique({ where: { id: workspaceId } })).keyFingerprint;
+await owner.click("text=Reset keys now");
+await owner.waitForSelector("[data-testid=key-reset]", { timeout: 20000 });
+const ws3 = await prisma.workspace.findUnique({ where: { id: workspaceId } });
+ok("reset clears the prompt and changes the key", ws3.keyFingerprint !== fp2 && ws3.keyResetNeeded === null);
+await phone.goto(BASE + "/inbox");
+ok("client's old cookie stops working after the second reset", !(await phone.isVisible("text=Log your sleep")));
+
+await browser.close();
+server.close();
+await prisma.$disconnect();

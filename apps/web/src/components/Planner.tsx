@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { decryptText, encryptText } from "@/lib/e2e/crypto";
+import { decryptText, encryptText, fingerprint } from "@/lib/e2e/crypto";
 import type { ItemDTO } from "@/lib/items";
 import { browserTimeZone, DEFAULT_REMINDERS, repeatLabel, ruleLabel, sortRules, type ReminderRule } from "@/lib/schedule";
 import ScheduleFields, { toLocalInput, type Schedule } from "./ScheduleFields";
@@ -65,6 +65,12 @@ export default function Planner({
   const [editing, setEditing] = useState<string>();
   const [error, setError] = useState<string>();
 
+  // Sent with re-sealed text so a write made with keys that were just reset is refused.
+  const [keyFingerprint, setKeyFingerprint] = useState<string>();
+  useEffect(() => {
+    if (privateKey) fingerprint(privateKey).then(setKeyFingerprint, () => {});
+  }, [privateKey]);
+
   const keyFor = useCallback((shared: boolean) => (shared ? sharedKey : privateKey), [sharedKey, privateKey]);
 
   const decrypt = useCallback(
@@ -110,6 +116,7 @@ export default function Planner({
         body: await encryptText(text.trim(), key),
         clientId,
         shared,
+        keyFingerprint,
         ...(kind === "TASK" ? scheduleBody(schedule, shared) : {}),
       }),
     });
@@ -124,9 +131,12 @@ export default function Planner({
     const res = await fetch(`/api/items/${i.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(change),
+      body: JSON.stringify(change.body !== undefined ? { ...change, keyFingerprint } : change),
     });
-    if (!res.ok) return false;
+    if (!res.ok) {
+      setError((await res.json().catch(() => ({}))).error ?? "Could not save");
+      return false;
+    }
     const { item, next } = (await res.json()) as { item: ItemDTO; next: ItemDTO | null };
     setItems((cur) => {
       const list = cur.map((x) => (x.id === i.id ? { ...item, text: newText } : x));

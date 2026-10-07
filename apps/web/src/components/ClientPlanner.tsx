@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { clientKeyName, loadKey } from "@/lib/e2e/keystore";
+import { loadClientKey } from "@/lib/e2e/keystore";
 import Planner from "./Planner";
 
 /** What a client sees: only the items shared with them, unlocked with the key from their personal link. */
@@ -12,7 +12,7 @@ export default function ClientPlanner({ clientId, title }: { clientId: string; t
     // ClientKeyCapture may still be saving the key from the link, so look again shortly after.
     let cancelled = false;
     const load = async (tries: number): Promise<void> => {
-      const k = await loadKey(clientKeyName(clientId));
+      const k = await loadClientKey(clientId);
       if (cancelled) return;
       if (k || tries <= 0) return setKey(k);
       setTimeout(() => load(tries - 1), 300);

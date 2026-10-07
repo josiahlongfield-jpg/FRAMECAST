@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { exportKey, generateKey, wrapKey } from "@/lib/e2e/crypto";
+import { saveKey, teamKeyName } from "@/lib/e2e/keystore";
+import { rekey, type Bundle } from "@/lib/e2e/rekey";
 import TeamKeyGate from "./TeamKeyGate";
 
 type Role = "OWNER" | "ADMIN" | "MEMBER";
@@ -22,6 +24,8 @@ type Props = {
   initialMembers: Member[];
   initialInvites: Invite[];
   workspaces: { id: string; name: string; active: boolean }[];
+  /** Someone left on their own and still holds the old keys. */
+  keyResetNeeded: string | null;
 };
 
 const ROLE_LABEL: Record<Role, string> = { OWNER: "Owner", ADMIN: "Admin", MEMBER: "Member" };
@@ -42,7 +46,7 @@ export default function TeamManager(props: Props) {
   );
 }
 
-function Manager({ teamKey, role, meId, initialSeats, includedStaff, extraStaff, canBuyStaff, staffPrice, initialMembers, initialInvites }: Props & { teamKey?: CryptoKey }) {
+function Manager({ teamKey, workspaceId, keyResetNeeded, role, meId, initialSeats, includedStaff, extraStaff, canBuyStaff, staffPrice, initialMembers, initialInvites }: Props & { teamKey?: CryptoKey }) {
   const [members, setMembers] = useState(initialMembers);
   const [invites, setInvites] = useState(initialInvites);
   const [seats, setSeats] = useState(initialSeats);
@@ -53,6 +57,9 @@ function Manager({ teamKey, role, meId, initialSeats, includedStaff, extraStaff,
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [buyQty, setBuyQty] = useState(1);
+  const [removing, setRemoving] = useState<string>();
+  const [reset, setReset] = useState<{ name: string | null; removed: boolean; emailed: number; toSend: { id: string; name: string; link: string }[]; recoveryKey: string }>();
+  const [resetDue, setResetDue] = useState(!!keyResetNeeded);
   const canManage = role !== "MEMBER";
   const full = seats.used >= seats.limit;
 
@@ -93,13 +100,48 @@ function Manager({ teamKey, role, meId, initialSeats, includedStaff, extraStaff,
   }
 
   async function remove(m: Member) {
-    const leaving = m.userId === meId;
-    if (!confirm(leaving ? "Leave this team? You'll lose access to its clients and videos." : `Remove ${m.name}? Their clients go back to the shared list.`)) return;
-    const res = await fetch(`/api/team/members/${m.userId}`, { method: "DELETE" });
-    if (!res.ok) return setError((await res.json().catch(() => ({}))).error ?? "Could not remove");
-    if (leaving) return window.location.assign("/library");
-    setMembers((list) => list.filter((x) => x.userId !== m.userId));
-    setSeats((s) => ({ ...s, members: s.members - 1, used: s.used - 1 }));
+    if (!confirm(`Remove ${m.name}? Your team's encryption keys and every client's personal link will be reset, so they can't open anything again. Clients with an email get their new link automatically.`)) return;
+    await resetKeys(m);
+  }
+
+  /** Reset every key on this device, then swap them in on the server (removing `m` if given). */
+  async function resetKeys(m?: Member) {
+    if (!teamKey) return;
+    setError(undefined);
+    setRemoving(m?.userId ?? "reset");
+    try {
+      // The key reset happens here, on this device: new team key, new client keys, everything re-sealed.
+      let res = await fetch("/api/team/rekey");
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Could not start the key reset");
+      const bundle = (await res.json()) as Bundle;
+      const { team, newClientKeys, payload } = await rekey(teamKey, bundle);
+      res = await fetch(m ? `/api/team/members/${m.userId}/remove` : "/api/team/rekey", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Could not remove");
+      await saveKey(teamKeyName(workspaceId), team);
+      const names = new Map(bundle.clients.map((c) => [c.id, c]));
+      const toSend = await Promise.all(
+        (data.links as { id: string; link: string }[])
+          .filter((l) => !names.get(l.id)?.hasEmail)
+          .map(async (l) => {
+            const key = newClientKeys.get(l.id);
+            return { id: l.id, name: names.get(l.id)?.name ?? "Client", link: key ? `${l.link}#k=${await exportKey(key)}` : l.link };
+          }),
+      );
+      setReset({ name: m?.name ?? keyResetNeeded ?? null, removed: !!m, emailed: data.emailed, toSend, recoveryKey: await exportKey(team) });
+      setResetDue(false);
+      setInvites([]);
+      if (m) {
+        setMembers((list) => list.filter((x) => x.userId !== m.userId));
+        setSeats((s) => ({ ...s, members: s.members - 1, pending: 0, used: s.members - 1 }));
+      } else {
+        setSeats((s) => ({ ...s, pending: 0, used: s.members }));
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setRemoving(undefined);
+    }
   }
 
   async function buyStaff() {
@@ -160,6 +202,17 @@ function Manager({ teamKey, role, meId, initialSeats, includedStaff, extraStaff,
         </section>
       )}
 
+      {resetDue && canManage && (
+        <section role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-950">
+          <h2 className="font-semibold">{keyResetNeeded} left the team and still holds its keys</h2>
+          <p className="mt-1">Reset your team&apos;s keys and every client&apos;s personal link so they can&apos;t open anything again. Clients with an email get their new link automatically.</p>
+          <button onClick={() => resetKeys()} disabled={!!removing} className="mt-3 rounded-lg bg-amber-600 px-4 py-2 font-semibold text-white hover:bg-amber-700 disabled:opacity-50">
+            {removing === "reset" ? "Resetting keys…" : "Reset keys now"}
+          </button>
+        </section>
+      )}
+      {reset && <ResetDone {...reset} />}
+
       <section className="rounded-2xl border border-slate-200 bg-white">
         <ul className="divide-y divide-slate-100">
           {members.map((m) => (
@@ -177,9 +230,9 @@ function Manager({ teamKey, role, meId, initialSeats, includedStaff, extraStaff,
                 ) : (
                   <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">{ROLE_LABEL[m.role]}</span>
                 )}
-                {m.role !== "OWNER" && (canManage || m.userId === meId) && (
-                  <button onClick={() => remove(m)} className="rounded-lg px-3 py-1.5 text-slate-500 hover:bg-slate-50 hover:text-red-700">
-                    {m.userId === meId ? "Leave" : "Remove"}
+                {m.role !== "OWNER" && canManage && m.userId !== meId && (
+                  <button onClick={() => remove(m)} disabled={!!removing} className="rounded-lg px-3 py-1.5 text-slate-500 hover:bg-slate-50 hover:text-red-700 disabled:opacity-50">
+                    {removing === m.userId ? "Resetting keys…" : "Remove"}
                   </button>
                 )}
               </div>
@@ -197,6 +250,42 @@ function Manager({ teamKey, role, meId, initialSeats, includedStaff, extraStaff,
         </ul>
       </section>
     </>
+  );
+}
+
+function ResetDone({ name, removed, emailed, toSend, recoveryKey }: { name: string | null; removed: boolean; emailed: number; toSend: { id: string; name: string; link: string }[]; recoveryKey: string }) {
+  const [copied, setCopied] = useState<string>();
+  const copy = async (id: string, text: string) => {
+    await navigator.clipboard.writeText(text);
+    setCopied(id);
+    setTimeout(() => setCopied(undefined), 2000);
+  };
+  return (
+    <section role="status" data-testid="key-reset" className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-sm text-emerald-950">
+      <h2 className="font-semibold">{removed ? `${name} was removed and your keys were reset` : "Your keys were reset"}</h2>
+      <p className="mt-1">
+        Every client has a new personal link and their old links no longer work.
+        {emailed > 0 && ` ${emailed} ${emailed === 1 ? "client was" : "clients were"} emailed their new link.`}
+        {" "}Pending invites were cancelled. Your team&apos;s other devices update on their own.
+      </p>
+      {toSend.length > 0 && (
+        <>
+          <p className="mt-4 font-medium">These clients have no email on file. Send them their new link:</p>
+          <ul className="mt-2 grid gap-2">
+            {toSend.map((c) => (
+              <li key={c.id} className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2 text-slate-800">
+                <span>{c.name}</span>
+                <button onClick={() => copy(c.id, c.link)} className="rounded-lg border border-slate-300 px-3 py-1 hover:bg-slate-50">{copied === c.id ? "Copied" : "Copy new link"}</button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      <p className="mt-4 font-medium">Your new recovery key</p>
+      <p className="mt-1">Save it somewhere safe. Your old recovery key only works for people still on the team.</p>
+      <p data-testid="new-recovery-key" className="mt-2 break-all rounded-lg bg-white px-3 py-2 font-mono text-xs text-slate-900">{recoveryKey.match(/.{1,4}/g)?.join(" ")}</p>
+      <button onClick={() => copy("recovery", recoveryKey)} className="mt-2 rounded-lg border border-emerald-300 bg-white px-3 py-1.5 hover:bg-emerald-100">{copied === "recovery" ? "Copied" : "Copy recovery key"}</button>
+    </section>
   );
 }
 

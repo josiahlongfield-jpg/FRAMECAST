@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import * as store from "@/lib/recorder/store";
-import { encryptFrame, generateKey, wrapKey } from "@/lib/e2e/crypto";
+import { encryptFrame, fingerprint, generateKey, wrapKey } from "@/lib/e2e/crypto";
 import { ChunkedUploader, lockName, recoverInterrupted, type UploadState } from "@/lib/recorder/uploader";
 import {
   bitrateFor,
@@ -171,7 +171,7 @@ export default function Recorder({
       const res = await fetch("/api/videos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mimeType, teamKeyWrap: await wrapKey(videoKey, teamKey) }),
+        body: JSON.stringify({ mimeType, teamKeyWrap: await wrapKey(videoKey, teamKey), keyFingerprint: await fingerprint(teamKey) }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not start recording");

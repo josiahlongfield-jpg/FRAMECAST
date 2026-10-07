@@ -11,13 +11,16 @@ const WAIT_SECONDS = 5;
  */
 export default function SureFramePromo({ videoId }: { videoId: string }) {
   const seenKey = `sureframe-promo-${videoId}`;
-  const [open, setOpen] = useState(true);
+  // Unknown until we've checked this visit's storage, so a returning viewer never sees it flash.
+  const [open, setOpen] = useState<boolean | null>(null);
   const [left, setLeft] = useState(WAIT_SECONDS);
 
   useEffect(() => {
+    let seen = false;
     try {
-      if (sessionStorage.getItem(seenKey)) setOpen(false);
+      seen = !!sessionStorage.getItem(seenKey);
     } catch {}
+    setOpen(!seen);
   }, [seenKey]);
 
   useEffect(() => {

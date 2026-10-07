@@ -25,6 +25,9 @@ export async function deleteAccount(userId: string) {
     const w = m.workspace;
     if (w._count.members > 1) {
       await deleteVideoFiles({ ownerId: userId });
+      // They leave holding the team's keys; ask an admin to reset them.
+      const user = await db.user.findUnique({ where: { id: userId }, select: { name: true, email: true } });
+      await db.workspace.update({ where: { id: w.id }, data: { keyResetNeeded: user?.name ?? user?.email ?? "A former team member" } });
       continue;
     }
     if (w.stripeCustomerId && process.env.STRIPE_SECRET_KEY) {

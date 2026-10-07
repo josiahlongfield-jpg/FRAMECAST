@@ -5,12 +5,14 @@ import { storage } from "@/lib/storage";
 import { handle, HttpError, requireUser } from "@/lib/session";
 import { ALLOWED_MIME, extensionFor, newVideoId, publicVideo } from "@/lib/videos";
 import { limitByIp } from "@/lib/rateLimit";
+import { KeyFingerprint, requireCurrentKey } from "@/lib/keys";
 
 const CreateBody = z.object({
   mimeType: z.string().regex(ALLOWED_MIME),
   title: z.string().trim().min(1).max(200).optional(),
   /** Recordings must be end-to-end encrypted; this is the video key wrapped with the team key. */
   teamKeyWrap: z.string().min(40).max(200),
+  keyFingerprint: KeyFingerprint,
 });
 
 /** Start a recording: creates the video row and opens a multipart upload. */
@@ -20,6 +22,7 @@ export const POST = handle(async (req: Request) => {
   await limitByIp("videos", 60, 3600);
   if (!body.success) throw new HttpError(400, "Invalid request");
   if (!workspace.keyFingerprint) throw new HttpError(409, "Set up your encryption key before recording");
+  await requireCurrentKey(workspace, body.data.keyFingerprint);
 
   const limit = PLANS[workspace.plan].maxVideos;
   if (limit !== null) {

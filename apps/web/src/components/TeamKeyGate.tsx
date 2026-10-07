@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { exportKey, fingerprint as keyFingerprint, generateKey, importKey } from "@/lib/e2e/crypto";
-import { loadKey, saveKey, teamKeyName } from "@/lib/e2e/keystore";
+import { followRotations, loadKey, saveKey, teamKeyName } from "@/lib/e2e/keystore";
 
 type State =
   | { kind: "loading" }
@@ -37,6 +37,18 @@ function createTeamKey(workspaceId: string) {
 }
 
 /**
+ * If the team's keys were reset (someone left), bring a key this device or
+ * this person holds up to date. Only current members are given the chain.
+ */
+async function catchUp(workspaceId: string, key: CryptoKey) {
+  const res = await fetch("/api/team/keys").catch(() => null);
+  if (!res?.ok) return null;
+  const next = await followRotations(key, await res.json()).catch(() => null);
+  if (next) await saveKey(teamKeyName(workspaceId), next);
+  return next;
+}
+
+/**
  * Makes sure this device holds the team's end-to-end key before rendering
  * children that record, send or play videos. The first device creates the
  * key and shows a recovery key once; other devices enter that recovery key.
@@ -62,7 +74,8 @@ export default function TeamKeyGate({
         return;
       }
       if (fingerprint) {
-        if (!cancelled) setState({ kind: "recover" });
+        const updated = local ? await catchUp(workspaceId, local) : null;
+        if (!cancelled) setState(updated ? { kind: "ready", key: updated } : { kind: "recover" });
         return;
       }
       // First device for this workspace: create the team key.
@@ -77,8 +90,13 @@ export default function TeamKeyGate({
   async function recover(e: React.FormEvent) {
     e.preventDefault();
     try {
-      const key = await importKey(input.replace(/\s+/g, ""));
-      if (fingerprint && (await keyFingerprint(key)) !== fingerprint) throw new Error("That isn't this workspace's recovery key.");
+      let key = await importKey(input.replace(/\s+/g, ""));
+      if (fingerprint && (await keyFingerprint(key)) !== fingerprint) {
+        // A recovery key from before a key reset still works for current members.
+        const updated = await catchUp(workspaceId, key);
+        if (!updated) throw new Error("That isn't this workspace's recovery key.");
+        key = updated;
+      }
       await saveKey(teamKeyName(workspaceId), key);
       setState({ kind: "ready", key });
     } catch (err) {

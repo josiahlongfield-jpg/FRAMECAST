@@ -144,11 +144,14 @@ ok("owner with staff can't delete their account", !!(await prisma.user.findUniqu
 
 // Removing staff puts their clients back in the shared list.
 for (const i of await prisma.invite.findMany({ where: { workspaceId, acceptedAt: null, revokedAt: null } })) await owner.request.delete(`${BASE}/api/team/invites/${i.id}`);
-ok("owner removes the staff member", (await owner.request.delete(`${BASE}/api/team/members/${staffUser.id}`)).status() === 204);
+await owner.goto(BASE + "/settings/team");
+owner.once("dialog", (d) => d.accept());
+await owner.click("button:has-text('Remove')");
+ok("owner removes the staff member", !!(await owner.waitForSelector("[data-testid=key-reset]", { timeout: 20000 }).catch(() => null)));
 ok("their client goes back to shared", (await prisma.client.findUnique({ where: { id: avery.id } })).assignedToId === null);
 await staff.goto(BASE + "/clients");
 ok("removed staff no longer see the team's clients", !(await staff.isVisible("text=Avery")));
-ok("owner can't be removed", (await owner.request.delete(`${BASE}/api/team/members/${(await prisma.user.findUnique({ where: { email: `owner${stamp}@example.com` } })).id}`)).status() === 403);
+ok("owner can't be removed", (await owner.request.post(`${BASE}/api/team/members/${(await prisma.user.findUnique({ where: { email: `owner${stamp}@example.com` } })).id}/remove`, { data: {} })).status() === 403);
 
 // Now Solo works, and drops the extra staff item.
 ok("downgrade to Solo once alone", (await owner.request.post(BASE + "/api/billing/checkout", { data: { plan: "SOLO" } })).ok());

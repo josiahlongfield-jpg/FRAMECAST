@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { exportKey, generateKey, unwrapKey, wrapKey } from "@/lib/e2e/crypto";
+import { exportKey, fingerprint, generateKey, unwrapKey, wrapKey } from "@/lib/e2e/crypto";
 import TeamKeyGate from "./TeamKeyGate";
 
 type Seats = { used: number; limit: number };
@@ -86,7 +86,7 @@ function Manager({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       // Each client gets their own key, created here and stored only wrapped with the team key.
-      body: JSON.stringify({ name, email, teamKeyWrap: await wrapKey(await generateKey(), teamKey) }),
+      body: JSON.stringify({ name, email, teamKeyWrap: await wrapKey(await generateKey(), teamKey), keyFingerprint: await fingerprint(teamKey) }),
     });
     const data = await res.json().catch(() => ({}));
     setBusy(false);

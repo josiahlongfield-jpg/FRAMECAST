@@ -84,7 +84,7 @@ const skipIntro = (p) =>
 client.on("console", (m) => m.type() === "error" && console.log("client console:", m.text()));
 await client.goto(personal);
 await client.waitForURL("**/v/**");
-console.log("free plan: client sees the SureFrame intro:", await client.getByTestId("sureframe-promo").isVisible());
+console.log("free plan: client sees the SureFrame intro:", !!(await client.waitForSelector("[data-testid=sureframe-promo]", { timeout: 5000 }).catch(() => null)));
 await skipIntro(client);
 await client.waitForSelector("main video", { timeout: 20000 });
 console.log("key removed from address bar:", !client.url().includes("#k="));

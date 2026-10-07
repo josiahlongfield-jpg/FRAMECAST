@@ -2,6 +2,7 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { memberOrClient } from "@/lib/access";
+import { KeyFingerprint, requireCurrentKey } from "@/lib/keys";
 import { itemDTO } from "@/lib/items";
 import { ensureTimezone, scheduleReminders, spawnNext } from "@/lib/reminders";
 import { Repeat, ReminderRules } from "@/lib/scheduleSchema";
@@ -18,6 +19,7 @@ const Patch = z.object({
   remindClient: z.boolean().optional(),
   remindTeam: z.boolean().optional(),
   tz: z.string().max(64).optional(),
+  keyFingerprint: KeyFingerprint,
 });
 
 async function load(id: string) {
@@ -43,6 +45,7 @@ export const PATCH = handle(async (req: Request, ctx: { params: Promise<{ id: st
     }
   }
   if (d.shared && !item.clientId) throw new HttpError(400, "Only client items can be shared");
+  if (d.body !== undefined) await requireCurrentKey(item.workspaceId, d.keyFingerprint);
   if (d.shared !== undefined && d.shared !== item.shared && d.body === undefined) {
     throw new HttpError(400, "Sharing changes which key seals the text; send the re-encrypted body");
   }
