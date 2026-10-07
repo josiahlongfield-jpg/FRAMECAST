@@ -1,15 +1,17 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { ACTIVE_STATUSES, catalogKey, catalogOf, MANAGED_PAYMENTS, PLAN_ITEM, planOf, priceId } from "@/lib/billing";
-import { PAID_PLANS, PLANS } from "@/lib/plans";
-import { handle, HttpError, requireUser } from "@/lib/session";
+import { PAID_PLANS, PLANS, staffSeatLimit, TEAM_PLANS } from "@/lib/plans";
+import { handle, HttpError, requireRole, requireUser } from "@/lib/session";
 import { appUrl, stripe } from "@/lib/stripe";
 import { limitByIp } from "@/lib/rateLimit";
 
 const Body = z.object({ plan: z.enum(PAID_PLANS), interval: z.enum(["month", "year"]).default("month") });
 
 export const POST = handle(async (req: Request) => {
-  const { user, workspace } = await requireUser();
+  const me = await requireUser();
+  requireRole(me, "OWNER");
+  const { user, workspace } = me;
   const body = Body.safeParse(await req.json());
   await limitByIp("billing", 20, 600);
   if (!body.success) throw new HttpError(400, "Invalid plan");
@@ -26,12 +28,18 @@ export const POST = handle(async (req: Request) => {
         if (PLANS[plan].clientSeats + workspace.extraClientSeats < used) {
           throw new HttpError(400, `You have ${used} clients, more than ${PLANS[plan].name} allows. Remove some or add seats first.`);
         }
+        const staff = await db.membership.count({ where: { workspaceId: workspace.id } });
+        if (staffSeatLimit({ plan, extraStaffSeats: workspace.extraStaffSeats }) < staff) {
+          throw new HttpError(400, `You have ${staff} people on your team, more than ${PLANS[plan].name} allows. Remove some first.`);
+        }
         // Every item on a subscription bills on the same interval, so extras move with the plan.
         const extras = await Promise.all(
           sub.items.data
             .filter((i) => i !== item)
             .map(async (i) => {
               const entry = catalogOf(i.price);
+              // Extra staff only exist on team plans.
+              if (entry?.item === "staff_seat" && !TEAM_PLANS.includes(plan)) return { id: i.id, deleted: true as const };
               return entry && entry.interval !== interval ? { id: i.id, price: await priceId(catalogKey(entry.item, interval)) } : null;
             }),
         );

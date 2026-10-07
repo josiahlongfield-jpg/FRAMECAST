@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { scheduleReminders } from "@/lib/reminders";
 import { isTimeZone } from "@/lib/schedule";
 import { ReminderRules } from "@/lib/scheduleSchema";
-import { handle, HttpError, requireUser } from "@/lib/session";
+import { handle, HttpError, requireRole, requireUser } from "@/lib/session";
 
 const Body = z.object({
   name: z.string().trim().min(1).max(80).optional(),
@@ -17,7 +17,9 @@ const Body = z.object({
 
 /** Business name and reminder settings. */
 export const PATCH = handle(async (req: Request) => {
-  const { workspace } = await requireUser();
+  const me = await requireUser();
+  requireRole(me, "OWNER", "ADMIN");
+  const { workspace } = me;
   const body = Body.safeParse(await req.json());
   if (!body.success) throw new HttpError(400, body.error.issues[0]?.message ?? "Invalid settings");
   const d = body.data;

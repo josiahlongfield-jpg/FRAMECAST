@@ -15,10 +15,16 @@ const fmt = (ms: number | null) => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 };
 
-export default async function Library() {
+export default async function Library({ searchParams }: { searchParams: Promise<{ show?: string }> }) {
   const { user, workspace } = await requirePageUser("/library");
   const plan = PLANS[workspace.plan];
-  const videos = await db.video.findMany({ where: { workspaceId: workspace.id, replyToId: null }, orderBy: { createdAt: "desc" } });
+  const team = (await db.membership.count({ where: { workspaceId: workspace.id } })) > 1;
+  // On a team, "Mine" is what I recorded plus anything for the clients I look after.
+  const mine = team && (await searchParams).show === "mine";
+  const videos = await db.video.findMany({
+    where: { workspaceId: workspace.id, replyToId: null, ...(mine ? { OR: [{ ownerId: user.id }, { client: { assignedToId: user.id } }] } : {}) },
+    orderBy: { createdAt: "desc" },
+  });
 
   return (
     <>
@@ -26,12 +32,22 @@ export default async function Library() {
       <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
         <div className="mb-8 flex items-end justify-between">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Your videos</h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{team ? "Team videos" : "Your videos"}</h1>
             <p className="mt-1 text-sm text-slate-500">
               {videos.length} {videos.length === 1 ? "video" : "videos"}
               {plan.maxVideos !== null && ` of ${plan.maxVideos} on the ${plan.name} plan`}
             </p>
           </div>
+          {team && (
+            <nav aria-label="Which videos" className="flex gap-1 rounded-lg bg-slate-100 p-1 text-sm">
+              {[["", "All"], ["mine", "Mine"]].map(([k, label]) => (
+                <Link key={k} href={k ? `/library?show=${k}` : "/library"} aria-current={(mine ? "mine" : "") === k ? "page" : undefined}
+                  className={`rounded-md px-3 py-1.5 ${(mine ? "mine" : "") === k ? "bg-white font-medium text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}>
+                  {label}
+                </Link>
+              ))}
+            </nav>
+          )}
         </div>
         {videos.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-300 p-16 text-center">

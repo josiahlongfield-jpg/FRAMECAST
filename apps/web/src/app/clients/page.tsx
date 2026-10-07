@@ -9,15 +9,16 @@ import { requirePageUser } from "@/lib/session";
 export const metadata: Metadata = { title: "Clients" };
 
 export default async function ClientsPage() {
-  const { user, workspace } = await requirePageUser("/clients");
+  const { user, workspace, role } = await requirePageUser("/clients");
   const plan = PLANS[workspace.plan];
-  const [clients, seats] = await Promise.all([
+  const [clients, seats, members] = await Promise.all([
     db.client.findMany({
       where: { workspaceId: workspace.id, removedAt: null },
       orderBy: { name: "asc" },
       include: { _count: { select: { videos: true } } },
     }),
     seatUsage(workspace),
+    db.membership.findMany({ where: { workspaceId: workspace.id }, include: { user: true }, orderBy: { id: "asc" } }),
   ]);
 
   return (
@@ -38,12 +39,18 @@ export default async function ClientsPage() {
             link: clientLink(c.token),
             teamKeyWrap: c.teamKeyWrap,
             videoCount: c._count.videos,
+            assignedToId: c.assignedToId,
           }))}
           initialSeats={seats}
           includedSeats={plan.clientSeats}
           extraSeats={workspace.extraClientSeats}
           seatPrice={EXTRA_SEAT_PRICE}
           canBuySeats={workspace.plan !== "FREE"}
+          isOwner={role === "OWNER"}
+          canManage={role !== "MEMBER"}
+          meId={user.id}
+          staff={members.map((m) => ({ id: m.userId, name: m.user.name ?? m.user.email.split("@")[0] }))}
+          studioHint={workspace.plan === "SOLO" ? { soloBase: PLANS.SOLO.priceMonthly, studioPrice: PLANS.STUDIO.priceMonthly, studioClients: PLANS.STUDIO.clientSeats } : undefined}
         />
       </main>
     </>

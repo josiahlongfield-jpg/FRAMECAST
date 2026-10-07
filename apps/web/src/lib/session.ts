@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
+import type { Role } from "@prisma/client";
 import { db } from "@/lib/db";
 
 export class HttpError extends Error {
@@ -18,19 +19,24 @@ export async function currentUser() {
   if (!userId) return null;
   const user = await db.user.findUnique({
     where: { id: userId },
-    include: { memberships: { include: { workspace: true }, orderBy: { id: "asc" }, take: 1 } },
+    include: { memberships: { include: { workspace: true }, orderBy: { id: "asc" } } },
   });
   if (!user) return null;
-  let workspace = user.memberships[0]?.workspace;
-  if (!workspace) {
-    workspace = await db.workspace.create({
-      data: {
-        name: `${user.name ?? user.email.split("@")[0]}'s workspace`,
-        members: { create: { userId: user.id, role: "OWNER" } },
-      },
-    });
-  }
-  return { user, workspace };
+  // The workspace they last joined or switched to, else their first one.
+  const membership = user.memberships.find((m) => m.workspaceId === user.activeWorkspaceId) ?? user.memberships[0];
+  if (membership) return { user, workspace: membership.workspace, role: membership.role };
+  const workspace = await db.workspace.create({
+    data: {
+      name: `${user.name ?? user.email.split("@")[0]}'s workspace`,
+      members: { create: { userId: user.id, role: "OWNER" } },
+    },
+  });
+  return { user, workspace, role: "OWNER" as Role };
+}
+
+/** Throws unless the signed-in member has one of the given roles. */
+export function requireRole(me: { role: Role }, ...roles: Role[]) {
+  if (!roles.includes(me.role)) throw new HttpError(403, me.role === "MEMBER" ? "Ask an admin of this workspace to do this" : "Only the workspace owner can do this");
 }
 
 export async function requireUser() {

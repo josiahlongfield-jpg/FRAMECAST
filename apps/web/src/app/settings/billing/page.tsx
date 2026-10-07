@@ -11,8 +11,21 @@ export const metadata: Metadata = { title: "Billing" };
 
 export default async function Billing({ searchParams }: { searchParams: Promise<{ upgraded?: string }> }) {
   const { upgraded } = await searchParams;
-  const { user, workspace } = await requirePageUser("/settings/billing");
+  const { user, workspace, role } = await requirePageUser("/settings/billing");
   const plan = PLANS[workspace.plan];
+  if (role !== "OWNER") {
+    return (
+      <>
+        <AppHeader email={user.email} plan={plan.name} />
+        <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Billing</h1>
+          <p className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
+            {workspace.name} is on the {plan.name} plan. Only the workspace owner can change the plan or billing.
+          </p>
+        </main>
+      </>
+    );
+  }
   return (
     <>
       <AppHeader email={user.email} plan={plan.name} />

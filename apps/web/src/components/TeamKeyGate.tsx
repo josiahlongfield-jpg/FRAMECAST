@@ -95,7 +95,7 @@ export default function TeamKeyGate({
       <div className="mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-6">
         <h2 className="font-semibold text-slate-900">Unlock your videos on this device</h2>
         <p className="mt-2 text-sm text-slate-600">
-          Your videos are end-to-end encrypted, so not even we can open them. Enter the recovery key you saved when you first set up your account.
+          Your videos are end-to-end encrypted, so not even we can open them. Enter the recovery key saved when the account was set up. If you joined from an invite link, you can open that link again on this device instead.
         </p>
         <form onSubmit={recover} className="mt-4 grid gap-3">
           <input

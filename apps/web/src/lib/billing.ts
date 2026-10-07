@@ -5,6 +5,8 @@ import {
   CLOUD_BACKUP_PRICE_YEARLY,
   EXTRA_SEAT_PRICE,
   EXTRA_SEAT_PRICE_YEARLY,
+  EXTRA_STAFF_PRICE,
+  EXTRA_STAFF_PRICE_YEARLY,
   PLANS,
   type Interval,
   type PaidPlan,
@@ -17,6 +19,7 @@ const ITEMS = {
   studio: { product: "SureFrame Studio", month: PLANS.STUDIO.priceMonthly, year: PLANS.STUDIO.priceYearly },
   agency: { product: "SureFrame Agency", month: PLANS.AGENCY.priceMonthly, year: PLANS.AGENCY.priceYearly },
   client_seat: { product: "SureFrame extra client", month: EXTRA_SEAT_PRICE, year: EXTRA_SEAT_PRICE_YEARLY },
+  staff_seat: { product: "SureFrame extra staff", month: EXTRA_STAFF_PRICE, year: EXTRA_STAFF_PRICE_YEARLY },
   cloud_backup: { product: "SureFrame cloud backup", month: CLOUD_BACKUP_PRICE, year: CLOUD_BACKUP_PRICE_YEARLY },
 } as const;
 

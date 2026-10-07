@@ -8,7 +8,7 @@ import { requirePageUser } from "@/lib/session";
 export const metadata: Metadata = { title: "Reminders" };
 
 export default async function RemindersSettings() {
-  const { user, workspace } = await requirePageUser("/settings/reminders");
+  const { user, workspace, role } = await requirePageUser("/settings/reminders");
   const d = workspaceReminderDefaults(workspace);
   return (
     <>
@@ -18,6 +18,9 @@ export default async function RemindersSettings() {
         <p className="mt-1 text-sm text-slate-500">
           Choose how your business appears in reminder emails and which reminders new to-dos start with. You can still change them on any to-do.
         </p>
+        {role === "MEMBER" ? (
+          <p className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600">Ask an owner or admin of {workspace.name} to change these settings.</p>
+        ) : (
         <ReminderSettings
           initial={{
             name: workspace.name,
@@ -29,6 +32,7 @@ export default async function RemindersSettings() {
             reminderReplyTo: workspace.reminderReplyTo ?? "",
           }}
         />
+        )}
       </main>
     </>
   );

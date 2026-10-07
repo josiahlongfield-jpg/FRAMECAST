@@ -2,7 +2,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { ACTIVE_STATUSES, catalogKey, intervalOf, priceId } from "@/lib/billing";
 import { applyBackupSetting } from "@/lib/retention";
-import { handle, HttpError, requireUser } from "@/lib/session";
+import { handle, HttpError, requireRole, requireUser } from "@/lib/session";
 import { stripe } from "@/lib/stripe";
 import { limitByIp } from "@/lib/rateLimit";
 
@@ -10,7 +10,9 @@ const Body = z.object({ enabled: z.boolean() });
 
 /** Optional paid add-on: keep encrypted copies on the server instead of letting them expire. */
 export const POST = handle(async (req: Request) => {
-  const { workspace } = await requireUser();
+  const me = await requireUser();
+  requireRole(me, "OWNER");
+  const { workspace } = me;
   const body = Body.safeParse(await req.json());
   await limitByIp("billing", 20, 600);
   if (!body.success) throw new HttpError(400, "Invalid request");

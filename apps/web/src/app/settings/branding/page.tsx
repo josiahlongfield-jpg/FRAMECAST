@@ -9,7 +9,7 @@ import { requirePageUser } from "@/lib/session";
 export const metadata: Metadata = { title: "Branding" };
 
 export default async function BrandingSettings() {
-  const { user, workspace } = await requirePageUser("/settings/branding");
+  const { user, workspace, role } = await requirePageUser("/settings/branding");
   const brand = brandOf({ ...workspace, plan: "SOLO" });
   return (
     <>
@@ -20,7 +20,9 @@ export default async function BrandingSettings() {
           Your logo and colour on the pages and reminder emails your clients see. Your business name comes from{" "}
           <Link href="/settings/reminders" className="font-medium text-brand-700 hover:underline">Reminders settings</Link>.
         </p>
-        {workspace.plan === "FREE" ? (
+        {role === "MEMBER" ? (
+          <p className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600">Ask an owner or admin of {workspace.name} to change the branding.</p>
+        ) : workspace.plan === "FREE" ? (
           <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
             <p className="text-slate-700">Custom branding is part of every paid plan.</p>
             <Link href="/pricing" className="mt-4 inline-block rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">See plans</Link>

@@ -1,14 +1,14 @@
 import { db } from "@/lib/db";
 import { colorProblem, LOGO_TYPES, MAX_LOGO_BYTES } from "@/lib/branding";
 import { limitByIp } from "@/lib/rateLimit";
-import { handle, HttpError, requireUser } from "@/lib/session";
+import { handle, HttpError, requireRole, requireUser } from "@/lib/session";
 
 /** Save custom branding: multipart form with optional `logo` file, `color`, and `removeLogo`. */
 export const POST = handle(async (req: Request) => {
-  const { user, workspace } = await requireUser();
+  const me = await requireUser();
+  requireRole(me, "OWNER", "ADMIN");
+  const { user, workspace } = me;
   if (workspace.plan === "FREE") throw new HttpError(402, "Custom branding is part of every paid plan.");
-  const member = await db.membership.findFirst({ where: { userId: user.id, workspaceId: workspace.id } });
-  if (member?.role === "MEMBER") throw new HttpError(403, "Only owners and admins can change branding.");
 
   const form = await req.formData();
   await limitByIp("branding", 30, 600);

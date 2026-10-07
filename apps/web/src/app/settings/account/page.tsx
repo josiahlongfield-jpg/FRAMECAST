@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import AppHeader from "@/components/AppHeader";
 import { signOut } from "@/auth";
 import { deleteAccount } from "@/lib/account";
+import { db } from "@/lib/db";
 import { PLANS } from "@/lib/plans";
 import { requirePageUser } from "@/lib/session";
 
@@ -17,6 +18,9 @@ export default async function AccountSettings({ searchParams }: { searchParams: 
     const { user } = await requirePageUser("/settings/account");
     const typed = String(form.get("confirm") ?? "").trim().toLowerCase();
     if (typed !== user.email.toLowerCase()) redirect("/settings/account?error=confirm");
+    // An owner leaving would strand their staff in a workspace nobody pays for.
+    const owned = await db.membership.findMany({ where: { userId: user.id, role: "OWNER" }, include: { workspace: { include: { _count: { select: { members: true } } } } } });
+    if (owned.some((m) => m.workspace._count.members > 1)) redirect("/settings/account?error=team");
     await deleteAccount(user.id);
     await signOut({ redirectTo: "/?deleted=1" });
   }
@@ -51,6 +55,7 @@ export default async function AccountSettings({ searchParams }: { searchParams: 
               <input name="confirm" type="email" autoComplete="off" required className="mt-1 block w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
             </label>
             {error === "confirm" && <p className="text-sm text-red-700">That doesn&apos;t match your email.</p>}
+            {error === "team" && <p className="text-sm text-red-700">You own a team with other staff. Remove them on the Team page first.</p>}
             <button className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">Delete my account</button>
           </form>
         </section>

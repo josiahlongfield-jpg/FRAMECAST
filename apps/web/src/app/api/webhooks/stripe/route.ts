@@ -15,6 +15,7 @@ async function syncSubscription(sub: Stripe.Subscription) {
   const active = ACTIVE_STATUSES.has(sub.status);
   const planItem = sub.items.data.find((i) => planOf(i.price));
   const seatItem = sub.items.data.find((i) => catalogOf(i.price)?.item === "client_seat");
+  const staffItem = sub.items.data.find((i) => catalogOf(i.price)?.item === "staff_seat");
   const cloudBackup = active && sub.items.data.some((i) => catalogOf(i.price)?.item === "cloud_backup");
   await db.workspace.update({
     where: { id: workspaceId },
@@ -24,6 +25,7 @@ async function syncSubscription(sub: Stripe.Subscription) {
       stripeCustomerId: typeof sub.customer === "string" ? sub.customer : sub.customer.id,
       subscriptionStatus: sub.status,
       extraClientSeats: active ? (seatItem?.quantity ?? 0) : 0,
+      extraStaffSeats: active ? (staffItem?.quantity ?? 0) : 0,
       cloudBackup,
       currentPeriodEnd: active && planItem?.current_period_end ? new Date(planItem.current_period_end * 1000) : null,
     },

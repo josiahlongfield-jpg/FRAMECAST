@@ -20,13 +20,13 @@ export const GET = handle(async () => {
   });
   return Response.json({
     seats: await seatUsage(workspace),
-    clients: clients.map((c) => ({ id: c.id, name: c.name, email: c.email, link: clientLink(c.token), teamKeyWrap: c.teamKeyWrap, videoCount: c._count.videos })),
+    clients: clients.map((c) => ({ id: c.id, name: c.name, email: c.email, link: clientLink(c.token), teamKeyWrap: c.teamKeyWrap, videoCount: c._count.videos, assignedToId: c.assignedToId })),
   });
 });
 
 /** Add a client. Each active client uses one seat; clients never pay. */
 export const POST = handle(async (req: Request) => {
-  const { workspace } = await requireUser();
+  const { user, workspace, role } = await requireUser();
   const body = Body.safeParse(await req.json());
   await limitByIp("clients", 30, 3600);
   if (!body.success) throw new HttpError(400, "Enter a name and, optionally, a valid email");
@@ -34,6 +34,6 @@ export const POST = handle(async (req: Request) => {
   if (seats.used >= seats.limit) {
     throw new HttpError(402, `All ${seats.limit} client seats are in use. Add more seats or remove a client first.`);
   }
-  const c = await db.client.create({ data: { ...body.data, token: newClientToken(), workspaceId: workspace.id } });
-  return Response.json({ client: { id: c.id, name: c.name, email: c.email, link: clientLink(c.token), teamKeyWrap: c.teamKeyWrap, videoCount: 0 } }, { status: 201 });
+  const c = await db.client.create({ data: { ...body.data, token: newClientToken(), workspaceId: workspace.id, assignedToId: role === "MEMBER" ? user.id : null } });
+  return Response.json({ client: { id: c.id, name: c.name, email: c.email, link: clientLink(c.token), teamKeyWrap: c.teamKeyWrap, videoCount: 0, assignedToId: c.assignedToId } }, { status: 201 });
 });

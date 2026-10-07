@@ -6,7 +6,11 @@ import { exportKey, generateKey, unwrapKey, wrapKey } from "@/lib/e2e/crypto";
 import TeamKeyGate from "./TeamKeyGate";
 
 type Seats = { used: number; limit: number };
-type Client = { id: string; name: string; email: string | null; link: string; teamKeyWrap: string | null; videoCount: number };
+type Client = { id: string; name: string; email: string | null; link: string; teamKeyWrap: string | null; videoCount: number; assignedToId: string | null };
+type Staff = { id: string; name: string };
+
+/** $37.50, $45 */
+const money = (n: number) => `$${Number.isInteger(n) ? n : n.toFixed(2)}`;
 
 /** A client's personal link, with their decryption key in the #fragment (never sent to the server). */
 export async function personalLink(link: string, teamKeyWrap: string | null, teamKey: CryptoKey) {
@@ -24,6 +28,15 @@ type Props = {
   extraSeats: number;
   seatPrice: number;
   canBuySeats: boolean;
+  /** Owners and admins assign and remove clients; members record and reply. */
+  canManage: boolean;
+  /** Only the owner handles billing. */
+  isOwner: boolean;
+  meId: string;
+  /** Everyone on the team. The assignment controls only show with two or more. */
+  staff: Staff[];
+  /** Solo plans: suggest Studio once extra seats would cost about as much. */
+  studioHint?: { soloBase: number; studioPrice: number; studioClients: number };
 };
 
 export default function ClientsManager({ workspaceId, fingerprint, ...rest }: Props) {
@@ -42,6 +55,11 @@ function Manager({
   extraSeats,
   seatPrice,
   canBuySeats,
+  canManage,
+  isOwner,
+  meId,
+  staff,
+  studioHint,
 }: Omit<Props, "workspaceId" | "fingerprint"> & { teamKey: CryptoKey }) {
   const [clients, setClients] = useState(initialClients);
   const [seats, setSeats] = useState(initialSeats);
@@ -51,7 +69,14 @@ function Manager({
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState<string>();
   const [buyQty, setBuyQty] = useState(5);
+  const [show, setShow] = useState<"all" | "mine">("all");
   const full = seats.used >= seats.limit;
+  const team = staff.length > 1;
+  const shown = show === "mine" ? clients.filter((c) => c.assignedToId === meId) : clients;
+  const staffName = (id: string | null) => staff.find((p) => p.id === id)?.name;
+  // What Solo would cost after this purchase, against Studio's flat price.
+  const soloAfter = studioHint ? studioHint.soloBase + (extraSeats + buyQty) * seatPrice : 0;
+  const suggestStudio = studioHint && soloAfter >= studioHint.studioPrice - 5;
 
   async function add(e: React.FormEvent) {
     e.preventDefault();
@@ -78,6 +103,17 @@ function Manager({
     if (!res.ok) return;
     setClients((list) => list.filter((x) => x.id !== c.id));
     setSeats((s) => ({ ...s, used: s.used - 1 }));
+  }
+
+  async function assign(c: Client, assignedToId: string | null) {
+    setError(undefined);
+    const res = await fetch(`/api/clients/${c.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assignedToId }),
+    });
+    if (!res.ok) return setError((await res.json().catch(() => ({}))).error ?? "Could not assign client");
+    setClients((list) => list.map((x) => (x.id === c.id ? { ...x, assignedToId } : x)));
   }
 
   async function copy(c: Client) {
@@ -115,15 +151,21 @@ function Manager({
             <div className={`h-full ${full ? "bg-amber-500" : "bg-brand-600"}`} style={{ width: `${Math.min(100, (seats.used / Math.max(1, seats.limit)) * 100)}%` }} />
           </div>
         </div>
-        {canBuySeats ? (
+        {!isOwner ? null : canBuySeats ? (
           <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-5 text-sm">
             <span className="text-slate-700">Need more?</span>
             <select value={buyQty} onChange={(e) => setBuyQty(Number(e.target.value))} className="rounded-lg border border-slate-300 bg-white px-2 py-1.5">
               {[1, 5, 10, 25, 50].map((n) => <option key={n} value={n}>{n} seats</option>)}
             </select>
             <button onClick={buySeats} className="rounded-lg bg-slate-900 px-3 py-1.5 font-medium text-white hover:bg-slate-800">
-              Add for ${buyQty * seatPrice}/month
+              Add for {money(buyQty * seatPrice)}/month
             </button>
+            {suggestStudio && (
+              <p data-testid="studio-hint" className="mt-3 w-full rounded-lg bg-brand-50 px-3 py-2 text-brand-900">
+                That would bring Solo to {money(soloAfter)}/month. Studio is {money(studioHint.studioPrice)}/month with {studioHint.studioClients} clients and 3 staff logins included.{" "}
+                <Link href="/pricing" className="font-medium underline">Compare plans</Link>
+              </p>
+            )}
           </div>
         ) : (
           <p className="mt-5 border-t border-slate-100 pt-5 text-sm text-slate-600">
@@ -146,23 +188,41 @@ function Manager({
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white">
-        {clients.length === 0 ? (
-          <p className="p-6 text-sm text-slate-500">No clients yet.</p>
+        {team && (
+          <div role="tablist" aria-label="Which clients" className="flex gap-1 border-b border-slate-100 px-4 pt-3 text-sm">
+            {(["all", "mine"] as const).map((k) => (
+              <button key={k} role="tab" aria-selected={show === k} onClick={() => setShow(k)}
+                className={`rounded-t-lg px-3 py-2 ${show === k ? "border-b-2 border-brand-600 font-medium text-slate-900" : "text-slate-500 hover:text-slate-900"}`}>
+                {k === "all" ? `All clients (${clients.length})` : `My clients (${clients.filter((c) => c.assignedToId === meId).length})`}
+              </button>
+            ))}
+          </div>
+        )}
+        {shown.length === 0 ? (
+          <p className="p-6 text-sm text-slate-500">{clients.length === 0 ? "No clients yet." : "No clients are assigned to you yet."}</p>
         ) : (
           <ul className="divide-y divide-slate-100">
-            {clients.map((c) => (
+            {shown.map((c) => (
               <li key={c.id} className="flex flex-wrap items-center justify-between gap-3 px-6 py-4">
                 <div>
                   <Link href={`/clients/${c.id}`} className="font-medium text-slate-900 hover:text-brand-700 hover:underline">{c.name}</Link>
                   <p className="text-xs text-slate-500">
                     {c.email ? `${c.email} · ` : ""}{c.videoCount} {c.videoCount === 1 ? "video" : "videos"}
+                    {team && !canManage && ` · ${staffName(c.assignedToId) ?? "Shared"}`}
                   </p>
                 </div>
-                <div className="flex gap-2 text-sm">
+                <div className="flex flex-wrap gap-2 text-sm">
+                  {team && canManage && (
+                    <select aria-label={`Who looks after ${c.name}`} value={c.assignedToId ?? ""} onChange={(e) => assign(c, e.target.value || null)}
+                      className="rounded-lg border border-slate-300 bg-white px-2 py-1.5">
+                      <option value="">Shared</option>
+                      {staff.map((p) => <option key={p.id} value={p.id}>{p.id === meId ? `${p.name} (you)` : p.name}</option>)}
+                    </select>
+                  )}
                   <button onClick={() => copy(c)} className="rounded-lg border border-slate-300 px-3 py-1.5 hover:bg-slate-50">
                     {copied === c.id ? "Copied" : "Copy personal link"}
                   </button>
-                  <button onClick={() => remove(c)} className="rounded-lg px-3 py-1.5 text-slate-500 hover:bg-slate-50 hover:text-red-700">Remove</button>
+                  {canManage && <button onClick={() => remove(c)} className="rounded-lg px-3 py-1.5 text-slate-500 hover:bg-slate-50 hover:text-red-700">Remove</button>}
                 </div>
               </li>
             ))}
