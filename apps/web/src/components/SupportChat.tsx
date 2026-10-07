@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Component, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 type Message = { id: string; author: "CUSTOMER" | "ASSISTANT" | "STAFF"; body: string; at: string };
 type Ticket = { status: "OPEN" | "NEEDS_HUMAN" | "ANSWERED" | "CLOSED"; messages: Message[] };
@@ -104,7 +104,7 @@ export function SupportChat({ signedIn, className = "" }: { signedIn: boolean; c
   const needsEmail = !signedIn && !token;
 
   return (
-    <div className={`flex min-h-0 flex-col ${className}`}>
+    <div className={`flex min-h-0 flex-col ${className}`} translate="no">
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4" aria-live="polite">
         <Bubble author="ASSISTANT" body={WELCOME} />
         {ticket?.messages.map((m) => <Bubble key={m.id} author={m.author} body={m.body} />)}
@@ -131,6 +131,7 @@ export function SupportChat({ signedIn, className = "" }: { signedIn: boolean; c
             onChange={(e) => setEmail(e.target.value)}
             placeholder="Your email (so we can reply)"
             aria-label="Your email"
+            data-gramm="false"
             className="mb-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
           />
         )}
@@ -146,6 +147,9 @@ export function SupportChat({ signedIn, className = "" }: { signedIn: boolean; c
             }}
             rows={2}
             maxLength={4000}
+            data-gramm="false"
+            data-gramm_editor="false"
+            data-enable-grammarly="false"
             placeholder="Type your question…"
             aria-label="Your message"
             className="min-h-[44px] flex-1 resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm"
@@ -187,6 +191,41 @@ function Bubble({ author, body }: { author: Message["author"]; body: string }) {
   );
 }
 
+/** Tells the server what broke in a visitor's browser, so it shows up in the logs. */
+export function reportClientError(where: string, error: unknown) {
+  try {
+    const e = error as { name?: string; message?: string; stack?: string };
+    const body = JSON.stringify({ where, name: e?.name, message: String(e?.message ?? error).slice(0, 500), stack: e?.stack?.slice(0, 1500), url: location.pathname, ua: navigator.userAgent });
+    navigator.sendBeacon?.("/api/support/client-error", new Blob([body], { type: "application/json" }));
+  } catch {}
+}
+
+/**
+ * Keeps a problem inside the chat (a browser extension rewriting the text box,
+ * say) from taking the whole page down with it.
+ */
+export class ChatBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch(error: unknown) {
+    reportClientError("support-chat", error);
+  }
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <div className="flex flex-1 flex-col items-start gap-3 p-4 text-sm text-slate-700" role="alert">
+        <p>The chat hit a problem in this browser. A browser extension that edits text boxes can cause this.</p>
+        <button onClick={() => this.setState({ failed: false })} className="rounded-lg bg-brand-600 px-3 py-2 font-semibold text-white hover:bg-brand-700">
+          Try again
+        </button>
+        <a href="/help" className="text-brand-700 hover:underline">Open the help page instead</a>
+      </div>
+    );
+  }
+}
+
 /** A Help button fixed to the corner that opens the chat in a panel. */
 export default function SupportWidget({ signedIn }: { signedIn: boolean }) {
   const [open, setOpen] = useState(false);
@@ -200,7 +239,9 @@ export default function SupportWidget({ signedIn }: { signedIn: boolean }) {
               ✕
             </button>
           </div>
-          <SupportChat signedIn={signedIn} className="flex-1" />
+          <ChatBoundary>
+            <SupportChat signedIn={signedIn} className="flex-1" />
+          </ChatBoundary>
         </div>
       )}
       <button
