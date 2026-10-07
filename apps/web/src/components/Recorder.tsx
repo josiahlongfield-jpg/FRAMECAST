@@ -8,6 +8,7 @@ import { ChunkedUploader, lockName, recoverInterrupted, type UploadState } from 
 import {
   bitrateFor,
   getCamera,
+  getCameraAndMic,
   getMic,
   getScreen,
   mixAudio,
@@ -52,6 +53,7 @@ export default function Recorder({
   const [elapsed, setElapsed] = useState(0);
   const [upload, setUpload] = useState<UploadState>({ uploadedBytes: 0, bufferedBytes: 0, retrying: false });
   const [error, setError] = useState<string>();
+  const [notice, setNotice] = useState<string>();
   const [recovered, setRecovered] = useState<string[]>([]);
   const [bubbleOpen, setBubbleOpen] = useState(false);
   // Phones and tablets can't share their screen from a browser, so they only get camera mode.
@@ -60,6 +62,8 @@ export default function Recorder({
     if (!navigator.mediaDevices?.getDisplayMedia) {
       setCanShareScreen(false);
       setMode("camera");
+      // Phones record 720p: lighter on memory and battery, and plenty for a phone screen.
+      setQuality(720);
     }
   }, []);
 
@@ -94,6 +98,7 @@ export default function Recorder({
   useEffect(() => {
     if (phase !== "setup" || mode === "screen") {
       if (phase === "setup") {
+        setError(undefined);
         stopAll(camStream.current);
         camStream.current = null;
       }
@@ -108,11 +113,24 @@ export default function Recorder({
         if (preview.current) preview.current.srcObject = s;
         await loadDevices();
       })
-      .catch(() => setError("Camera permission is needed for this mode. Allow it in your browser's address bar."));
+      .catch((err: Error) => {
+        if (cancelled) return;
+        // No camera at all (common on desktop computers): fall back to recording the screen.
+        if (err.name === "NotFoundError" && canShareScreen) {
+          setMode("screen");
+          setNotice("No camera found, so Screen only is selected. You can still talk over your screen.");
+          return;
+        }
+        setError(
+          err.name === "NotFoundError"
+            ? "No camera found on this device."
+            : "Camera permission is needed for this mode. Allow it in your browser's address bar, or choose Screen only.",
+        );
+      });
     return () => {
       cancelled = true;
     };
-  }, [mode, camId, quality, phase, loadDevices]);
+  }, [mode, camId, quality, phase, loadDevices, canShareScreen]);
 
   useEffect(() => {
     getMic(undefined)
@@ -156,14 +174,17 @@ export default function Recorder({
     setError(undefined);
     const streams: MediaStream[] = [];
     try {
-      const mic = await getMic(micId);
-      streams.push(mic);
       let video: MediaStreamTrack;
       if (mode === "camera") {
-        const cam = camStream.current ?? (await getCamera(camId, quality));
-        camStream.current = cam;
-        video = cam.getVideoTracks()[0];
+        // One request for both, replacing the preview (see getCameraAndMic).
+        stopAll(camStream.current);
+        const both = await getCameraAndMic(camId, micId, quality);
+        camStream.current = both;
+        if (preview.current) preview.current.srcObject = new MediaStream(both.getVideoTracks());
+        streams.push(new MediaStream(both.getAudioTracks()));
+        video = both.getVideoTracks()[0];
       } else {
+        streams.push(await getMic(micId));
         const screen = await getScreen(quality);
         streams.push(screen);
         video = screen.getVideoTracks()[0];
@@ -332,6 +353,7 @@ export default function Recorder({
           </div>
         )}
         {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div>}
+        {notice && !error && phase === "setup" && <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">{notice}</div>}
 
         {phase === "setup" && (
           <>

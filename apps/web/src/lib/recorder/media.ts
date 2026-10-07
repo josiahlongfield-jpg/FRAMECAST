@@ -27,6 +27,19 @@ export async function getCamera(deviceId: string | undefined, q: Quality) {
   });
 }
 
+/**
+ * Camera and microphone in one request. iPhones only allow one capture at a
+ * time, and asking for the mic separately while the camera is live can end
+ * the camera track or crash the page.
+ */
+export async function getCameraAndMic(camId: string | undefined, micId: string | undefined, q: Quality) {
+  const { width, height } = dims(Math.min(q, 1080) as Quality);
+  return navigator.mediaDevices.getUserMedia({
+    video: { deviceId: camId ? { exact: camId } : undefined, width: { ideal: width }, height: { ideal: height }, frameRate: { ideal: 30 } },
+    audio: { deviceId: micId ? { exact: micId } : undefined, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+  });
+}
+
 export async function getMic(deviceId: string | undefined) {
   return navigator.mediaDevices.getUserMedia({
     audio: { deviceId: deviceId ? { exact: deviceId } : undefined, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
