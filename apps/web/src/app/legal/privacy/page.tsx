@@ -52,7 +52,7 @@ export default function Page() {
       <p>
         The help chat is answered first by an AI assistant provided by Anthropic. Your messages, and for signed-in customers a summary of your plan and usage, are sent
         to Anthropic to generate replies. The assistant can&rsquo;t see your videos, replies, to-dos or notes. Anything it can&rsquo;t resolve is passed to a person on our
-        team, who can read the conversation. Please don&rsquo;t share passwords, recovery keys or card numbers in the chat.
+        team, who can read the conversation. Please don&rsquo;t share passwords, recovery keys or card numbers in the chat. We don&rsquo;t use your content or chats to train AI models, and Anthropic doesn&rsquo;t use them to train its models either.
       </p>
 
       <h2>Who we share it with</h2>
@@ -64,7 +64,11 @@ export default function Page() {
         <li>Anthropic (the AI support assistant).</li>
         <li>Google Workspace (our support inbox).</li>
       </ul>
-      <p>We may also disclose information if the law requires it, or to protect the rights and safety of our users or others.</p>
+      <p>
+        We may also disclose information if the law requires it, or to protect the rights and safety of our users or others. Because content is end-to-end encrypted,
+        we can only ever hand over account details and information about content, never the content itself.
+      </p>
+      <p>If our business is sold or transferred, your information may pass to the new owner, who must keep handling it in line with this policy.</p>
 
       <h2>Overseas storage</h2>
       <p>
@@ -99,7 +103,8 @@ export default function Page() {
 
       <h2>Clients of businesses using {LEGAL.product}</h2>
       <p>
-        If a business invited you as a client, that business decides what to send you and holds your details. Contact them first about your information. You can also
+        If a business invited you as a client, that business decides what to send you and holds your details, and it&rsquo;s responsible for handling them
+        lawfully. We store them on the business&rsquo;s behalf. Contact them first about your information. You can also
         email us and we&rsquo;ll help.
       </p>
 
