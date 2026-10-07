@@ -1,6 +1,6 @@
 # SureFrame
 
-Async screen and camera recording for teams, built to never lose a take.
+Async screen and camera recording for teams, built to protect every take from crashes and dropped connections.
 The product name lives in `apps/web/src/lib/brand.ts` and `apps/mobile/app.json`. Internal identifiers (database name, browser storage keys) still say `framecast` on purpose: renaming them would orphan keys and recordings already saved in browsers.
 
 See [PLAN.md](PLAN.md) for product scope, pricing and architecture.

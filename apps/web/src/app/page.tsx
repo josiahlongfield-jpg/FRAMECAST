@@ -4,8 +4,8 @@ import SiteFooter from "@/components/SiteFooter";
 
 const PILLARS = [
   {
-    title: "Never lose a take",
-    body: "Recordings upload while you talk and are backed up on your device. If the browser crashes or Wi-Fi drops, your video is recovered automatically.",
+    title: "Protected from crashes",
+    body: "Recordings upload while you talk and are backed up on your device. If the browser crashes or Wi-Fi drops, reopen it on the same device and your video carries on uploading by itself.",
     icon: "M12 3l8 4v5c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V7z",
   },
   {
@@ -64,8 +64,8 @@ export default function Home() {
               One take is <span className="block text-brand-600 sm:inline">all it takes.</span>
             </h1>
             <p className="mx-auto mt-6 max-w-2xl text-lg text-slate-600">
-              Every take is saved as you record, so a crash or dropped signal will never cost you the time you took to
-              make it. Each recording is end-to-end encrypted and only those you send it to will have access. Your clients
+              Every take is saved as you record, so a crash or dropped signal doesn&rsquo;t mean starting
+              again. Each recording is end-to-end encrypted and only those you send it to will have access. Your clients
               join and make use of our services for free under your subscription, while their to-dos and reminders live right
               next to your corresponding videos.
             </p>

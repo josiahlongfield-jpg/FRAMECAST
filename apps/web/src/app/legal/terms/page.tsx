@@ -75,10 +75,17 @@ export default function Page() {
         the Free plan with reasonable notice.
       </p>
 
-      <h2>7. Storage</h2>
+      <h2>7. Storage and lost recordings</h2>
       <p>
         Without cloud backup, the encrypted copy of a video on our servers is deleted {LEGAL.retentionDays} days after it&rsquo;s recorded, and the original stays on the
         recording device. With cloud backup, content is kept until you delete it or close your account. Please keep your own copies of anything important.
+      </p>
+      <p>
+        {LEGAL.product} is built to protect recordings from crashes and dropped connections, but no system can rule out every loss. A recording or other content can
+        still be lost, for example if a device is lost, damaged or out of storage before an upload finishes, if browser data is cleared, if a recovery key is lost, or
+        because of a fault on our side or at one of our providers. We don&rsquo;t promise that content will never be lost, damaged or unavailable, and you&rsquo;re
+        responsible for keeping copies of anything you can&rsquo;t afford to lose. To the extent the law allows, we&rsquo;re not liable for lost or damaged content,
+        and section 16 (limit of liability) applies to any claim about it.
       </p>
 
       <h2>8. Your content</h2>

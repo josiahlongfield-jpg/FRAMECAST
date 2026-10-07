@@ -47,7 +47,7 @@ export default function Home() {
     return (
       <View style={styles.welcome}>
         <View style={styles.logo}><Text style={styles.logoText}>▶</Text></View>
-        <Text style={styles.h1}>Video messages that never drop a take.</Text>
+        <Text style={styles.h1}>Video messages that survive a crash.</Text>
         <Text style={styles.sub}>Record on your phone, share a link instantly, and pick up where you left off on the web.</Text>
         <Pressable style={styles.primary} onPress={async () => (await signIn()) && load()}>
           <Text style={styles.primaryText}>Sign in</Text>
