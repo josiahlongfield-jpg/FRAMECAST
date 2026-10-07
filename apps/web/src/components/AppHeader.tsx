@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { signOut } from "@/auth";
 import Logo from "./Logo";
+import NavLinks from "./NavLinks";
 import SupportWidget from "./SupportChat";
 
 const LINKS = [
@@ -20,9 +21,7 @@ export default function AppHeader({ email, plan }: { email: string; plan: string
         <div className="flex items-center gap-6">
           <Logo href="/library" />
           <nav className="hidden gap-4 text-sm sm:flex">
-            {LINKS.map(([href, label]) => (
-              <Link key={href} href={href} className="text-slate-600 hover:text-slate-900">{label}</Link>
-            ))}
+            <NavLinks links={LINKS} className="" />
           </nav>
         </div>
         <div className="flex items-center gap-3 text-sm">
@@ -39,9 +38,7 @@ export default function AppHeader({ email, plan }: { email: string; plan: string
       </div>
       {/* On phones the links get their own rows, wrapping so every one stays visible. */}
       <nav className="flex flex-wrap border-t border-slate-100 px-2 text-sm sm:hidden">
-        {LINKS.map(([href, label]) => (
-          <Link key={href} href={href} className="px-3 py-2 text-slate-600 hover:text-slate-900">{label}</Link>
-        ))}
+        <NavLinks links={LINKS} className="px-3 py-2" />
       </nav>
       <SupportWidget signedIn />
     </header>
