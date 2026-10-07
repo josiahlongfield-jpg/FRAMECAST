@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import AppHeader from "@/components/AppHeader";
+import ShowRecoveryKey from "@/components/ShowRecoveryKey";
 import { signOut } from "@/auth";
 import { deleteAccount } from "@/lib/account";
 import { db } from "@/lib/db";
@@ -31,6 +32,14 @@ export default async function AccountSettings({ searchParams }: { searchParams: 
       <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Account</h1>
         <p className="mt-1 text-sm text-slate-500">Signed in as {user.email}</p>
+
+        <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
+          <h2 className="font-semibold text-slate-900">Recovery key</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Use this to unlock your videos on a phone or another computer. Keep it private: anyone signed in to your account with it can open your videos.
+          </p>
+          <ShowRecoveryKey workspaceId={workspace.id} fingerprint={workspace.keyFingerprint} />
+        </section>
 
         <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
           <h2 className="font-semibold text-slate-900">Download your data</h2>
