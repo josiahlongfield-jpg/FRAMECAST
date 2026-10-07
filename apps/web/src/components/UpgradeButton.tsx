@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { PLANS, type Interval, type PaidPlan } from "@/lib/plans";
 
-export default function UpgradeButton({ plan, featured = false }: { plan: "PRO" | "BUSINESS"; featured?: boolean }) {
+export default function UpgradeButton({ plan, interval = "month", featured = false }: { plan: PaidPlan; interval?: Interval; featured?: boolean }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -12,7 +13,7 @@ export default function UpgradeButton({ plan, featured = false }: { plan: "PRO" 
     const res = await fetch("/api/billing/checkout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ plan }),
+      body: JSON.stringify({ plan, interval }),
     });
     if (res.status === 401) {
       window.location.href = `/login?next=${encodeURIComponent("/pricing")}`;
@@ -33,7 +34,7 @@ export default function UpgradeButton({ plan, featured = false }: { plan: "PRO" 
         disabled={busy}
         className={`w-full rounded-xl px-4 py-3 font-semibold disabled:opacity-60 ${featured ? "bg-brand-600 text-white hover:bg-brand-700" : "bg-slate-900 text-white hover:bg-slate-800"}`}
       >
-        {busy ? "Opening checkout…" : `Get ${plan === "PRO" ? "Pro" : "Business"}`}
+        {busy ? "Opening checkout…" : `Get ${PLANS[plan].name}`}
       </button>
       {error && <p className="mt-2 text-sm text-red-700">{error}</p>}
     </>

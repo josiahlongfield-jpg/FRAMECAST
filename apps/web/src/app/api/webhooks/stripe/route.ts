@@ -1,6 +1,6 @@
 import type Stripe from "stripe";
 import { db } from "@/lib/db";
-import { ACTIVE_STATUSES, BACKUP_KEY, catalogKeyOf, planOf, SEAT_KEY } from "@/lib/billing";
+import { ACTIVE_STATUSES, catalogOf, planOf } from "@/lib/billing";
 import { stripe } from "@/lib/stripe";
 import { applyBackupSetting } from "@/lib/retention";
 
@@ -14,8 +14,8 @@ async function syncSubscription(sub: Stripe.Subscription) {
 
   const active = ACTIVE_STATUSES.has(sub.status);
   const planItem = sub.items.data.find((i) => planOf(i.price));
-  const seatItem = sub.items.data.find((i) => catalogKeyOf(i.price) === SEAT_KEY);
-  const cloudBackup = active && sub.items.data.some((i) => catalogKeyOf(i.price) === BACKUP_KEY);
+  const seatItem = sub.items.data.find((i) => catalogOf(i.price)?.item === "client_seat");
+  const cloudBackup = active && sub.items.data.some((i) => catalogOf(i.price)?.item === "cloud_backup");
   await db.workspace.update({
     where: { id: workspaceId },
     data: {

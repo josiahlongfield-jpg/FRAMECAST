@@ -65,7 +65,7 @@ node e2e/signin.mjs
 
 - Host `apps/web` on Vercel; Postgres on Neon or Supabase; storage on Cloudflare R2 (set `S3_*`).
 - Create a Mux account and point its webhook at `/api/webhooks/mux`.
-- Stripe: set `STRIPE_SECRET_KEY`. Products and prices (Pro, Business, extra client seat, cloud backup) are created on first use by lookup key (`src/lib/billing.ts`), with the SaaS business-use tax code, so there are no price ids to copy. Checkout uses Managed Payments (Stripe is merchant of record and handles tax, fraud and disputes); accept its terms under Settings → Managed Payments, or set `STRIPE_MANAGED_PAYMENTS=off` for plain Checkout with Stripe Tax. Add a webhook endpoint `https://<domain>/api/webhooks/stripe` for `customer.subscription.created`, `.updated` and `.deleted`, and put its signing secret in `STRIPE_WEBHOOK_SECRET`.
+- Stripe: set `STRIPE_SECRET_KEY`. Products and prices (Solo, Studio, Agency, extra client, cloud backup, each monthly and yearly) are created on first use by lookup key (`src/lib/billing.ts`), with the SaaS business-use tax code, so there are no price ids to copy. Checkout uses Managed Payments (Stripe is merchant of record and handles tax, fraud and disputes); accept its terms under Settings → Managed Payments, or set `STRIPE_MANAGED_PAYMENTS=off` for plain Checkout with Stripe Tax. Add a webhook endpoint `https://<domain>/api/webhooks/stripe` for `customer.subscription.created`, `.updated` and `.deleted`, and put its signing secret in `STRIPE_WEBHOOK_SECRET`.
 - Ship mobile with `eas build` and `eas submit`. Paid upgrades in the iOS and Android apps must follow App Store and Play billing rules (RevenueCat recommended).
 
 ## Hosted preview on Vercel (free tier)

@@ -31,12 +31,17 @@ export default async function Billing({ searchParams }: { searchParams: Promise<
               Renews {workspace.currentPeriodEnd.toLocaleDateString("en-US", { dateStyle: "long" })}
             </p>
           )}
+          {plan.showsPromo && (
+            <p className="mt-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
+              Your clients see a short SureFrame intro before each video. Any paid plan removes it and shows your own branding instead.
+            </p>
+          )}
           <ul className="mt-4 space-y-1 text-sm text-slate-700">
             {plan.features.map((f) => <li key={f}>• {f}</li>)}
           </ul>
           <div className="mt-6 flex gap-3">
             {workspace.stripeCustomerId && <ManageBillingButton />}
-            {workspace.plan !== "BUSINESS" && (
+            {workspace.plan !== "AGENCY" && (
               <Link href="/pricing" className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">Upgrade</Link>
             )}
           </div>

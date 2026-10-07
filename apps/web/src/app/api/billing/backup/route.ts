@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { ACTIVE_STATUSES, BACKUP_KEY, priceId } from "@/lib/billing";
+import { ACTIVE_STATUSES, catalogKey, intervalOf, priceId } from "@/lib/billing";
 import { applyBackupSetting } from "@/lib/retention";
 import { handle, HttpError, requireUser } from "@/lib/session";
 import { stripe } from "@/lib/stripe";
@@ -16,9 +16,9 @@ export const POST = handle(async (req: Request) => {
   if (!body.success) throw new HttpError(400, "Invalid request");
   if (!workspace.stripeSubscriptionId) throw new HttpError(400, "Upgrade to a paid plan to add cloud backup");
 
-  const price = await priceId(BACKUP_KEY);
   const sub = await stripe().subscriptions.retrieve(workspace.stripeSubscriptionId);
   if (!ACTIVE_STATUSES.has(sub.status)) throw new HttpError(400, "Your subscription is not active");
+  const price = await priceId(catalogKey("cloud_backup", intervalOf(sub)));
   const item = sub.items.data.find((i) => i.price.id === price);
   if (body.data.enabled && !item) await stripe().subscriptions.update(sub.id, { items: [{ price, quantity: 1 }] });
   if (!body.data.enabled && item) await stripe().subscriptions.update(sub.id, { items: [{ id: item.id, deleted: true }] });

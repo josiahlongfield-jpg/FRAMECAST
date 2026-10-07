@@ -38,43 +38,54 @@ const planText = async () => {
 };
 
 // 1) Checkout creates the catalog on first use and uses Managed Payments.
-let res = await api("/api/billing/checkout", { plan: "PRO" });
+let res = await api("/api/billing/checkout", { plan: "SOLO" });
 const { url } = await res.json();
 ok("checkout returns a Stripe URL", res.ok() && url?.startsWith("https://checkout.stripe.test"));
 const session = state.sessions.at(-1).params;
 const proPrice = state.prices.find((p) => p.id === session.line_items[0].price);
-ok("Pro price has the right amount", proPrice?.lookup_key === "sureframe_pro_monthly" && proPrice?.unit_amount === 1200 && proPrice.recurring?.interval === "month");
+ok("Solo price has the right amount", proPrice?.lookup_key === "sureframe_solo_monthly" && proPrice?.unit_amount === 1500 && proPrice.recurring?.interval === "month");
 ok("product uses the SaaS tax code", state.products.find((p) => p.id === proPrice.product)?.tax_code === "txcd_10103001");
 ok("checkout uses Managed Payments", session.managed_payments?.enabled === "true" && !session.automatic_tax);
-ok("checkout charges the Pro price once", session.line_items[0].price === proPrice.id && session.line_items[0].quantity === "1");
+ok("checkout charges the Solo price once", session.line_items[0].price === proPrice.id && session.line_items[0].quantity === "1");
 const workspaceId = session.subscription_data.metadata.workspaceId;
 
-res = await api("/api/billing/checkout", { plan: "PRO" });
-ok("prices are reused, not duplicated", state.prices.filter((p) => p.lookup_key === "sureframe_pro_monthly").length === 1);
+res = await api("/api/billing/checkout", { plan: "SOLO" });
+ok("prices are reused, not duplicated", state.prices.filter((p) => p.lookup_key === "sureframe_solo_monthly").length === 1);
 
 // 2) Stripe confirms the subscription.
-const sub = createSubscription(session.customer, workspaceId, "sureframe_pro_monthly");
+const sub = createSubscription(session.customer, workspaceId, "sureframe_solo_monthly");
 ok("bad webhook signature refused", (await webhook("customer.subscription.created", sub, "whsec_wrong")).status() === 400);
 ok("webhook accepted", (await webhook("customer.subscription.created", sub)).ok());
-ok("billing page shows Pro", /Pro plan/.test(await planText()) && /Renews/.test(await page.textContent("main")));
+ok("billing page shows Solo", /Solo plan/.test(await planText()) && /Renews/.test(await page.textContent("main")));
 
 // 3) Extra client seats and cloud backup ride on the same subscription.
 res = await api("/api/billing/seats", { extraSeats: 3 });
 const seatItem = sub.items.data.find((i) => i.price.lookup_key === "sureframe_client_seat_monthly");
-ok("extra seats added to the subscription", res.ok() && seatItem?.quantity === 3 && seatItem.price.unit_amount === 200);
+ok("extra seats added to the subscription", res.ok() && seatItem?.quantity === 3 && seatItem.price.unit_amount === 150);
 res = await api("/api/billing/backup", { enabled: true });
 ok("cloud backup added", res.ok() && sub.items.data.some((i) => i.price.lookup_key === "sureframe_cloud_backup_monthly"));
 await webhook("customer.subscription.updated", sub);
 
 // 4) Upgrading switches the plan in place instead of opening a second checkout.
 const sessionsBefore = state.sessions.length;
-res = await api("/api/billing/checkout", { plan: "BUSINESS" });
+res = await api("/api/billing/checkout", { plan: "STUDIO" });
 const up = await res.json();
 ok("upgrade goes straight back to billing", res.ok() && up.url.endsWith("/settings/billing?upgraded=1") && state.sessions.length === sessionsBefore);
-ok("plan item switched to Business", sub.items.data.some((i) => i.price.lookup_key === "sureframe_business_monthly") && !sub.items.data.some((i) => i.price.lookup_key === "sureframe_pro_monthly"));
+ok("plan item switched to Studio", sub.items.data.some((i) => i.price.lookup_key === "sureframe_studio_monthly") && !sub.items.data.some((i) => i.price.lookup_key === "sureframe_solo_monthly"));
 ok("seats kept through the upgrade", sub.items.data.find((i) => i.price.lookup_key === "sureframe_client_seat_monthly")?.quantity === 3);
 await webhook("customer.subscription.updated", sub);
-ok("billing page shows Business", /Business plan/.test(await planText()));
+ok("billing page shows Studio", /Studio plan/.test(await planText()));
+
+// 4b) Switching to yearly moves the plan and every add-on to yearly prices together.
+res = await api("/api/billing/checkout", { plan: "STUDIO", interval: "year" });
+const keys = () => sub.items.data.map((i) => i.price.lookup_key).sort();
+ok("yearly switch moves every item", res.ok() && JSON.stringify(keys()) === JSON.stringify(["sureframe_client_seat_yearly", "sureframe_cloud_backup_yearly", "sureframe_studio_yearly"]), keys().join());
+const yearly = sub.items.data.find((i) => i.price.lookup_key === "sureframe_studio_yearly");
+ok("yearly Studio costs 10 months", yearly?.price.unit_amount === 49000 && yearly.price.recurring?.interval === "year");
+res = await api("/api/billing/seats", { extraSeats: 4 });
+ok("seats added later bill yearly too", res.ok() && sub.items.data.find((i) => i.price.lookup_key === "sureframe_client_seat_yearly")?.quantity === 4);
+await webhook("customer.subscription.updated", sub);
+ok("yearly Studio still shows as Studio", /Studio plan/.test(await planText()));
 
 // 5) Customer portal.
 res = await api("/api/billing/portal");
@@ -85,10 +96,10 @@ ok("portal opens with our configuration", res.ok() && portal.url && state.portal
 sub.status = "canceled";
 await webhook("customer.subscription.deleted", sub);
 ok("cancelled subscription returns to Free", /Free plan/.test(await planText()));
-const sub2 = createSubscription(session.customer, workspaceId, "sureframe_pro_monthly");
+const sub2 = createSubscription(session.customer, workspaceId, "sureframe_solo_monthly");
 await webhook("customer.subscription.created", sub2);
 await webhook("customer.subscription.deleted", sub);
-ok("old subscription's events don't override the new one", /Pro plan/.test(await planText()));
+ok("old subscription's events don't override the new one", /Solo plan/.test(await planText()));
 
 // 7) Data export.
 res = await page.request.get(BASE + "/api/account/export");

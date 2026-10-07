@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { ACTIVE_STATUSES, SEAT_KEY, priceId } from "@/lib/billing";
+import { ACTIVE_STATUSES, catalogKey, intervalOf, priceId } from "@/lib/billing";
 import { PLANS } from "@/lib/plans";
 import { handle, HttpError, requireUser } from "@/lib/session";
 import { stripe } from "@/lib/stripe";
@@ -24,9 +24,9 @@ export const POST = handle(async (req: Request) => {
     throw new HttpError(400, `You have ${used} clients. Remove some before lowering your seats.`);
   }
 
-  const price = await priceId(SEAT_KEY);
   const sub = await stripe().subscriptions.retrieve(workspace.stripeSubscriptionId);
   if (!ACTIVE_STATUSES.has(sub.status)) throw new HttpError(400, "Your subscription is not active");
+  const price = await priceId(catalogKey("client_seat", intervalOf(sub)));
   const item = sub.items.data.find((i) => i.price.id === price);
   const items =
     body.data.extraSeats === 0

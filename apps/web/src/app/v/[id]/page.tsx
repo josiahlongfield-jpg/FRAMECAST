@@ -5,6 +5,8 @@ import Logo from "@/components/Logo";
 import BrandMark from "@/components/BrandMark";
 import { brandOf, brandStyle } from "@/lib/branding";
 import WatchView from "@/components/WatchView";
+import SureFramePromo from "@/components/SureFramePromo";
+import { PLANS } from "@/lib/plans";
 import { db } from "@/lib/db";
 import { viewerFor } from "@/lib/access";
 import { clientLink } from "@/lib/clients";
@@ -77,6 +79,8 @@ export default async function Watch({ params }: Props) {
         {expired ? (
           <p className="rounded-2xl border border-slate-200 bg-white p-16 text-center text-slate-600">This link has expired.</p>
         ) : (
+          <>
+          {!isMember && PLANS[workspace.plan].showsPromo && <SureFramePromo videoId={video.id} />}
           <WatchView
             video={publicVideo(video)}
             ownerName={video.owner.name ?? video.owner.email.split("@")[0]}
@@ -89,6 +93,7 @@ export default async function Watch({ params }: Props) {
             sentToId={video.clientId}
             initialReplies={replies.map((r) => replyDTO(r, video.ownerId))}
           />
+          </>
         )}
       </main>
     </div>

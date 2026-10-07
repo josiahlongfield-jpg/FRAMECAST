@@ -6,7 +6,7 @@ import { handle, HttpError, requireUser } from "@/lib/session";
 /** Save custom branding: multipart form with optional `logo` file, `color`, and `removeLogo`. */
 export const POST = handle(async (req: Request) => {
   const { user, workspace } = await requireUser();
-  if (workspace.plan === "FREE") throw new HttpError(402, "Custom branding is part of Pro and Business.");
+  if (workspace.plan === "FREE") throw new HttpError(402, "Custom branding is part of every paid plan.");
   const member = await db.membership.findFirst({ where: { userId: user.id, workspaceId: workspace.id } });
   if (member?.role === "MEMBER") throw new HttpError(403, "Only owners and admins can change branding.");
 

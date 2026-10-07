@@ -360,7 +360,7 @@ export default function Recorder({
                 <select className="rounded-lg border border-slate-300 bg-white px-3 py-2" value={quality} onChange={(e) => setQuality(Number(e.target.value) as Quality)}>
                   {allowedQualities.map((q) => <option key={q} value={q}>{q === 2160 ? "4K" : `${q}p`}</option>)}
                 </select>
-                {maxResolution < 1080 && <span className="text-xs text-slate-500">Upgrade to Pro for 1080p and 4K.</span>}
+                {maxResolution < 1080 && <span className="text-xs text-slate-500">Upgrade to a paid plan for 1080p and 4K.</span>}
               </label>
             </div>
 

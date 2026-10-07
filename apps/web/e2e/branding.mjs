@@ -37,14 +37,14 @@ await page.goto(BASE + "/login?next=/settings/branding");
 await page.fill('input[name="email"]', `brand${Date.now()}@example.com`);
 await page.click("text=Continue");
 await page.waitForURL((u) => u.pathname === "/settings/branding");
-ok("Free plan sees an upgrade prompt", await page.isVisible("text=Custom branding is part of Pro and Business"));
+ok("Free plan sees an upgrade prompt", await page.isVisible("text=Custom branding is part of every paid plan"));
 const denied = await page.request.post(BASE + "/api/workspace/branding", { multipart: { color: "#0f766e" } });
 ok("Free plan can't save branding", denied.status() === 402);
 
-// Upgrade to Pro through the fake Stripe.
-const { url } = await (await page.request.post(BASE + "/api/billing/checkout", { data: { plan: "PRO" } })).json();
+// Upgrade to Solo through the fake Stripe.
+const { url } = await (await page.request.post(BASE + "/api/billing/checkout", { data: { plan: "SOLO" } })).json();
 const session = state.sessions.at(-1).params;
-const sub = createSubscription(session.customer, session.subscription_data.metadata.workspaceId, "sureframe_pro_monthly");
+const sub = createSubscription(session.customer, session.subscription_data.metadata.workspaceId, "sureframe_solo_monthly");
 const payload = JSON.stringify({ id: "evt_b", object: "event", type: "customer.subscription.created", data: { object: sub } });
 await page.request.post(BASE + "/api/webhooks/stripe", { headers: { "stripe-signature": sig.webhooks.generateTestHeaderString({ payload, secret: "whsec_test" }), "content-type": "application/json" }, data: payload });
 ok("upgraded", !!url);
@@ -78,11 +78,27 @@ ok("logo served as an image, cached", logo.headers()["content-type"] === "image/
 ok("business name shown", /workspace/.test(await cpage.textContent("header")));
 await cpage.screenshot({ path: `${process.argv[2] ?? "/tmp"}/branded-inbox.png` });
 
+// A video sent to the client. Paid plans show it straight away.
+const workspaceId = session.subscription_data.metadata.workspaceId;
+const owner = await prisma.membership.findFirst({ where: { workspaceId } });
+const videoId = `promo${Date.now()}`;
+await prisma.video.create({ data: { id: videoId, title: "Check-in", status: "READY", mimeType: "video/webm", storageKey: `test/${videoId}`, ownerId: owner.userId, workspaceId, clientId: client.id } });
+await cpage.goto(`${BASE}/v/${videoId}`);
+ok("paid plan: no SureFrame intro before the video", !(await cpage.isVisible("[data-testid=sureframe-promo]")));
+
 // Downgrading hides it again without losing it.
 sub.status = "canceled";
 const p2 = JSON.stringify({ id: "evt_c", object: "event", type: "customer.subscription.deleted", data: { object: sub } });
 await page.request.post(BASE + "/api/webhooks/stripe", { headers: { "stripe-signature": sig.webhooks.generateTestHeaderString({ payload: p2, secret: "whsec_test" }), "content-type": "application/json" }, data: p2 });
+await cpage.goto(`${BASE}/v/${videoId}`);
+ok("Free plan: clients see the SureFrame intro first", await cpage.isVisible("[data-testid=sureframe-promo]"));
+ok("intro can't be skipped straight away", await cpage.isDisabled("text=/Watch your video in/"));
+await cpage.screenshot({ path: `${process.argv[2] ?? "/tmp"}/promo.png` });
+await cpage.click("text=/^Watch your video$/", { timeout: 8000 });
+ok("intro closes after the countdown", !(await cpage.isVisible("[data-testid=sureframe-promo]")));
 await cpage.reload();
+ok("intro shown once per video per visit", !(await cpage.isVisible("[data-testid=sureframe-promo]")));
+await cpage.goto(BASE + "/inbox");
 ok("on Free, clients see plain SureFrame again", !(await cpage.getAttribute("div.min-h-screen", "style"))?.includes("#0f766e") && !(await cpage.isVisible("header img")));
 
 await browser.close();

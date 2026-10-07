@@ -76,9 +76,16 @@ await coach.screenshot({ path: `${shots}/send-to-client.png` });
 // Client on a phone opens their personal link and replies
 const clientCtx = await browser.newContext({ ...devices["Pixel 7"], permissions: ["camera", "microphone"] });
 const client = await clientCtx.newPage();
+// The coach is on the Free plan, so clients see a short SureFrame intro first; wait it out and continue.
+const skipIntro = (p) =>
+  p.addLocatorHandler(p.getByTestId("sureframe-promo"), async () => {
+    await p.click("text=/^Watch your video$/", { timeout: 8000 });
+  });
 client.on("console", (m) => m.type() === "error" && console.log("client console:", m.text()));
 await client.goto(personal);
 await client.waitForURL("**/v/**");
+console.log("free plan: client sees the SureFrame intro:", await client.getByTestId("sureframe-promo").isVisible());
+await skipIntro(client);
 await client.waitForSelector("main video", { timeout: 20000 });
 console.log("key removed from address bar:", !client.url().includes("#k="));
 console.log("client plays video, duration", await client.$eval("main video", finiteDuration));
@@ -112,6 +119,7 @@ await client.waitForSelector("text=/Recording · \\d/");
 await client.waitForTimeout(5000);
 await client.close({ runBeforeUnload: false });
 const client2 = await clientCtx.newPage();
+await skipIntro(client2);
 await client2.goto(link);
 await client2.waitForFunction(() => document.querySelectorAll("aside ul video").length === 2, null, { timeout: 30000 });
 console.log("interrupted reply recovered and playable:", await client2.$$eval("aside ul video", (els) => els.length));

@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: "Branding" };
 
 export default async function BrandingSettings() {
   const { user, workspace } = await requirePageUser("/settings/branding");
-  const brand = brandOf({ ...workspace, plan: "PRO" });
+  const brand = brandOf({ ...workspace, plan: "SOLO" });
   return (
     <>
       <AppHeader email={user.email} plan={PLANS[workspace.plan].name} />
@@ -22,7 +22,7 @@ export default async function BrandingSettings() {
         </p>
         {workspace.plan === "FREE" ? (
           <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
-            <p className="text-slate-700">Custom branding is part of Pro and Business.</p>
+            <p className="text-slate-700">Custom branding is part of every paid plan.</p>
             <Link href="/pricing" className="mt-4 inline-block rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">See plans</Link>
           </div>
         ) : (

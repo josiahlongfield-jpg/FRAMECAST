@@ -1,19 +1,20 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { ACTIVE_STATUSES, MANAGED_PAYMENTS, PLAN_KEY, planOf, priceId } from "@/lib/billing";
-import { PLANS } from "@/lib/plans";
+import { ACTIVE_STATUSES, catalogKey, catalogOf, MANAGED_PAYMENTS, PLAN_ITEM, planOf, priceId } from "@/lib/billing";
+import { PAID_PLANS, PLANS } from "@/lib/plans";
 import { handle, HttpError, requireUser } from "@/lib/session";
 import { appUrl, stripe } from "@/lib/stripe";
 import { limitByIp } from "@/lib/rateLimit";
 
-const Body = z.object({ plan: z.enum(["PRO", "BUSINESS"]) });
+const Body = z.object({ plan: z.enum(PAID_PLANS), interval: z.enum(["month", "year"]).default("month") });
 
 export const POST = handle(async (req: Request) => {
   const { user, workspace } = await requireUser();
   const body = Body.safeParse(await req.json());
   await limitByIp("billing", 20, 600);
   if (!body.success) throw new HttpError(400, "Invalid plan");
-  const price = await priceId(PLAN_KEY[body.data.plan]);
+  const { plan, interval } = body.data;
+  const price = await priceId(catalogKey(PLAN_ITEM[plan], interval));
 
   // Already subscribed: switch plans on the existing subscription instead of starting a second one.
   if (workspace.stripeSubscriptionId) {
@@ -22,14 +23,23 @@ export const POST = handle(async (req: Request) => {
       const item = sub.items.data.find((i) => planOf(i.price));
       if (item?.price.id !== price) {
         const used = await db.client.count({ where: { workspaceId: workspace.id, removedAt: null } });
-        if (PLANS[body.data.plan].clientSeats + workspace.extraClientSeats < used) {
-          throw new HttpError(400, `You have ${used} clients, more than ${PLANS[body.data.plan].name} allows. Remove some or add seats first.`);
+        if (PLANS[plan].clientSeats + workspace.extraClientSeats < used) {
+          throw new HttpError(400, `You have ${used} clients, more than ${PLANS[plan].name} allows. Remove some or add seats first.`);
         }
+        // Every item on a subscription bills on the same interval, so extras move with the plan.
+        const extras = await Promise.all(
+          sub.items.data
+            .filter((i) => i !== item)
+            .map(async (i) => {
+              const entry = catalogOf(i.price);
+              return entry && entry.interval !== interval ? { id: i.id, price: await priceId(catalogKey(entry.item, interval)) } : null;
+            }),
+        );
         await stripe().subscriptions.update(sub.id, {
-          items: item ? [{ id: item.id, price }] : [{ price, quantity: 1 }],
+          items: [item ? { id: item.id, price } : { price, quantity: 1 }, ...extras.filter((x) => x !== null)],
           proration_behavior: "create_prorations",
         });
-        await db.workspace.update({ where: { id: workspace.id }, data: { plan: body.data.plan } });
+        await db.workspace.update({ where: { id: workspace.id }, data: { plan } });
       }
       return Response.json({ url: appUrl("/settings/billing?upgraded=1") });
     }
