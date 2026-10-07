@@ -57,7 +57,8 @@ export const POST = handle(async (req: Request) => {
       try {
         await answer(ticket.id);
       } catch (e) {
-        console.error("support assistant failed", e);
+        const err = e as { status?: number; message?: string; error?: unknown };
+        console.error("[support] assistant failed", JSON.stringify({ ticket: ticket.id, status: err.status, message: err.message?.slice(0, 500), error: err.error }));
         await handToHuman(ticket.id, "The assistant had a technical problem answering. Please reply to the customer.", false);
         await db.supportMessage.create({ data: { ticketId: ticket.id, author: "ASSISTANT", body: "Sorry, I hit a problem answering that. I've passed your message to the team, and a person will reply." } });
       }
