@@ -33,6 +33,22 @@ type Status =
 
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
+/** Reads as flowing text: a new paragraph after a pause or a long stretch of speech. */
+function paragraphs<T extends { start: number; end: number; text: string }>(segments: T[]): T[][] {
+  const out: T[][] = [];
+  let words = 0;
+  for (const seg of segments) {
+    const last = out.at(-1);
+    const prev = last?.at(-1);
+    if (!last || !prev || seg.start - prev.end > 2.5 || (words > 90 && /[.?!]$/.test(prev.text))) {
+      out.push([seg]);
+      words = 0;
+    } else last.push(seg);
+    words += seg.text.split(/\s+/).length;
+  }
+  return out;
+}
+
 /** Sends why a transcript failed (never any transcript text) to the server logs. */
 function logFailure(message: string) {
   const body = JSON.stringify({ where: "ai-transcript", message: message.slice(0, 500), browser: navigator.userAgent });
@@ -231,18 +247,29 @@ export default function AiInsight({ videoId, rootKey, initial, canMake, mediaUrl
           {transcript.segments.length === 0 ? (
             <p className="mt-2 text-slate-500">No speech was found.</p>
           ) : (
-            <ol className="mt-2 max-h-96 space-y-1.5 overflow-y-auto pr-1 text-slate-700">
-              {transcript.segments.map((s, i) => (
-                <li key={i} className="flex gap-2">
-                  <button onClick={() => onSeek(Math.round(s.start * 1000))} className="shrink-0 rounded bg-slate-100 px-1.5 text-xs font-medium text-brand-700 hover:bg-slate-200">
-                    {fmt(s.start)}
-                  </button>
-                  <span>{s.text}</span>
-                </li>
+            <div className="mt-2 max-h-96 space-y-3 overflow-y-auto pr-1 leading-relaxed text-slate-700">
+              {paragraphs(transcript.segments).map((para, p) => (
+                <p key={p}>
+                  {para.map((s, i) => (
+                    <span key={i}>
+                      {i > 0 && " "}
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        title={`Play from ${fmt(s.start)}`}
+                        onClick={() => onSeek(Math.round(s.start * 1000))}
+                        onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onSeek(Math.round(s.start * 1000)))}
+                        className="cursor-pointer rounded hover:bg-slate-100 focus-visible:bg-slate-100 focus-visible:outline-none"
+                      >
+                        {s.text}
+                      </span>
+                    </span>
+                  ))}
+                </p>
               ))}
-            </ol>
+            </div>
           )}
-          <p className="mt-2 text-xs text-slate-500">Made automatically on the sender&apos;s device. Words, names and numbers can be misheard.</p>
+          <p className="mt-2 text-xs text-slate-500">Made automatically on the sender&apos;s device. Words, names and numbers can be misheard. Click any sentence to play the video from there.</p>
         </details>
       )}
       {canRemove && sealed && !busy && (
