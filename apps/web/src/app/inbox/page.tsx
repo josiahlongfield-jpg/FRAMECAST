@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
-import BrandMark from "@/components/BrandMark";
+import ClientHeader from "@/components/ClientHeader";
 import MadeWith from "@/components/MadeWith";
 import AiNotice from "@/components/AiNotice";
 import { aiAssistActive } from "@/lib/plans";
@@ -36,11 +36,7 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
   return (
     <div className="min-h-screen bg-slate-50" style={brandStyle(brand?.color ?? null)}>
       {arrivedAs && clients.some((c) => c.id === arrivedAs) && <ClientKeyCapture clientId={arrivedAs} />}
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex h-16 max-w-4xl items-center px-4 sm:px-6">
-          <BrandMark brand={brand} href="/inbox" />
-        </div>
-      </header>
+      <ClientHeader brand={brand} />
       <main className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Your videos</h1>
         {invalid && (

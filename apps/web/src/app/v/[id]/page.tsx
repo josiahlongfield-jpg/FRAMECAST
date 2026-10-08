@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import Logo from "@/components/Logo";
 import AppHeader from "@/components/AppHeader";
-import BrandMark from "@/components/BrandMark";
+import ClientHeader from "@/components/ClientHeader";
 import MadeWith from "@/components/MadeWith";
 import { brandOf, brandStyle } from "@/lib/branding";
 import WatchView from "@/components/WatchView";
@@ -85,14 +85,7 @@ export default async function Watch({ params }: Props) {
         // The team gets the normal app menu, so they can get back to the Library and everything else.
         <AppHeader email={memberEmail ?? ""} plan={PLANS[workspace.plan].name} />
       ) : (
-        <header className="border-b border-slate-200 bg-white">
-          <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
-            <BrandMark brand={brand} href="/inbox" />
-            <Link href="/inbox" className="shrink-0 text-sm font-medium text-slate-600 hover:text-slate-900">
-              All my videos
-            </Link>
-          </div>
-        </header>
+        <ClientHeader brand={brand} width="max-w-6xl" allVideosLink />
       )}
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
         {expired ? (

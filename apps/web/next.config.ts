@@ -26,7 +26,18 @@ const nextConfig: NextConfig = {
     return [{ source: "/:path((?!api/).*)", has: [{ type: "host", value: oldHosts }], destination: `${process.env.APP_URL}/:path`, permanent: true }];
   },
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    return [
+      { source: "/:path*", headers: securityHeaders },
+      // The branding settings page shows this preview in a frame. Only this
+      // site may frame it (later entries override the same header above).
+      {
+        source: "/settings/branding/preview",
+        headers: [
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "Content-Security-Policy", value: "frame-ancestors 'self'; object-src 'none'; base-uri 'self'" },
+        ],
+      },
+    ];
   },
   env: {
     // With a bucket, browsers upload parts straight to it via presigned URLs.

@@ -7,7 +7,7 @@ import { handle, HttpError, requireRole, requireUser } from "@/lib/session";
 export const POST = handle(async (req: Request) => {
   const me = await requireUser();
   requireRole(me, "OWNER", "ADMIN");
-  const { user, workspace } = me;
+  const { workspace } = me;
   if (workspace.plan === "FREE") throw new HttpError(402, "Custom branding is part of every paid plan.");
 
   const form = await req.formData();
