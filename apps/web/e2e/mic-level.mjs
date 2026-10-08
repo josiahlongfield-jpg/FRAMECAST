@@ -28,6 +28,16 @@ async function open(extraArgs) {
     args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", ...extraArgs],
   });
   const ctx = await browser.newContext({ permissions: ["camera", "microphone"], viewport: { width: 1360, height: 900 } });
+  // Keep hold of every microphone track, so a test can "switch the mic off".
+  await ctx.addInitScript(() => {
+    const real = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    window.__tracks = [];
+    navigator.mediaDevices.getUserMedia = async (c) => {
+      const s = await real(c);
+      window.__tracks.push(...s.getAudioTracks());
+      return s;
+    };
+  });
   const page = await ctx.newPage();
   await page.goto(BASE + "/record");
   await page.fill('input[name="email"]', `mic${Date.now()}@acme.com`);
@@ -40,11 +50,17 @@ async function open(extraArgs) {
 // 1) A working microphone (Chromium's fake device beeps).
 {
   const { browser, page } = await open([]);
-  await page.waitForSelector("[data-testid=mic-level][data-state=heard]", { timeout: 15000 });
-  ok("working mic: says it's working", await page.isVisible("text=Your microphone is working."));
+  await page.waitForSelector("[data-testid=mic-level][data-state=hearing]", { timeout: 15000 });
+  ok("working mic: says it's picking up sound", await page.isVisible("text=/Picking up sound/"));
+  ok("names the microphone in use", (await page.textContent("[data-testid=mic-in-use]")).startsWith("Listening to: "));
+  ok("never just says 'working'", !(await page.isVisible("text=/microphone is working/i")));
   const width = await page.$eval("[data-testid=mic-level] div div", (el) => parseFloat(el.style.width) || 0);
   ok("working mic: bar moves", width > 0, `${width}`);
   await page.screenshot({ path: `${shots}/mic-level.png` });
+  // Switching the microphone off (the track ends) shows that it stopped.
+  await page.evaluate(() => window.__tracks.filter((t) => t.readyState === "live").forEach((t) => { t.stop(); t.dispatchEvent(new Event("ended")); }));
+  await page.waitForSelector("[data-testid=mic-level][data-state=stopped]", { timeout: 5000 }).catch(() => {});
+  ok("mic switched off: says it stopped", (await page.getAttribute("[data-testid=mic-level]", "data-state")) === "stopped");
   await page.click("text=Camera only");
   await page.click("text=Start recording");
   await page.waitForSelector("text=/Recording · \\d/", { timeout: 15000 });

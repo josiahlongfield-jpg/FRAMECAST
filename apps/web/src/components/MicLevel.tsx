@@ -3,25 +3,39 @@
 import { useEffect, useRef, useState } from "react";
 import { getMic, stopAll } from "@/lib/recorder/media";
 
-/** How loud counts as "we can hear you" (RMS of the signal, 0 to 1). */
+/** How loud counts as sound (RMS of the signal, 0 to 1). */
 const HEARD = 0.02;
-/** Silence this long after the meter starts gets a warning. */
+/** Silence this long before anything has been heard gets a warning. */
 const QUIET_MS = 6000;
+/** After sound, this much silence means "not hearing anything right now". */
+const GONE_MS = 2500;
+
+type State = "starting" | "listening" | "hearing" | "silent" | "quiet" | "stopped" | "blocked";
 
 /**
  * A live level bar for the chosen microphone, shown while setting up, so
  * nobody records a whole video before finding out the mic wasn't working.
- * It only measures loudness on this device; nothing is recorded or sent.
+ * The message follows what the microphone is picking up right now (it never
+ * just says "working"), and notices a headset being switched off or
+ * unplugged. It only measures loudness on this device; nothing is recorded or sent.
  */
 export default function MicLevel({ deviceId }: { deviceId: string | undefined }) {
   const bar = useRef<HTMLDivElement>(null);
-  const [state, setState] = useState<"starting" | "listening" | "heard" | "quiet" | "blocked">("starting");
+  const [state, setState] = useState<State>("starting");
+  const [label, setLabel] = useState("");
+  // Bumped when devices change (a headset switched on or off), to reopen the microphone.
+  const [restart, setRestart] = useState(0);
+
+  useEffect(() => {
+    const onChange = () => setRestart((n) => n + 1);
+    navigator.mediaDevices?.addEventListener?.("devicechange", onChange);
+    return () => navigator.mediaDevices?.removeEventListener?.("devicechange", onChange);
+  }, []);
 
   useEffect(() => {
     let stream: MediaStream | null = null;
     let ctx: AudioContext | null = null;
     let frame = 0;
-    let quietTimer = 0;
     let cancelled = false;
     setState("starting");
 
@@ -29,28 +43,44 @@ export default function MicLevel({ deviceId }: { deviceId: string | undefined })
       .then((s) => {
         if (cancelled) return stopAll(s);
         stream = s;
+        const track = s.getAudioTracks()[0];
+        setLabel(track?.label ?? "");
+        // The browser ends or mutes the track when the device is switched off or unplugged.
+        const lost = () => !cancelled && setState("stopped");
+        track?.addEventListener("ended", lost);
+        track?.addEventListener("mute", lost);
+        track?.addEventListener("unmute", () => !cancelled && setState("listening"));
+
         ctx = new AudioContext();
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 1024;
         ctx.createMediaStreamSource(s).connect(analyser);
         const samples = new Float32Array(analyser.fftSize);
+        const started = performance.now();
         let level = 0;
-        let heard = false;
-        setState("listening");
-        quietTimer = window.setTimeout(() => !heard && setState("quiet"), QUIET_MS);
+        let lastSound = 0;
+        let shown: State = "starting";
+        const show = (next: State) => {
+          if (next !== shown) setState((shown = next));
+        };
+        show("listening");
         const tick = () => {
-          analyser.getFloatTimeDomainData(samples);
-          let sum = 0;
-          for (const v of samples) sum += v * v;
-          const rms = Math.sqrt(sum / samples.length);
-          // Rise quickly, fall gently, so speech reads as a steady bar.
-          level = Math.max(rms, level * 0.9);
-          if (bar.current) bar.current.style.width = `${Math.min(100, Math.round(Math.sqrt(level) * 220))}%`;
-          if (!heard && rms > HEARD) {
-            heard = true;
-            window.clearTimeout(quietTimer);
-            setState("heard");
+          if (track?.readyState === "ended" || track?.muted) {
+            show("stopped");
+          } else {
+            analyser.getFloatTimeDomainData(samples);
+            let sum = 0;
+            for (const v of samples) sum += v * v;
+            const rms = Math.sqrt(sum / samples.length);
+            // Rise quickly, fall gently, so speech reads as a steady bar.
+            level = Math.max(rms, level * 0.9);
+            const now = performance.now();
+            if (rms > HEARD) lastSound = now;
+            if (lastSound && now - lastSound < GONE_MS) show("hearing");
+            else if (lastSound) show("silent");
+            else show(now - started > QUIET_MS ? "quiet" : "listening");
           }
+          if (bar.current) bar.current.style.width = `${shown === "stopped" ? 0 : Math.min(100, Math.round(Math.sqrt(level) * 220))}%`;
           frame = requestAnimationFrame(tick);
         };
         tick();
@@ -60,24 +90,27 @@ export default function MicLevel({ deviceId }: { deviceId: string | undefined })
     return () => {
       cancelled = true;
       cancelAnimationFrame(frame);
-      window.clearTimeout(quietTimer);
       stopAll(stream);
       void ctx?.close().catch(() => {});
     };
-  }, [deviceId]);
+  }, [deviceId, restart]);
 
+  const warn = state === "quiet" || state === "stopped" || state === "blocked";
   return (
     <div className="grid gap-1" data-testid="mic-level" data-state={state}>
       <div className="h-2 overflow-hidden rounded-full bg-slate-200" aria-hidden>
-        <div ref={bar} className={`h-full w-0 rounded-full transition-[width] duration-75 ${state === "quiet" ? "bg-amber-500" : "bg-emerald-500"}`} />
+        <div ref={bar} className={`h-full w-0 rounded-full transition-[width] duration-75 ${warn ? "bg-amber-500" : "bg-emerald-500"}`} />
       </div>
-      <span className={`text-xs ${state === "quiet" || state === "blocked" ? "text-amber-800" : "text-slate-500"}`} aria-live="polite">
+      <span className={`text-xs ${warn ? "text-amber-800" : "text-slate-500"}`} aria-live="polite">
         {state === "starting" && "Checking your microphone…"}
-        {state === "listening" && "Say something to test your microphone."}
-        {state === "heard" && "Your microphone is working."}
-        {state === "quiet" && "We can't hear anything yet. Check the microphone is plugged in, not muted, and the right one is selected above."}
+        {state === "listening" && "Say something. The bar should move when you speak."}
+        {state === "hearing" && "Picking up sound. Make sure the bar moves with your voice, not just background noise."}
+        {state === "silent" && "No sound right now. Speak to check it's still picking you up."}
+        {state === "quiet" && "We can't hear anything yet. Check the microphone is switched on, not muted, and the right one is selected above."}
+        {state === "stopped" && "This microphone has stopped sending sound. Check it's switched on and connected, or choose another one above."}
         {state === "blocked" && "We can't use this microphone. Allow it in your browser's address bar, or pick another one above."}
       </span>
+      {label && state !== "blocked" && <span className="text-xs text-slate-500" data-testid="mic-in-use">Listening to: {label}</span>}
     </div>
   );
 }
