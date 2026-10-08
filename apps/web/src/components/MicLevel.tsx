@@ -19,7 +19,7 @@ type State = "starting" | "listening" | "hearing" | "silent" | "quiet" | "stoppe
  * just says "working"), and notices a headset being switched off or
  * unplugged. It only measures loudness on this device; nothing is recorded or sent.
  */
-export default function MicLevel({ deviceId }: { deviceId: string | undefined }) {
+export default function MicLevel({ deviceId, stream: given }: { deviceId?: string; stream?: MediaStream | null }) {
   const bar = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<State>("starting");
   const [label, setLabel] = useState("");
@@ -39,10 +39,11 @@ export default function MicLevel({ deviceId }: { deviceId: string | undefined })
     let cancelled = false;
     setState("starting");
 
-    getMic(deviceId)
+    // Measure a stream the caller already has open (a reply being recorded), or open the chosen mic.
+    (given ? Promise.resolve(given) : getMic(deviceId))
       .then((s) => {
-        if (cancelled) return stopAll(s);
-        stream = s;
+        if (cancelled) return given ? undefined : stopAll(s);
+        if (!given) stream = s;
         const track = s.getAudioTracks()[0];
         setLabel(track?.label ?? "");
         // The browser ends or mutes the track when the device is switched off or unplugged.
@@ -93,7 +94,7 @@ export default function MicLevel({ deviceId }: { deviceId: string | undefined })
       stopAll(stream);
       void ctx?.close().catch(() => {});
     };
-  }, [deviceId, restart]);
+  }, [deviceId, restart, given]);
 
   const warn = state === "quiet" || state === "stopped" || state === "blocked";
   return (
@@ -106,9 +107,9 @@ export default function MicLevel({ deviceId }: { deviceId: string | undefined })
         {state === "listening" && "Say something. The bar should move when you speak."}
         {state === "hearing" && "Picking up sound. Make sure the bar moves with your voice, not just background noise."}
         {state === "silent" && "No sound right now. Speak to check it's still picking you up."}
-        {state === "quiet" && "We can't hear anything yet. Check the microphone is switched on, not muted, and the right one is selected above."}
-        {state === "stopped" && "This microphone has stopped sending sound. Check it's switched on and connected, or choose another one above."}
-        {state === "blocked" && "We can't use this microphone. Allow it in your browser's address bar, or pick another one above."}
+        {state === "quiet" && `We can't hear anything yet. Check the microphone is switched on and not muted${given ? "" : ", and the right one is selected above"}.`}
+        {state === "stopped" && `This microphone has stopped sending sound. Check it's switched on and connected${given ? "" : ", or choose another one above"}.`}
+        {state === "blocked" && `We can't use this microphone. Allow it in your browser's address bar${given ? "" : ", or pick another one above"}.`}
       </span>
       {label && state !== "blocked" && <span className="text-xs text-slate-500" data-testid="mic-in-use">Listening to: {label}</span>}
     </div>
