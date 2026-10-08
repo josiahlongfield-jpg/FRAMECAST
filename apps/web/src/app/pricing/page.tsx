@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
 import PricingTable from "@/components/PricingTable";
+import { RETENTION_DAYS } from "@/lib/retention";
+import { AI_ASSIST_PRICES, AI_SUMMARIES_PER_MONTH, CLOUD_BACKUP_PRICE, CLOUD_BACKUP_PRICE_YEARLY, PLANS } from "@/lib/plans";
 
 export const metadata: Metadata = { title: "Pricing" };
 
@@ -16,6 +18,35 @@ export default function Pricing() {
         </div>
         <PricingTable />
         <p className="mt-10 text-center text-sm text-slate-500">More than 100 clients? Add extra clients for $1.50 a month each.</p>
+
+        <section className="mx-auto mt-16 max-w-3xl" aria-labelledby="add-ons">
+          <h2 id="add-ons" className="text-center text-2xl font-semibold tracking-tight text-slate-900">Optional add-ons</h2>
+          <div className="mt-6 grid gap-6 md:grid-cols-2">
+            <div className="rounded-2xl border border-slate-200 bg-white p-6" data-testid="addon-ai">
+              <h3 className="font-semibold text-slate-900">AI transcripts and summaries</h3>
+              <p className="mt-2 text-sm text-slate-600">
+                A transcript and a short summary with key points and action items under each video, for your team and your client. The transcript is made on your own
+                device and the audio stays there; only the transcript text is sent to Anthropic&apos;s Claude to write the summary. AI summaries can contain mistakes.
+              </p>
+              <ul className="mt-4 space-y-1 text-sm text-slate-700">
+                {(["SOLO", "STUDIO", "AGENCY"] as const).map((id) => (
+                  <li key={id} className="flex justify-between gap-3">
+                    <span>{PLANS[id].name}</span>
+                    <span>
+                      ${AI_ASSIST_PRICES[id].month}/month or ${AI_ASSIST_PRICES[id].year}/year · up to {AI_SUMMARIES_PER_MONTH[id]} summaries a month
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-3 text-xs text-slate-500">Not available on Free. Off unless you switch it on. Works best on a computer.</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-6">
+              <h3 className="font-semibold text-slate-900">Cloud backup</h3>
+              <p className="mt-2 text-sm text-slate-600">Keep the encrypted copies of your videos on our servers until you delete them, instead of for {RETENTION_DAYS} days. We still can&apos;t open them.</p>
+              <p className="mt-4 text-sm text-slate-700">${CLOUD_BACKUP_PRICE}/month or ${CLOUD_BACKUP_PRICE_YEARLY}/year on any paid plan</p>
+            </div>
+          </div>
+        </section>
       </main>
       <SiteFooter />
     </>

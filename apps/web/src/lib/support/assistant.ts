@@ -34,7 +34,7 @@ ${SUPPORT_GUIDE}
 const ACCOUNT_TOOL: Anthropic.Beta.BetaTool = {
   name: "account_overview",
   description:
-    "The signed-in customer's own workspace: plan, billing status and renewal date, clients and staff used against the plan's limits, video count, cloud backup and their role. Use it for questions about their plan, limits, billing state or why something is blocked. Contains no video, reply or to-do content.",
+    "The signed-in customer's own workspace: plan, billing status and renewal date, clients and staff used against the plan's limits, video count, cloud backup, AI transcripts and summaries, and their role. Use it for questions about their plan, limits, billing state or why something is blocked. Contains no video, reply or to-do content.",
   input_schema: { type: "object", properties: {}, additionalProperties: false },
   strict: true,
 };
@@ -87,6 +87,7 @@ async function accountOverview(ticket: SupportTicket) {
     videos: { recorded: videos, limit: p.maxVideos },
     maxMinutesPerVideo: p.maxDurationMin,
     cloudBackup: workspace.cloudBackup,
+    aiTranscriptsAndSummaries: workspace.aiAssist && workspace.plan !== "FREE" ? (workspace.aiAssistComplimentary ? "on (complimentary)" : "on") : "off",
     customBranding: workspace.plan !== "FREE",
   };
 }

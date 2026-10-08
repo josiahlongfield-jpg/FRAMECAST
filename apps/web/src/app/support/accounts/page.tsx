@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { PLANS } from "@/lib/plans";
 import { requirePageUser } from "@/lib/session";
 import { isSupportAgent } from "@/lib/support/tickets";
-import CompForm from "./CompForm";
+import CompForm, { CompAiForm } from "./CompForm";
 
 export const metadata: Metadata = { title: "Free plans" };
 
@@ -27,6 +27,7 @@ export default async function Accounts() {
         first so their workspace exists.
       </p>
       <CompForm plans={Object.entries(PLANS).map(([id, p]) => ({ id, name: p.name }))} />
+      <CompAiForm />
       <h2 className="mt-8 text-lg font-semibold text-slate-900">Currently free</h2>
       {comped.length === 0 ? (
         <p className="mt-2 text-sm text-slate-600">No one yet.</p>
@@ -37,7 +38,10 @@ export default async function Accounts() {
               <span className="text-slate-900">
                 {w.name} <span className="text-slate-500">({w.members[0]?.user.email})</span>
               </span>
-              <span className="text-slate-600">{w.stripeSubscriptionId ? `Paying, ${PLANS[w.plan].name}` : PLANS[w.complimentaryPlan!].name}</span>
+              <span className="text-slate-600">
+                {w.stripeSubscriptionId ? `Paying, ${PLANS[w.plan].name}` : PLANS[w.complimentaryPlan!].name}
+                {w.aiAssistComplimentary && (w.aiAssist ? " + AI summaries" : " + AI summaries (switched off)")}
+              </span>
             </li>
           ))}
         </ul>
