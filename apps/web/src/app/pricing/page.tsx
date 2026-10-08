@@ -26,7 +26,7 @@ export default function Pricing() {
               <h3 className="font-semibold text-slate-900">AI transcripts and summaries</h3>
               <p className="mt-2 text-sm text-slate-600">
                 A transcript and a short summary with key points and action items under each video, for your team and your client. The transcript is made on your own
-                device and the audio stays there; only the transcript text is sent to Anthropic&apos;s Claude to write the summary. AI summaries can contain mistakes.
+                device and the audio isn&apos;t sent anywhere for it; only the transcript text is sent to Anthropic&apos;s Claude to write the summary. AI summaries can contain mistakes.
               </p>
               <ul className="mt-4 space-y-1 text-sm text-slate-700">
                 {(["SOLO", "STUDIO", "AGENCY"] as const).map((id) => (

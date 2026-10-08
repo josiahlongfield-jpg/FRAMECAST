@@ -54,9 +54,10 @@ ${plan("AGENCY")}
 
 ## AI transcripts and summaries (optional add-on)
 - Off unless the workspace owner switches it on in Settings > Billing. Paid plans only. Workspaces on a complimentary plan can ask the team to switch it on free: hand over.
-- When a team member opens a video, their browser makes a transcript on their own device (it downloads a speech model the first time, which can take a few minutes). The audio never leaves the device. Only the transcript text is sent to Anthropic's Claude to write a short summary with key points and action items. Anthropic doesn't train on it.
+- A team member opens the video and presses "Make transcript and summary" under it. Their browser then makes the transcript on their own device (it downloads a speech model the first time, which can take a few minutes; you can keep watching meanwhile). Nothing starts by itself, and clients never make transcripts. The audio isn't sent anywhere to make the transcript (the video itself is uploaded encrypted as usual). Only the transcript text is sent to Anthropic's Claude to write a short summary with key points and action items. Anthropic doesn't train on it.
 - The transcript and summary are end-to-end encrypted like replies, and shown under the video to the team and the client it was sent to. Clients can read them but can't make them, and they see a note that the business uses AI summaries.
-- Transcripts only start once the video has finished uploading, and making one never changes the recording. It starts by itself on computers that can run it; otherwise there's a "Make transcript and summary" button.
+- The button only works once the video has finished uploading, and making a transcript never changes the recording. A recording sent to several clients shares one transcript and summary, which each of those clients can read.
+- The transcript reads as paragraphs under "Transcript"; clicking a sentence plays the video from that point.
 - Works best on a computer with Chrome or Edge. Phones, older or low-memory devices, and some browsers may be slow or unable to do it; the page then says "Transcript unavailable, try again" with a Try again button. Suggest trying on a computer. Videos over 30 minutes can't be transcribed yet.
 - Automatic transcripts and AI summaries can contain mistakes (names and numbers especially). Suggest checking the video for anything important.
 - The team can remove a video's transcript and summary with "Remove transcript and summary" under it.
@@ -81,21 +82,33 @@ ${plan("AGENCY")}
 - Team emails (Team overview > Emails to you), separately for client replies and for videos sent by staff: "All staff", "Only selected staff" (tick staff members, e.g. "Tell me when Sam sends a video"), "Only my own clients" or "Off". Emails are combined, at most one every 15 minutes per conversation or staff member, and never include replies or video titles. Defaults: replies from your own clients on, videos sent by staff off.
 - Reminders to staff (Team overview > Remind staff): a short message to one, several or all staff, optionally linking to a client or video they can see. They get an email and a notice in the app until they dismiss it. Sent reminders are listed there, with whether each was dismissed.
 - Monitoring (Team overview, for 7, 30 or 90 days, per staff member and for the whole business): videos sent to clients, clients with no video in a chosen number of days (14 by default), client replies still waiting for an answer and for how long, average time to answer a client's reply, and overdue to-dos, with links to each conversation or client. It uses dates only; nobody, including ${BRAND.name}, reads the encrypted content. Staff never see anyone's numbers.
+- Staff who were already on a team before staff access arrived (8 October 2026) kept "See all clients" switched on, so they still see every client until the owner or an admin turns it off. New staff start with it off.
+- What staff can see about others: the Team page lists everyone's name, email and role. Staff can't see the Team overview, monitoring numbers, or anyone else's permissions.
+- Reminder emails to staff include the reminder message as written (it is not end-to-end encrypted, so don't put sensitive client details in it) and never a video title.
 - Each person can set their name on Settings > Account. Clients see it on the videos they're sent as "Name from Business"; without a name, clients see just the business name.
 
 ## Reminders, to-dos and notes
-- Each client has to-dos, notes and due dates, private to the team or shared with that client. Reminder emails go out before due dates (settings in Settings > Reminders). Reminder emails never include the to-do text, because it is encrypted.
+- Each client has to-dos, notes and due dates, private to the team or shared with that client. Reminder emails go out before due dates (settings in Settings > Reminders, which also has the business name, time zone and reply-to email). Reminder emails never include the to-do text, because it is encrypted.
 
-## Branding
-- Paid plans can add a logo and brand colour to client pages and emails. A small "Made with ${BRAND.name}" credit always stays.
+## Branding and business name
+- Paid plans can add a logo and brand colour to client pages and emails on Settings > Branding (owners and admins only). A small "Made with ${BRAND.name}" credit always stays.
+- The business name clients see: owners and admins change it on Settings > Branding (paid plans) or Settings > Reminders > Your business (any plan, including Free). If it still says "<name>'s workspace", Branding shows a hint to change it.
+- Settings > Branding shows a large live preview of what clients see (video page, inbox or email, at desktop or phone size) that updates as you change the name, logo or colour. Changes reach clients only after Save.
+- Logos: PNG, JPG, WebP or SVG. Large images are resized in the browser automatically, and SVG or GIF logos are converted to PNG, so most logo files just work. A very detailed image may still be refused; a simpler PNG or JPG under 300 KB fixes that.
 
 ## Recording problems
 - Recordings save to the device as they are made. If the browser crashes or the connection drops, reopen ${BRAND.name} in the same browser on the same device and the recording resumes uploading by itself.
+- Checking the microphone: when setting up a recording (and when recording a video or voice reply), a level bar under the microphone picker moves with your voice and shows the microphone's name ("Listening to: ..."). If it says it can't hear anything or the microphone stopped, check the mic is switched on, not muted, and the right one is chosen. The bar is measured on the device only; nothing is recorded or sent for it.
 - Camera or microphone not working: check the browser's site permissions for sureframe.app, close other apps using the camera, and try Chrome, Edge, Safari or Firefox (latest versions).
 - Free videos are limited to 5 minutes and 720p; paid plans allow up to 4 hours and 4K.
 - Mobile apps are coming soon; the website works on phones today.
 
+## Replies and the conversation
+- In a text reply, Enter sends; Shift+Enter starts a new line.
+- The Conversation panel next to the video has an expand button ("Open conversation in a larger view") for long conversations; Escape or the close button returns to normal.
+
 ## Account
 - Export your data from Settings > Account. Deleting the account there cancels billing and removes the workspace. An owner with other staff must remove them (or hand over) first.
 - Sign-in problems: make sure you're on sureframe.app and check spam for the sign-in email.
+- Why was I signed out? For security, you're signed out when the browser is closed, or after 8 hours without using ${BRAND.name}. The sign-in page then says so. Just sign in again; the device keeps its encryption keys, so no recovery key is needed on the same browser. Some browsers that restore tabs on restart can keep you signed in. Uploads and replies already under way aren't cut off. This doesn't affect clients, whose personal links keep working.
 `.trim();

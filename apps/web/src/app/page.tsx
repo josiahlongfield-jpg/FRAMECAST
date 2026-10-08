@@ -15,7 +15,7 @@ const PILLARS = [
   },
   {
     title: "Private by design",
-    body: "Every video is encrypted on your device before it uploads. Only you, your team and the client you send it to can open it. Not even we can.",
+    body: "Every video is encrypted on your device before it uploads. Only you, the team members you allow and the client you send it to can open it. Not even we can.",
     icon: "M6 11h12v10H6zM9 11V7a3 3 0 0 1 6 0v4",
   },
   {
@@ -146,7 +146,7 @@ export default function Home() {
           <div className="mx-auto max-w-4xl px-4 text-center sm:px-6">
             <h2 className="text-3xl font-semibold tracking-tight text-slate-900">Ready for your whole team</h2>
             <p className="mt-4 text-slate-600">
-              Studio includes 3 staff logins and Agency includes 10. Assign clients to staff, choose what each person can see and do, and keep billing with the owner. Clients never need an account.
+              Studio includes 3 staff logins and Agency includes 10. Assign clients to staff, choose what each person can see and do, see how the team is keeping up with clients, and keep billing with the owner. Clients never need an account.
             </p>
             <p className="mt-6 font-medium text-slate-900">Free for 3 clients. Paid plans from $15 a month.</p>
             <Link href="/pricing" className="mt-6 inline-block rounded-xl bg-slate-900 px-6 py-3 font-semibold text-white hover:bg-slate-800">

@@ -32,7 +32,8 @@ export const POST = handle(async (req: Request) => {
   if (!wanted.length || (body.data.to !== "all" && wanted.length !== new Set(body.data.to).size)) throw new HttpError(400, "Choose people on your team");
 
   // A link must open for everyone it's sent to.
-  let link: { path: string; label: string } | null = null;
+  // `label` is shown in the app; `mailLabel` goes in the email, which never carries a video title.
+  let link: { path: string; label: string; mailLabel: string } | null = null;
   if (body.data.link) {
     const { kind, id } = body.data.link;
     const accessOf = (m: (typeof members)[number]): Access => ({ userId: m.userId, workspaceId: workspace.id, role: m.role, perms: permsOf(m) });
@@ -41,14 +42,14 @@ export const POST = handle(async (req: Request) => {
       if (!c) throw new HttpError(400, "Unknown client");
       const blind = wanted.filter((m) => !canSeeClient(accessOf(m), c));
       if (blind.length) throw new HttpError(400, `${blind.map((m) => m.user.name ?? m.user.email.split("@")[0]).join(", ")} can't see ${c.name}. Assign the client first, or leave out the link.`);
-      link = { path: `/clients/${c.id}`, label: c.name };
+      link = { path: `/clients/${c.id}`, label: c.name, mailLabel: `Open ${c.name}` };
     } else {
       const v = await db.video.findFirst({ where: { id, workspaceId: workspace.id, replyToId: null } });
       if (!v) throw new HttpError(400, "Unknown video");
       const blind: string[] = [];
       for (const m of wanted) if (!(await canSeeVideo(accessOf(m), v))) blind.push(m.user.name ?? m.user.email.split("@")[0]);
       if (blind.length) throw new HttpError(400, `${blind.join(", ")} can't open that video. Leave out the link, or send it to them first.`);
-      link = { path: `/v/${v.id}`, label: v.title };
+      link = { path: `/v/${v.id}`, label: v.title, mailLabel: "Open the video" };
     }
   }
 
@@ -64,7 +65,7 @@ export const POST = handle(async (req: Request) => {
         subject: `Reminder from ${fromName}`,
         lead: `${fromName} sent you a reminder:`,
         note: body.data.message,
-        button: { label: link ? `Open ${link.label}` : `Open ${workspace.name}`, link: appUrl(link?.path ?? "/library") },
+        button: { label: link ? link.mailLabel : `Open ${workspace.name}`, link: appUrl(link?.path ?? "/library") },
         logoUrl: brand.logoUrl,
         color: brand.color,
       });
