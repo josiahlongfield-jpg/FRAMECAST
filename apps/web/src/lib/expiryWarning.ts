@@ -63,7 +63,7 @@ export async function warnExpiring(now = new Date()) {
     const recordings = new Map<string, { link: string; recorded: Date; purgeAt: Date; clients: string[] }>();
     for (const v of mine) {
       const rootId = v.sourceId ?? v.id;
-      const r = recordings.get(rootId) ?? { link: appUrl(`/v/${rootId}`), recorded: v.createdAt, purgeAt: v.purgeAt!, clients: [] };
+      const r = recordings.get(rootId) ?? { link: appUrl(`/v/${rootId}?team=1`), recorded: v.createdAt, purgeAt: v.purgeAt!, clients: [] };
       if (v.client?.name && !r.clients.includes(v.client.name)) r.clients.push(v.client.name);
       if (v.purgeAt! < r.purgeAt) r.purgeAt = v.purgeAt!;
       if (v.createdAt < r.recorded) r.recorded = v.createdAt;

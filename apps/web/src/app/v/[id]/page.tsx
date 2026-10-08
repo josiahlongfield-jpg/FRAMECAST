@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import Logo from "@/components/Logo";
 import AppHeader from "@/components/AppHeader";
 import ClientHeader from "@/components/ClientHeader";
@@ -11,12 +11,13 @@ import SureFramePromo from "@/components/SureFramePromo";
 import { aiAssistActive, PLANS } from "@/lib/plans";
 import { db } from "@/lib/db";
 import { viewerFor } from "@/lib/access";
+import { currentUser } from "@/lib/session";
 import { clientLink } from "@/lib/clients";
 import { publicVideo } from "@/lib/videos";
 import { replyDTO, visibleReplies } from "@/lib/replies";
 import { canDeleteVideo, clientScopeWhere, effectivePerms } from "@/lib/permissions";
 
-type Props = { params: Promise<{ id: string }> };
+type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ team?: string }> };
 
 async function load(id: string) {
   const video = await db.video.findUnique({ where: { id }, include: { owner: { select: { name: true, email: true } } } });
@@ -31,11 +32,23 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return { title: found?.viewer ? found.video.title : "Private video", robots: { index: false } };
 }
 
-export default async function Watch({ params }: Props) {
+export default async function Watch({ params, searchParams }: Props) {
   const { id } = await params;
   const found = await load(id);
   if (!found) notFound();
   const { video, viewer } = found;
+
+  // Links in team emails (?team=1) open the team's own view: sign in first, or
+  // switch to the video's workspace, rather than falling back to the client
+  // view this browser may also have.
+  if ((await searchParams).team && viewer?.kind !== "member") {
+    const me = await currentUser();
+    if (!me) redirect(`/login?next=${encodeURIComponent(`/v/${id}?team=1`)}`);
+    if (me.workspace.id !== video.workspaceId && me.user.memberships.some((m) => m.workspaceId === video.workspaceId)) {
+      await db.user.update({ where: { id: me.user.id }, data: { activeWorkspaceId: video.workspaceId } });
+      redirect(`/v/${id}`);
+    }
+  }
 
   if (!viewer) {
     return (

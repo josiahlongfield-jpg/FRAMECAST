@@ -65,7 +65,7 @@ export const POST = handle(async (req: Request) => {
         subject: `Reminder from ${fromName}`,
         lead: `${fromName} sent you a reminder:`,
         note: body.data.message,
-        button: { label: link ? link.mailLabel : `Open ${workspace.name}`, link: appUrl(link?.path ?? "/library") },
+        button: { label: link ? link.mailLabel : `Open ${workspace.name}`, link: appUrl(link ? (link.path.startsWith("/v/") ? `${link.path}?team=1` : link.path) : "/library") },
         logoUrl: brand.logoUrl,
         color: brand.color,
       });
