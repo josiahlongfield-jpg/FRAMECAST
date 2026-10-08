@@ -6,6 +6,7 @@ import { ChunkedUploader, lockName, type UploadState } from "@/lib/recorder/uplo
 import { bitrateFor, pickMimeType, stopAll } from "@/lib/recorder/media";
 import { encryptFrame, encryptText, generateKey, wrapKey } from "@/lib/e2e/crypto";
 import type { ReplyDTO } from "@/lib/replies";
+import MicLevel from "./MicLevel";
 
 type Mode = "TEXT" | "VIDEO" | "AUDIO";
 type Phase = "idle" | "preview" | "recording" | "sending";
@@ -34,6 +35,8 @@ export default function ReplyComposer({
   onReplied: (r: ReplyDTO) => void;
 }) {
   const [mode, setMode] = useState<Mode>("TEXT");
+  // The open camera/mic stream, so the microphone level bar can follow it.
+  const [liveStream, setLiveStream] = useState<MediaStream | null>(null);
   const [text, setText] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [facing, setFacing] = useState<"user" | "environment">("user");
@@ -70,6 +73,7 @@ export default function ReplyComposer({
         if (cancelled) return stopAll(s);
         stopAll(stream.current);
         stream.current = s;
+        setLiveStream(s);
         if (preview.current) preview.current.srcObject = s;
         setPhase("preview");
       })
@@ -84,6 +88,7 @@ export default function ReplyComposer({
     if (mode === "TEXT") {
       stopAll(stream.current);
       stream.current = null;
+      setLiveStream(null);
       setPhase("idle");
     }
   }, [mode]);
@@ -227,6 +232,13 @@ export default function ReplyComposer({
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter sends; Shift+Enter starts a new line.
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                e.currentTarget.form?.requestSubmit();
+              }
+            }}
             placeholder="Write a reply…"
             aria-label="Reply"
             rows={3}
@@ -251,6 +263,11 @@ export default function ReplyComposer({
           ) : (
             <div className="relative grid h-20 place-items-center rounded-lg bg-slate-50 text-sm text-slate-500">
               {phase === "recording" ? <RecBadge ms={elapsed} inline /> : "Tap record and start talking"}
+            </div>
+          )}
+          {liveStream && (phase === "preview" || phase === "recording") && (
+            <div className="mt-2">
+              <MicLevel stream={liveStream} />
             </div>
           )}
           {phase === "recording" ? (
