@@ -9,13 +9,13 @@ import type { PaidPlan } from "@/lib/plans";
 const Body = z.object({ enabled: z.boolean() });
 
 /**
- * Optional paid add-on: AI transcripts and summaries. The owner or an admin
+ * Optional paid add-on: AI transcripts and summaries. The owner
  * switches it on; it's added to the subscription at the plan's add-on price,
  * or switched on free when the founder has given it with a complimentary plan.
  */
 export const POST = handle(async (req: Request) => {
   const me = await requireUser();
-  requireRole(me, "OWNER", "ADMIN");
+  requireRole(me, "OWNER");
   const { workspace } = me;
   const body = Body.safeParse(await req.json());
   await limitByIp("billing", 20, 600);

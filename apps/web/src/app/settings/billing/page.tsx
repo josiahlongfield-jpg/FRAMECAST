@@ -41,7 +41,6 @@ export default async function Billing({ searchParams }: { searchParams: Promise<
           <p className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
             {workspace.name} is on the {plan.name} plan. Only the workspace owner can change the plan or billing.
           </p>
-          {role === "ADMIN" && <AiAddOn workspace={workspace} />}
         </main>
       </>
     );

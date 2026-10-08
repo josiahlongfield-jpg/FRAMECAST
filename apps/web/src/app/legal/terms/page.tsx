@@ -212,7 +212,7 @@ export default function Page() {
 
       <h2>22. AI transcripts and summaries</h2>
       <p>
-        AI transcripts and summaries is an optional paid add-on, off unless a workspace owner or admin switches it on. These points apply to it, on top of the rest of
+        AI transcripts and summaries is an optional paid add-on, off unless the workspace owner switches it on. These points apply to it, on top of the rest of
         these terms:
       </p>
       <ul>

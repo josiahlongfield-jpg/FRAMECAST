@@ -31,31 +31,14 @@ type Status =
   | { kind: "failed"; message: string; device: boolean }
   | { kind: "summaryFailed"; message: string };
 
-const FAILED_KEY = (id: string) => `sf-ai-failed:${id}`;
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
-
-function remember(key: string, value: string | null) {
-  try {
-    if (value === null) localStorage.removeItem(key);
-    else localStorage.setItem(key, value);
-  } catch {
-    /* storage blocked: only means we may try again automatically */
-  }
-}
-function recall(key: string) {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
 
 /**
  * The AI summary and transcript under a video. The team makes them on their
  * own device (transcript) plus Claude (summary from the transcript text);
  * everyone who can watch the video reads them, decrypted here.
  */
-export default function AiInsight({ videoId, rootKey, initial, canMake, mediaUrl, durationMs, canRemove, onSeek }: Props) {
+export default function AiInsight({ videoId, rootKey, initial, canMake, mediaUrl, canRemove, onSeek }: Props) {
   const [sealed, setSealed] = useState<SealedInsight>(initial);
   const [transcript, setTranscript] = useState<Transcript | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -126,11 +109,9 @@ export default function AiInsight({ videoId, rootKey, initial, canMake, mediaUrl
         const media = await (await fetch(mediaUrl)).blob();
         t = await transcribe(media, (progress) => setStatus({ kind: "working", progress }));
       } catch (err) {
-        remember(FAILED_KEY(videoId), "1");
         setStatus({ kind: "failed", message: (err as Error).message, device: err instanceof UnsupportedDevice });
         return;
       }
-      remember(FAILED_KEY(videoId), null);
       setTranscript(t);
       if (!t.segments.length) {
         await save(t, null);
@@ -141,16 +122,7 @@ export default function AiInsight({ videoId, rootKey, initial, canMake, mediaUrl
     } catch (err) {
       setStatus({ kind: "failed", message: (err as Error).message, device: false });
     }
-  }, [mediaUrl, save, summarise, videoId]);
-
-  // Start by itself on computers that can run the model well, once per video per device.
-  useEffect(() => {
-    if (!canMake || sealed || started.current || !mediaUrl || !support) return;
-    // Low-memory devices, phones and processor-only browsers get the button instead.
-    if (support.device !== "webgpu" || support.mobile || support.lowMemory || recall(FAILED_KEY(videoId))) return;
-    if (durationMs && durationMs > 30 * 60_000) return;
-    void make();
-  }, [canMake, sealed, mediaUrl, support, durationMs, videoId, make]);
+  }, [mediaUrl, save, summarise]);
 
   async function remove() {
     if (!confirm("Remove this video's transcript and summary? Your team and client won't see them any more.")) return;

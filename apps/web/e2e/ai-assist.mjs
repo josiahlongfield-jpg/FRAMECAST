@@ -165,6 +165,8 @@ await prisma.video.update({ where: { id: videoId }, data: { status: "UPLOADED" }
 const chunksBefore = await recorderChunks(owner);
 await owner.evaluate(() => localStorage.setItem("aiMode", "fail"));
 await owner.reload();
+await owner.waitForSelector("text=Make transcript and summary", { timeout: 20000 });
+await owner.click("text=Make transcript and summary");
 await owner.waitForSelector("[data-testid=ai-failed]", { timeout: 30000 });
 ok("failure says 'Transcript unavailable, try again'", (await owner.textContent("[data-testid=ai-failed]")).includes("Transcript unavailable, try again"));
 ok("failure: the video still plays", await owner.isVisible("main video"));
@@ -201,14 +203,15 @@ ok("plain text is refused by the save API", res.status() === 400);
 const devLog = (await import("node:fs")).readFileSync("/tmp/claude-0/dev.log", "utf8");
 ok("server log has no transcript text", !devLog.includes(SPOKEN));
 
-// Auto-start on a capable computer once the upload is done.
-await prisma.videoInsight.delete({ where: { videoId } });
+// Even a capable computer waits for the button (the first model download is large).
+await prisma.videoInsight.deleteMany({ where: { videoId } });
 await owner.reload();
-await owner.waitForSelector("[data-testid=ai-summary]", { timeout: 30000 });
-ok("starts by itself on a capable computer", (await owner.evaluate(() => window.__aiCalls)) === 1);
+await owner.waitForSelector("text=Make transcript and summary", { timeout: 20000 });
+await owner.waitForTimeout(1500);
+ok("doesn't start by itself, even on a capable computer", (await owner.evaluate(() => window.__aiCalls)) === 0);
 
 // Low-memory device: no automatic start, a button instead.
-await prisma.videoInsight.delete({ where: { videoId } });
+await prisma.videoInsight.deleteMany({ where: { videoId } });
 await owner.evaluate(() => localStorage.setItem("aiMemory", "2"));
 await owner.reload();
 await owner.waitForSelector("text=Make transcript and summary", { timeout: 20000 });
