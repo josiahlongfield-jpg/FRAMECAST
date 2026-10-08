@@ -61,7 +61,7 @@ export default function Page() {
 
       <h2>AI transcripts and summaries (optional)</h2>
       <p>
-        Businesses can choose to add AI transcripts and summaries to their videos. It&rsquo;s off by default; only a workspace owner or admin can switch it on, and
+        Businesses can choose to add AI transcripts and summaries to their videos. It&rsquo;s off by default; only the workspace owner can switch it on, and
         they can switch it off again at any time in Settings &gt; Billing. When it&rsquo;s on:
       </p>
       <ul>
