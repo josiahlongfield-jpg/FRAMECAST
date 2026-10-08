@@ -78,10 +78,12 @@ ok("no personal workspace made for staff", staffUser.memberships.length === 1);
 const staffKey = await staff.evaluate((id) => localStorage.getItem(`framecast.key.team:${id}`), workspaceId);
 ok("staff device holds the same team key", !!staffKey && staffKey === ownerKey);
 ok("invite stash cleared", (await staff.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("framecast.invite:")).length)) === 0);
-ok("library shows the team view", await staff.isVisible("text=Team videos"));
+// Members see only their own clients and videos until the owner assigns or allows more.
+ok("library shows the member's own view", !!(await staff.waitForSelector("h1:has-text('Your videos')", { timeout: 10000 }).catch(() => null)));
 await staff.goto(BASE + "/clients");
-await staff.waitForSelector("text=Avery");
+await staff.waitForSelector("text=No clients are assigned to you yet");
 ok("staff opens clients without a recovery key", !(await staff.isVisible("text=Unlock your videos")));
+ok("staff don't see unassigned clients", !(await staff.isVisible("text=Avery")));
 ok("members can't remove clients", !(await staff.isVisible("button:has-text('Remove')")));
 
 // Roles.
@@ -109,8 +111,8 @@ await owner.selectOption('select[aria-label="Who looks after Avery"]', staffUser
 await owner.waitForTimeout(500);
 ok("owner assigned the client", (await prisma.client.findUnique({ where: { id: avery.id } })).assignedToId === staffUser.id);
 await staff.goto(BASE + "/clients");
-await staff.click("text=/My clients/");
-ok("staff sees the client under My clients", await staff.isVisible("text=Avery") && /My clients \(1\)/.test(await staff.textContent("main")));
+await staff.waitForSelector("text=Avery");
+ok("staff sees the client once it's assigned to them", await staff.isVisible("a:has-text('Avery')") && !(await staff.isVisible("text=/All clients \\(/")));
 
 // Staff limit: owner + staff + one invite = 3 on Studio.
 const mk = () => owner.request.post(BASE + "/api/team/invites", { data: { teamKeyWrap: "x".repeat(44) } });

@@ -129,7 +129,7 @@ await cal.goto(await clip(owner));
 await cal.waitForSelector("main video", { timeout: 20000 });
 ok("Cal doesn't see Ben's reply", !(await cal.isVisible("text=Ben's private reply")));
 await cal.goto(`${BASE}/v/${benCopy.id}`);
-ok("Cal can't open Ben's copy", await cal.isVisible("text=This video is private"));
+ok("Cal can't open Ben's copy", !!(await cal.waitForSelector("text=This video is private", { timeout: 10000 }).catch(() => null)));
 ok("Cal can't read Ben's replies by API", (await cal.request.get(`${BASE}/api/videos/${benCopy.id}/replies`)).status() === 404);
 
 // The team sees Ben's conversation; the library shows the recording once.
@@ -137,7 +137,8 @@ await owner.goto(`${BASE}/v/${benCopy.id}`);
 await owner.waitForSelector("text=Ben's private reply");
 ok("team sees Ben's reply in his conversation", await owner.isVisible("text=See the original"));
 await staff.goto(BASE + "/library?show=mine");
-ok("staff's Mine view includes the recording sent to their clients", (await staff.locator(`a[href="/v/${videoId}"]`).count()) === 1);
+// Staff see their clients' copies, not the original (another client's conversation).
+ok("staff's library shows the copy sent to their client, not the original", (await staff.locator(`a[href="/v/${benCopy.id}"]`).count()) === 1 && (await staff.locator(`a[href="/v/${videoId}"]`).count()) === 0);
 await owner.goto(BASE + "/library");
 ok("library lists the recording once", (await owner.locator(`a[href^="/v/"]`).count()) === 1);
 

@@ -101,6 +101,9 @@ await staff.click("text=Continue");
 await staff.waitForURL((u) => u.pathname.startsWith("/join/"));
 await staff.click("text=Join the team");
 await staff.waitForURL((u) => u.pathname === "/library");
+// Members see only the clients assigned to them.
+const joined = await prisma.user.findUnique({ where: { email: `rk-staff${stamp}@example.com` } });
+await owner.request.patch(`${BASE}/api/clients/${avery.id}`, { data: { assignedToId: joined.id } });
 await staff.goto(`${BASE}/clients/${avery.id}`);
 await staff.waitForSelector("text=Team-only note on Avery");
 await staff.click("text=Copy personal link");
