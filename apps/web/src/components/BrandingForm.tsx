@@ -9,7 +9,8 @@ import type { PreviewView } from "./ClientPreview";
 const SWATCHES = ["#3b55e6", "#0f766e", "#1f7a5c", "#b91c1c", "#c2410c", "#7c3aed", "#be185d", "#0f172a"];
 
 export default function BrandingForm(props: { workspaceId: string; name: string; color: string | null; logoUrl: string | null }) {
-  const [saved, setSaved] = useState({ color: props.color ?? "", logoUrl: props.logoUrl });
+  const [saved, setSaved] = useState({ name: props.name, color: props.color ?? "", logoUrl: props.logoUrl });
+  const [name, setName] = useState(props.name);
   const [color, setColor] = useState(props.color ?? "");
   // A newly picked logo, ready to upload, and how it looks (a data: URL, shown before saving).
   const [file, setFile] = useState<{ file: File; dataUrl: string; resized: boolean } | null>(null);
@@ -23,10 +24,14 @@ export default function BrandingForm(props: { workspaceId: string; name: string;
 
   const problem = color ? colorProblem(color) : null;
   const logo = removeLogo ? null : file ? file.dataUrl : saved.logoUrl;
-  const dirty = !!file || removeLogo || color !== saved.color;
+  const trimmed = name.trim();
+  const nameChanged = trimmed !== saved.name;
+  const dirty = !!file || removeLogo || color !== saved.color || nameChanged;
+  // New workspaces are named after the person's email ("sam's workspace").
+  const placeholderName = /'s workspace$/i.test(trimmed);
   // The preview follows every change straight away, saved or not. A colour that
   // can't be saved shows the last one that can.
-  const brand: Brand = useMemo(() => ({ name: props.name, logoUrl: logo, color: problem ? saved.color || null : color || null }), [props.name, logo, problem, color, saved.color]);
+  const brand: Brand = useMemo(() => ({ name: trimmed || saved.name, logoUrl: logo, color: problem ? saved.color || null : color || null }), [trimmed, saved.name, logo, problem, color, saved.color]);
 
   async function pick(input: HTMLInputElement) {
     const f = input.files?.[0];
@@ -44,6 +49,20 @@ export default function BrandingForm(props: { workspaceId: string; name: string;
   async function save() {
     setBusy(true);
     setMsg(undefined);
+    if (nameChanged) {
+      const r = await fetch("/api/workspace/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: trimmed }),
+      }).catch(() => null);
+      const d = r ? await r.json().catch(() => ({})) : {};
+      if (!r?.ok) {
+        setBusy(false);
+        return setMsg({ ok: false, text: d.error ?? "Could not save the business name. Check your connection and try again." });
+      }
+      setSaved((v) => ({ ...v, name: d.name ?? trimmed }));
+      setName(d.name ?? trimmed);
+    }
     const fd = new FormData();
     fd.set("color", color);
     if (file) fd.set("logo", file.file);
@@ -52,7 +71,7 @@ export default function BrandingForm(props: { workspaceId: string; name: string;
     const data = res ? await res.json().catch(() => ({})) : {};
     setBusy(false);
     if (!res?.ok) return setMsg({ ok: false, text: data.error ?? "Could not save. Check your connection and try again." });
-    setSaved({ color: data.color ?? "", logoUrl: data.hasLogo ? logoPath(props.workspaceId, data.version) : null });
+    setSaved((v) => ({ ...v, color: data.color ?? "", logoUrl: data.hasLogo ? logoPath(props.workspaceId, data.version) : null }));
     setColor(data.color ?? "");
     setFile(null);
     setRemoveLogo(false);
@@ -64,6 +83,20 @@ export default function BrandingForm(props: { workspaceId: string; name: string;
   return (
     <div className="mt-6 space-y-6">
       <div className="grid gap-6 rounded-2xl border border-slate-200 bg-white p-6 md:grid-cols-2">
+        <label className="grid gap-1 md:col-span-2">
+          <span className="text-sm font-medium text-slate-700">Business name</span>
+          <span className="text-xs text-slate-500">Shown next to your logo on client pages, and as the sender of your emails.</span>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            maxLength={80}
+            aria-label="Business name"
+            placeholder="Your business name"
+            className="mt-2 w-full max-w-md rounded-xl border border-slate-300 px-3 py-2 text-sm"
+          />
+          {!trimmed && <span className="text-sm text-red-700">Enter your business name.</span>}
+          {placeholderName && <span className="text-sm text-amber-700" data-testid="name-hint">Clients see this name. Change it to your business name.</span>}
+        </label>
         <div>
           <p className="text-sm font-medium text-slate-700">Logo</p>
           <p className="text-xs text-slate-500">PNG, JPG, WebP or SVG. A wide logo on a transparent background works best; large images are resized for you.</p>
@@ -125,7 +158,7 @@ export default function BrandingForm(props: { workspaceId: string; name: string;
         <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-5 md:col-span-2">
           <button
             onClick={save}
-            disabled={busy || !!problem || !dirty}
+            disabled={busy || !!problem || !dirty || !trimmed}
             className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
           >
             {busy ? "Saving…" : "Save branding"}

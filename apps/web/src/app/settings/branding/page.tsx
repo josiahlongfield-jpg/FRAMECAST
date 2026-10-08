@@ -17,8 +17,7 @@ export default async function BrandingSettings() {
       <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Branding</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Your logo and colour on the pages and reminder emails your clients see. Your business name comes from{" "}
-          <Link href="/settings/reminders" className="font-medium text-brand-700 hover:underline">Reminders settings</Link>.
+          Your business name, logo and colour on the pages and emails your clients see.
         </p>
         {role === "MEMBER" ? (
           <p className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600">Ask an owner or admin of {workspace.name} to change the branding.</p>
