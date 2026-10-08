@@ -152,7 +152,12 @@ await cpage.goto(`${BASE}/v/${videoId}`);
 // The intro appears once the page has checked this visit's storage (after hydration).
 ok("Free plan: clients see the SureFrame intro first", await visible(cpage, "[data-testid=sureframe-promo]", 10000));
 ok("intro can't be skipped straight away", await cpage.isDisabled("text=/Watch your video in/"));
+// Frames of the animated intro: the logo, the private video and reply, then the line.
 await cpage.screenshot({ path: `${process.argv[2] ?? "/tmp"}/promo.png` });
+await cpage.waitForTimeout(2300);
+await cpage.screenshot({ path: `${process.argv[2] ?? "/tmp"}/promo-2.png` });
+await cpage.waitForTimeout(1600);
+await cpage.screenshot({ path: `${process.argv[2] ?? "/tmp"}/promo-3.png` });
 await cpage.click("text=/^Watch your video$/", { timeout: 8000 });
 ok("intro closes after the countdown", !(await cpage.isVisible("[data-testid=sureframe-promo]")));
 await cpage.reload();

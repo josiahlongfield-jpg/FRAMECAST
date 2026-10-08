@@ -88,7 +88,7 @@ export default function Home() {
                 {/* The floating camera bubble from "Screen + Camera" recording: the person talking over their screen. */}
                 <div
                   aria-label="Camera bubble"
-                  className="absolute bottom-6 left-6 h-24 w-24 overflow-hidden rounded-full border-4 border-white/80 bg-gradient-to-br from-brand-400 to-brand-700 sm:h-32 sm:w-32"
+                  className="absolute bottom-6 left-6 h-24 w-24 overflow-hidden rounded-full border-4 border-white/80 bg-gradient-to-br from-brand-500 to-brand-700 sm:h-32 sm:w-32"
                 >
                   <svg viewBox="0 0 100 100" className="h-full w-full" aria-hidden="true">
                     <circle cx="50" cy="40" r="17" fill="#f1c7a8" />

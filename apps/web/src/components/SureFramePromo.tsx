@@ -39,27 +39,80 @@ export default function SureFramePromo({ videoId }: { videoId: string }) {
 
   return (
     <div role="dialog" aria-modal="true" aria-labelledby="promo-title" data-testid="sureframe-promo" className="fixed inset-0 z-50 grid place-items-center bg-slate-900/70 px-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-8 text-center shadow-2xl">
-        <p className="text-xs font-semibold uppercase tracking-wider text-brand-700">Sent with SureFrame</p>
-        <h2 id="promo-title" className="mt-3 text-2xl font-semibold tracking-tight text-slate-900 [text-wrap:balance]">
-          Private video messages for businesses and their clients
-        </h2>
-        <p className="mt-3 text-sm text-slate-600">
-          Record once, send to one client, get a video, voice or text reply back. Every video is end-to-end encrypted, and clients never pay.
-        </p>
-        <div className="mt-6 grid gap-3">
-          <button
-            onClick={close}
-            disabled={left > 0}
-            className="rounded-xl bg-brand-600 px-4 py-3 font-semibold text-white hover:bg-brand-700 disabled:bg-slate-300 disabled:text-slate-600"
-          >
-            {left > 0 ? `Watch your video in ${left}` : "Watch your video"}
-          </button>
-          <a href="/?ref=promo" target="_blank" rel="noopener" className="text-sm font-medium text-brand-700 hover:underline">
-            Run a business? Try SureFrame free
-          </a>
+      <style>{PROMO_CSS}</style>
+      <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white text-center shadow-2xl">
+        {/* A 5-second animated promo, drawn on the page: no video file, nothing loaded from elsewhere. */}
+        <div className="sf-promo relative aspect-video overflow-hidden bg-gradient-to-br from-slate-900 via-slate-900 to-brand-900" aria-hidden="true">
+          <div className="sf-s1 absolute inset-0 grid place-items-center">
+            <div className="flex items-center gap-3 text-2xl font-semibold tracking-tight text-white">
+              <span className="grid h-11 w-11 place-items-center rounded-xl bg-brand-600">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z" /></svg>
+              </span>
+              SureFrame
+            </div>
+          </div>
+          <div className="sf-s2 absolute inset-0 flex items-center justify-center gap-4 px-6">
+            <div className="relative h-24 w-36 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 shadow-lg">
+              <span className="absolute inset-0 grid place-items-center text-white/90">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z" /></svg>
+              </span>
+              <span className="sf-lock absolute -right-2 -top-2 grid h-7 w-7 place-items-center rounded-full bg-emerald-500 text-white shadow">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M6 11h12v10H6zM9 11V7a3 3 0 0 1 6 0v4" /></svg>
+              </span>
+            </div>
+            <div className="grid gap-2 text-left">
+              <span className="sf-b1 rounded-2xl rounded-bl-sm bg-white/15 px-3 py-1.5 text-xs text-white">Here&apos;s your update</span>
+              <span className="sf-b2 rounded-2xl rounded-br-sm bg-brand-500 px-3 py-1.5 text-xs text-white">Thanks, looks great!</span>
+            </div>
+          </div>
+          <div className="sf-s3 absolute inset-0 grid place-items-center px-8">
+            <p className="text-xl font-semibold leading-snug tracking-tight text-white [text-wrap:balance]">
+              Private video messages for businesses and their clients.
+            </p>
+          </div>
+          <div className="sf-bar absolute inset-x-0 bottom-0 h-1 origin-left bg-brand-500" />
+        </div>
+        <div className="p-6">
+          <p className="text-xs font-semibold uppercase tracking-wider text-brand-700">Sent with SureFrame</p>
+          <h2 id="promo-title" className="sr-only">Private video messages for businesses and their clients</h2>
+          <p className="mt-2 text-sm text-slate-600">
+            Record once, send to one client, get a video, voice or text reply back. Every video is end-to-end encrypted, and clients never pay.
+          </p>
+          <div className="mt-5 grid gap-3">
+            <button
+              onClick={close}
+              disabled={left > 0}
+              className="rounded-xl bg-brand-600 px-4 py-3 font-semibold text-white hover:bg-brand-700 disabled:bg-slate-300 disabled:text-slate-600"
+            >
+              {left > 0 ? `Watch your video in ${left}` : "Watch your video"}
+            </button>
+            <a href="/?ref=promo" target="_blank" rel="noopener" className="text-sm font-medium text-brand-700 hover:underline">
+              Run a business? Try SureFrame free
+            </a>
+          </div>
         </div>
       </div>
     </div>
   );
 }
+
+/** The promo's timeline: logo (0-1.6s), a private video and its reply (1.4-3.4s), the line (from 3.2s). */
+const PROMO_CSS = `
+.sf-promo .sf-s1 { animation: sf-in-out 1.8s ease both; }
+.sf-promo .sf-s2 { opacity: 0; animation: sf-in-out 2.1s ease 1.4s both; }
+.sf-promo .sf-s3 { opacity: 0; animation: sf-in 0.7s ease 3.3s both; }
+.sf-promo .sf-lock { animation: sf-pop 0.4s ease 1.7s both; }
+.sf-promo .sf-b1 { animation: sf-rise 0.4s ease 1.8s both; }
+.sf-promo .sf-b2 { animation: sf-rise 0.4s ease 2.2s both; }
+.sf-promo .sf-bar { animation: sf-bar 5s linear both; }
+@keyframes sf-in-out { 0% { opacity: 0; transform: scale(.94); } 18% { opacity: 1; transform: none; } 82% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes sf-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes sf-pop { from { opacity: 0; transform: scale(.4); } to { opacity: 1; transform: none; } }
+@keyframes sf-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes sf-bar { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .sf-promo .sf-s1, .sf-promo .sf-s2 { display: none; }
+  .sf-promo .sf-s3 { opacity: 1; animation: none; }
+  .sf-promo .sf-bar { animation-duration: 0s; }
+}
+`;
