@@ -25,6 +25,9 @@ const outbox = () => {
     return [];
   }
 };
+// The cron job also sends other tests' digests and expiry warnings, so only
+// look at this test's own recipients.
+const mailTo = (to) => outbox().filter((m) => m.to === to);
 const cron = async (secret = CRON) => {
   const r = await fetch(`${BASE}/api/cron/reminders`, { headers: secret ? { Authorization: `Bearer ${secret}` } : {} });
   return { status: r.status, body: r.status === 200 ? await r.json() : null };
@@ -95,7 +98,7 @@ sql(`update "Reminder" set "sendAt" = now() - interval '1 minute' where id = (se
 ok("reminder job needs the secret", (await cron("")).status === 401);
 const run1 = await cron();
 ok("reminder job sent 1", run1.body?.sent === 1, JSON.stringify(run1.body));
-const [mail] = outbox();
+const [mail] = mailTo("riley@example.com");
 ok("email went to the client", mail?.to === "riley@example.com");
 ok("email from the business, reply-to set", mail?.from.startsWith("Peak Fitness <") && mail?.replyTo === "coach@peak.com");
 ok("email has the personal message and opt-out link", mail?.text.includes("Reply here if you need to reschedule.") && mail?.text.includes("/reminders/off?c="));
@@ -128,7 +131,7 @@ await phone.waitForSelector("text=Reminders turned off");
 ok("client opted out", sql(`select "remindersOff" from "Client" where id='${clientId}'`) === "t");
 sql(`update "Reminder" set "sendAt" = now() - interval '1 minute' where id = (select r.id from "Reminder" r join "Item" i on i.id=r."itemId" where i."seriesId"='${itemId}' order by "sendAt" limit 1)`);
 const run2 = await cron();
-ok("no email after opting out", run2.body?.sent === 0 && run2.body?.skipped === 1 && outbox().length === 1, JSON.stringify(run2.body));
+ok("no email after opting out", run2.body?.sent === 0 && run2.body?.skipped === 1 && mailTo("riley@example.com").length === 1, JSON.stringify(run2.body));
 await pro.reload();
 await pro.waitForSelector("text=Riley turned reminder emails off");
 ok("business sees the opt-out", true);
@@ -143,7 +146,7 @@ ok("edit saved and reminders rescheduled", sql(`select count(*) from "Reminder" 
 
 sql(`update "Reminder" set "sendAt" = now() - interval '1 minute' where id = (select r.id from "Reminder" r join "Item" i on i.id=r."itemId" where i."seriesId"='${itemId}' and r."to"='TEAM' and r."sentAt" is null order by "sendAt" limit 1)`);
 const runTeam = await cron();
-const teamMail = outbox().at(-1);
+const teamMail = outbox().filter((m) => String(m.to).startsWith("trainer")).at(-1);
 ok("business gets its own reminder", runTeam.body?.sent === 1 && teamMail?.to.startsWith("trainer") && teamMail.subject.startsWith("Riley Client: a to-do is due"), teamMail?.subject);
 
 // 8. A missed repeating to-do still rolls forward
