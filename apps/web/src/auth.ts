@@ -73,6 +73,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: "jwt" },
   providers,
   pages: { signIn: "/login", verifyRequest: "/login/check", error: "/login" },
+  events: {
+    // Starts the browser-session activity cookie that src/middleware.ts checks,
+    // for every way of signing in (including server actions, which the
+    // middleware never sees as a callback request).
+    async signIn() {
+      const { cookies } = await import("next/headers");
+      const { ACTIVITY_COOKIE, activityCookie } = await import("@/lib/activity");
+      try {
+        (await cookies()).set(ACTIVITY_COOKIE, String(Date.now()), activityCookie());
+      } catch {
+        // Not in a request that can set cookies; the callback request sets it instead.
+      }
+    },
+  },
   callbacks: {
     jwt({ token, user }) {
       if (user?.id) token.sub = user.id;

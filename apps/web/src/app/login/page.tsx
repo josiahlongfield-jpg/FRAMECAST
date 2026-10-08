@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import Link from "next/link";
 import Logo from "@/components/Logo";
 import { AuthError } from "next-auth";
@@ -12,6 +13,8 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
   const { next, error } = await searchParams;
   const redirectTo = safeNext(next);
   if ((await auth())?.user) redirect(redirectTo);
+  // Set by src/middleware.ts when a sign-in ends because the browser was closed or left idle.
+  const signedOut = !error && (await cookies()).get("sf_signed_out")?.value === "1";
   const hasGoogle = authProviders.some((p) => p.id === "google");
   const hasEmail = authProviders.some((p) => p.id === "email");
   const hasDev = authProviders.some((p) => p.id === "dev");
@@ -21,6 +24,11 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
       <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
         <Logo />
         <h1 className="mt-6 text-xl font-semibold text-slate-900">Sign in to start recording</h1>
+        {signedOut && (
+          <p className="mt-3 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700" data-testid="signed-out-note">
+            For your security you were signed out because the browser was closed or the page was left unused. Please sign in again.
+          </p>
+        )}
         <div className="mt-6 grid gap-3">
           {authProviders.some((p) => p.id === "google") && (
             <form action={async () => { "use server"; await signIn("google", { redirectTo }); }}>
