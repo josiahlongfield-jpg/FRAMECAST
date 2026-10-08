@@ -23,7 +23,7 @@ const today = () => new Date().toLocaleDateString("en-US", { dateStyle: "medium"
 export default function ClientPreview({ brand, view, sender, origin }: { brand: Brand; view: PreviewView; sender: string; origin: string }) {
   // Same rule as the real pages (lib/branding brandOf + BrandMark): nothing set means plain SureFrame.
   const shown = brand.logoUrl || brand.color ? brand : null;
-  if (view === "email") return <EmailPreview brand={brand} origin={origin} />;
+  if (view === "email") return <EmailPreview brand={brand} sender={sender} origin={origin} />;
   return (
     <div className="min-h-screen bg-slate-50" style={brandStyle(brand.color)} data-testid={`preview-${view}`}>
       {view === "video" ? (
@@ -159,10 +159,10 @@ function InboxPage({ business, sender }: { business: string; sender: string }) {
   );
 }
 
-function EmailPreview({ brand, origin }: { brand: Brand; origin: string }) {
+function EmailPreview({ brand, sender, origin }: { brand: Brand; sender: string; origin: string }) {
   // Emails need absolute addresses; an unsaved logo is a data: URL already.
   const logoUrl = brand.logoUrl && brand.logoUrl.startsWith("/") ? origin + brand.logoUrl : brand.logoUrl;
-  const mail = newVideoEmail({ business: brand.name, clientName: CLIENT, link: `${origin}/inbox`, logoUrl, color: brand.color });
+  const mail = newVideoEmail({ business: brand.name, sender, clientName: CLIENT, link: `${origin}/inbox`, logoUrl, color: brand.color });
   return (
     <div className="min-h-screen bg-slate-100 p-3 sm:p-8" data-testid="preview-email">
       <div className="mx-auto max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">

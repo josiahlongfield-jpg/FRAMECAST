@@ -138,6 +138,20 @@ export default function Home() {
           </div>
         </section>
 
+        <section className="bg-slate-50 py-20">
+          <div className="mx-auto max-w-3xl px-4 text-center sm:px-6">
+            <h2 className="text-3xl font-semibold tracking-tight text-slate-900">Transcripts made on your device. Summaries in seconds.</h2>
+            <p className="mt-4 text-slate-600">
+              With the optional AI add-on, any video can get a written transcript and a short summary with key points and action items. The transcript is made on
+              your own computer or phone; only its text is sent to write the summary, and both are stored encrypted. Available on paid plans and works best on a
+              computer. AI summaries can contain mistakes.
+            </p>
+            <Link href="/pricing#add-ons" className="mt-6 inline-block text-sm font-semibold text-brand-700 hover:underline">
+              See add-on pricing
+            </Link>
+          </div>
+        </section>
+
         <section className="bg-brand-600 py-10 text-center text-white">
           <p className="mx-auto max-w-3xl px-4 text-lg font-medium sm:px-6">Your clients never pay, never sign up and never see third-party ads.</p>
         </section>
@@ -145,6 +159,7 @@ export default function Home() {
         <section className="py-20">
           <div className="mx-auto max-w-4xl px-4 text-center sm:px-6">
             <h2 className="text-3xl font-semibold tracking-tight text-slate-900">Ready for your whole team</h2>
+            <p className="mt-3 text-lg font-medium text-slate-800">Know who&apos;s waiting on a reply. See your whole team&apos;s client follow-up at a glance.</p>
             <p className="mt-4 text-slate-600">
               Studio includes 3 staff logins and Agency includes 10. Assign clients to staff, choose what each person can see and do, see how the team is keeping up with clients, and keep billing with the owner. Clients never need an account.
             </p>

@@ -1,11 +1,13 @@
 /**
  * Tells a client a video is waiting. The video's title isn't included (it
  * can be personal) and the link carries no key: the client's device already
- * holds it from their personal link.
+ * holds it from their personal link. Names the person who recorded it when
+ * they've set a name, as the app does ("Sam from Peak Fitness").
  */
-export function newVideoEmail(o: { business: string; clientName: string; link: string; logoUrl?: string | null; color?: string | null }) {
-  const subject = `${o.business} sent you a video`;
-  const lead = `Hi ${o.clientName}, ${o.business} sent you a new video on SureFrame.`;
+export function newVideoEmail(o: { business: string; sender?: string | null; clientName: string; link: string; logoUrl?: string | null; color?: string | null }) {
+  const from = o.sender?.trim() ? `${o.sender.trim()} from ${o.business}` : o.business;
+  const subject = `${from} sent you a video`;
+  const lead = `Hi ${o.clientName}, ${from} sent you a new video on SureFrame.`;
   const after = "It's private to you. If it doesn't open on this device, use the personal link they gave you first.";
   const text = [lead, "", `Watch it: ${o.link}`, "", after].join("\n");
   const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);

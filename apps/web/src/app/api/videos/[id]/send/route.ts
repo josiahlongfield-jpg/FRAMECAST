@@ -80,11 +80,13 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
   if (body.data.notify) {
     const byId = new Map(clients.map((c) => [c.id, c]));
     const brand = brandOf(workspace, appUrl(""));
+    // Clients see who recorded it, as in the app.
+    const sender = (await db.user.findUnique({ where: { id: video.ownerId }, select: { name: true } }))?.name;
     for (const copy of copies) {
       const c = byId.get(copy.clientId)!;
       if (!c.email || c.remindersOff) continue;
       try {
-        await sendMail({ to: c.email, ...newVideoEmail({ business: workspace.name, clientName: c.name, link: clientLink(c.token, copy.id), logoUrl: brand.logoUrl, color: brand.color }), fromName: workspace.name, replyTo: workspace.reminderReplyTo });
+        await sendMail({ to: c.email, ...newVideoEmail({ business: workspace.name, sender, clientName: c.name, link: clientLink(c.token, copy.id), logoUrl: brand.logoUrl, color: brand.color }), fromName: workspace.name, replyTo: workspace.reminderReplyTo });
         emailed++;
       } catch (err) {
         console.error("new video email failed", err);
