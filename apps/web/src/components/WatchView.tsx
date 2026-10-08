@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { REACTIONS } from "@/lib/reactions";
 import type { ReplyDTO } from "@/lib/replies";
@@ -231,6 +231,20 @@ function WatchBody({
   const reactionsRow = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLElement>(null);
   const [expanded, setExpanded] = useState(false);
+  // Phones and narrow windows: the conversation lives behind a chat bubble and opens as a full-screen sheet.
+  const wide = useWide();
+  const [sheet, setSheet] = useState(false);
+  const [replying, setReplying] = useState(false);
+  const [sheetNote, setSheetNote] = useState<string>();
+  // How many replies this viewer has had on screen (remembered per device), for the bubble's new-reply dot.
+  const seenKey = `sureframe:seen-replies:${video.id}`;
+  const [seen, setSeen] = useState(() => {
+    try {
+      return Number(localStorage.getItem(seenKey)) || 0;
+    } catch {
+      return 0;
+    }
+  });
 
   // On wide screens the conversation panel ends level with the reactions row,
   // so a long transcript or summary below the video doesn't stretch it.
@@ -263,6 +277,68 @@ function WatchBody({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [expanded]);
+
+  const onBusyChange = useCallback((busy: boolean) => {
+    setReplying(busy);
+    if (!busy) setSheetNote(undefined);
+  }, []);
+
+  /** Closes the phone sheet, unless a voice or video reply is still recording or sending. */
+  const closeSheet = useCallback(() => {
+    if (replying) return setSheetNote("Your reply is still recording or sending. Tap Stop and send, or wait until it's sent, before closing.");
+    setSheetNote(undefined);
+    if (history.state?.fcConversation) history.back(); // popstate below closes it
+    else setSheet(false);
+  }, [replying]);
+
+  function openSheet() {
+    setSheet(true);
+    // An entry in the browser history, so the phone's Back button closes the sheet rather than leaving the page.
+    history.pushState({ ...history.state, fcConversation: true }, "");
+    requestAnimationFrame(() => listEnd.current?.scrollIntoView({ block: "nearest" }));
+  }
+
+  useEffect(() => {
+    if (!sheet) return;
+    const onPop = () => {
+      if (replying) {
+        history.pushState({ ...history.state, fcConversation: true }, "");
+        setSheetNote("Your reply is still recording or sending. Tap Stop and send, or wait until it's sent, before closing.");
+        return;
+      }
+      setSheet(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && closeSheet();
+    window.addEventListener("popstate", onPop);
+    window.addEventListener("keydown", onKey);
+    // The page behind doesn't scroll while the sheet is open.
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("popstate", onPop);
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = overflow;
+    };
+  }, [sheet, replying, closeSheet]);
+
+  // Widening the window past the phone layout shows the conversation in place.
+  useEffect(() => {
+    if (wide && sheet && !replying) closeSheet();
+  }, [wide, sheet, replying, closeSheet]);
+
+  // Replies count as seen while the conversation is on screen.
+  const showing = wide || sheet;
+  useEffect(() => {
+    if (!showing) return;
+    setSeen(replies.length);
+    try {
+      localStorage.setItem(seenKey, String(replies.length));
+    } catch {
+      /* storage blocked: the dot just resets next visit */
+    }
+  }, [showing, replies.length, seenKey]);
+  const unread = Math.max(0, replies.length - seen);
+
   const [copied, setCopied] = useState(false);
   const [burst, setBurst] = useState<{ id: number; emoji: string }[]>([]);
   const viewed = useRef(false);
@@ -392,7 +468,7 @@ function WatchBody({
   };
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[1fr_340px]">
+    <div className="grid gap-8 pb-20 lg:grid-cols-[1fr_340px] lg:pb-0">
       <section>
         <div className="relative overflow-hidden rounded-2xl bg-black shadow-sm">
           {video.status === "RECORDING" ? (
@@ -531,29 +607,63 @@ function WatchBody({
       </section>
 
       {expanded && <div className="fixed inset-0 z-40 bg-slate-900/50" onClick={() => setExpanded(false)} aria-hidden />}
+      {!sheet && (
+        <button
+          type="button"
+          onClick={openSheet}
+          data-testid="chat-bubble"
+          aria-label={`Open conversation (${replies.length} ${replies.length === 1 ? "reply" : "replies"}${unread ? `, ${unread} new` : ""})`}
+          className="fixed bottom-5 left-5 z-50 flex items-center gap-2 rounded-full bg-brand-600 px-4 py-3 text-sm font-semibold text-white shadow-lg hover:bg-brand-700 lg:hidden"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+            <path d="M4 5h16v11H9l-5 4V5z" />
+            <path d="M8 9.5h8M8 12.5h5" />
+          </svg>
+          Chat
+          {replies.length > 0 && <span className="rounded-full bg-white/25 px-1.5 text-xs">{replies.length}</span>}
+          {unread > 0 && <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-white bg-red-500" data-testid="chat-unread" />}
+        </button>
+      )}
+      {expanded && <div className="fixed inset-0 z-40 bg-slate-900/50" onClick={() => setExpanded(false)} aria-hidden />}
       <aside
         ref={panel}
         data-testid="conversation"
         data-expanded={expanded || undefined}
-        role={expanded ? "dialog" : undefined}
-        aria-modal={expanded || undefined}
-        aria-label={expanded ? "Conversation" : undefined}
+        data-sheet={sheet || undefined}
+        role={expanded || sheet ? "dialog" : undefined}
+        aria-modal={expanded || sheet || undefined}
+        aria-label={expanded || sheet ? "Conversation" : undefined}
         className={
-          expanded
-            ? "fixed inset-x-4 inset-y-6 z-50 mx-auto flex max-w-3xl flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl"
-            : "flex max-h-[80vh] flex-col self-start rounded-2xl border border-slate-200 bg-white lg:max-h-none"
+          sheet
+            ? "fixed inset-0 z-[60] flex h-[100dvh] flex-col bg-white pb-[env(safe-area-inset-bottom)] lg:hidden"
+            : expanded
+              ? "fixed inset-x-4 inset-y-6 z-50 mx-auto flex max-w-3xl flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl"
+              : // Kept mounted (just hidden) on phones, so a reply in progress is never lost.
+                "hidden flex-col self-start rounded-2xl border border-slate-200 bg-white lg:flex"
         }
       >
         <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
           <div>
             <h2 className="font-semibold text-slate-900">Conversation</h2>
             <p className="text-xs text-slate-500">Reply with a video, a voice note or a message. End-to-end encrypted.</p>
+            {sheet && sheetNote && <p role="alert" className="mt-2 text-xs font-medium text-amber-800">{sheetNote}</p>}
           </div>
+          {sheet ? (
+            <button
+              type="button"
+              onClick={closeSheet}
+              aria-label="Close conversation"
+              data-testid="chat-close"
+              className="-mr-1 shrink-0 rounded-lg p-2 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
+            </button>
+          ) : (
           <button
             onClick={() => setExpanded((v) => !v)}
             aria-label={expanded ? "Close larger view" : "Open conversation in a larger view"}
             title={expanded ? "Close" : "Expand"}
-            className="shrink-0 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+            className="hidden shrink-0 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900 lg:block"
           >
             {expanded ? (
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
@@ -561,6 +671,7 @@ function WatchBody({
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" /></svg>
             )}
           </button>
+          )}
         </div>
         <ul className="flex-1 space-y-4 overflow-y-auto px-5 py-4 text-sm">
           {replies.length === 0 && <li className="text-slate-500">No replies yet. Be the first to respond.</li>}
@@ -596,10 +707,26 @@ function WatchBody({
           conversationKey={rootKey}
           currentTimeMs={momentMs}
           onReplied={addReply}
+          onBusyChange={onBusyChange}
+          offscreen={!wide && !sheet}
         />
       </aside>
     </div>
   );
+}
+
+/** True at the desktop layout (Tailwind's lg breakpoint), where the conversation sits beside the video. */
+function useWide() {
+  const query = "(min-width: 1024px)";
+  const [wide, setWide] = useState(() => typeof window !== "undefined" && window.matchMedia(query).matches);
+  useEffect(() => {
+    const m = window.matchMedia(query);
+    const on = () => setWide(m.matches);
+    on();
+    m.addEventListener("change", on);
+    return () => m.removeEventListener("change", on);
+  }, []);
+  return wide;
 }
 
 function ReplyText({ reply, conversationKey }: { reply: ReplyDTO; conversationKey: CryptoKey }) {

@@ -27,12 +27,18 @@ export default function ReplyComposer({
   conversationKey,
   currentTimeMs,
   onReplied,
+  onBusyChange,
+  offscreen = false,
 }: {
   videoId: string;
   /** The conversation's video key: seals text replies and wraps each reply's media key. */
   conversationKey: CryptoKey;
   currentTimeMs: () => number | undefined;
   onReplied: (r: ReplyDTO) => void;
+  /** Told when a voice/video reply starts and stops recording or sending, so it isn't closed away mid-reply. */
+  onBusyChange?: (busy: boolean) => void;
+  /** The composer is out of sight (the phone conversation sheet is closed): let go of the camera and mic unless recording. */
+  offscreen?: boolean;
 }) {
   const [mode, setMode] = useState<Mode>("TEXT");
   // The open camera/mic stream, so the microphone level bar can follow it.
@@ -93,6 +99,13 @@ export default function ReplyComposer({
     }
   }, [mode]);
   useEffect(() => () => stopAll(stream.current), []);
+
+  const busy = phase === "recording" || phase === "sending";
+  useEffect(() => onBusyChange?.(busy), [busy, onBusyChange]);
+  // Hidden away with only a camera preview open: back to text, which turns the camera and mic off.
+  useEffect(() => {
+    if (offscreen && !busy) setMode("TEXT");
+  }, [offscreen, busy]);
 
   useEffect(() => {
     if (phase !== "recording") return;
@@ -207,7 +220,6 @@ export default function ReplyComposer({
     { id: "VIDEO", label: "Video" },
     { id: "AUDIO", label: "Voice" },
   ];
-  const busy = phase === "recording" || phase === "sending";
 
   return (
     <div className="border-t border-slate-100 p-4">

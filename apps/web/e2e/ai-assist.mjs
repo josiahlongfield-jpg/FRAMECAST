@@ -71,6 +71,11 @@ async function fakeVideo(email) {
   await prisma.video.create({ data: { id, mimeType: "video/webm", storageKey: `test/${id}`, status: "UPLOADED", ownerId: user.id, workspaceId: user.memberships[0].workspaceId } });
   return id;
 }
+/** The AI section starts collapsed to one bar; open it (waits for the bar to appear). */
+async function openAi(page) {
+  await page.waitForSelector("[data-testid=ai-toggle]", { timeout: 30000 });
+  if ((await page.getAttribute("[data-testid=ai-toggle]", "aria-expanded")) !== "true") await page.click("[data-testid=ai-toggle]");
+}
 const recorderChunks = (page) =>
   page.evaluate(
     () =>
@@ -165,6 +170,7 @@ await prisma.video.update({ where: { id: videoId }, data: { status: "UPLOADED" }
 const chunksBefore = await recorderChunks(owner);
 await owner.evaluate(() => localStorage.setItem("aiMode", "fail"));
 await owner.reload();
+await openAi(owner);
 await owner.waitForSelector("text=Make transcript and summary", { timeout: 20000 });
 await owner.click("text=Make transcript and summary");
 await owner.waitForSelector("[data-testid=ai-failed]", { timeout: 30000 });
@@ -173,12 +179,14 @@ ok("failure: the video still plays", await owner.isVisible("main video"));
 ok("failure: nothing saved", !(await prisma.videoInsight.findUnique({ where: { videoId } })));
 ok("failure: recorder chunks untouched", (await recorderChunks(owner)) === chunksBefore, `${chunksBefore}`);
 await owner.reload();
+await openAi(owner);
 await owner.waitForSelector("text=Make transcript and summary", { timeout: 20000 });
 ok("after a failure it doesn't restart by itself on this device", (await owner.evaluate(() => window.__aiCalls)) === 0);
 
 // Retry succeeds: transcript made on the device from the decrypted recording, summary from (fake) Claude.
 await owner.evaluate(() => localStorage.setItem("aiMode", "ok"));
 await owner.reload();
+await openAi(owner);
 await owner.waitForSelector("text=Make transcript and summary", { timeout: 20000 });
 await owner.evaluate(() => (window.__aiMode = "ok"));
 const before = requests.length;
@@ -212,12 +220,13 @@ ok("stored transcript is ciphertext", !!stored && /^[A-Za-z0-9_-]+$/.test(stored
 ok("stored summary is ciphertext", !!stored?.summary && /^[A-Za-z0-9_-]+$/.test(stored.summary));
 res = await owner.request.put(`${BASE}/api/videos/${videoId}/insight`, { data: { transcript: JSON.stringify({ segments: [{ text: "plain words here" }] }), summary: null } });
 ok("plain text is refused by the save API", res.status() === 400);
-const devLog = (await import("node:fs")).readFileSync("/tmp/claude-0/dev.log", "utf8");
+const devLog = (await import("node:fs")).readFileSync(process.env.DEV_LOG ?? "/tmp/claude-0/dev.log", "utf8");
 ok("server log has no transcript text", !devLog.includes(SPOKEN));
 
 // Even a capable computer waits for the button (the first model download is large).
 await prisma.videoInsight.deleteMany({ where: { videoId } });
 await owner.reload();
+await openAi(owner);
 await owner.waitForSelector("text=Make transcript and summary", { timeout: 20000 });
 await owner.waitForTimeout(1500);
 ok("doesn't start by itself, even on a capable computer", (await owner.evaluate(() => window.__aiCalls)) === 0);
@@ -226,6 +235,7 @@ ok("doesn't start by itself, even on a capable computer", (await owner.evaluate(
 await prisma.videoInsight.deleteMany({ where: { videoId } });
 await owner.evaluate(() => localStorage.setItem("aiMemory", "2"));
 await owner.reload();
+await openAi(owner);
 await owner.waitForSelector("text=Make transcript and summary", { timeout: 20000 });
 await owner.waitForTimeout(1500);
 ok("low-memory device: no automatic start", (await owner.evaluate(() => window.__aiCalls)) === 0);
@@ -235,6 +245,7 @@ await owner.waitForSelector("[data-testid=ai-summary]", { timeout: 30000 });
 ok("low-memory device: manual button works", (await owner.evaluate(() => window.__aiCalls)) === 1);
 await owner.evaluate(() => localStorage.removeItem("aiMemory"));
 await owner.reload();
+await openAi(owner);
 await owner.waitForSelector("[data-testid=ai-summary]", { timeout: 30000 });
 
 // ---------- 4. The client reads it, sees the note, and can't trigger AI ----------
@@ -249,6 +260,7 @@ const clientCtx = await browser.newContext(perms);
 await clientCtx.addInitScript(stubTranscriber());
 const client = await clientCtx.newPage();
 await client.goto(link);
+await openAi(client);
 await client.waitForSelector("[data-testid=ai-summary]", { timeout: 30000 });
 ok("client sees the summary", (await client.textContent("[data-testid=ai-summary]")).includes(SPOKEN));
 await client.click("[data-testid=ai-transcript] summary");
@@ -285,9 +297,11 @@ await webhook(owner, sub);
 res = await owner.request.post(`${BASE}/api/videos/${videoId}/summary`, { data: { transcript: "[0:00] hi" } });
 ok("switched off: summary API refuses", res.status() === 403);
 await client.goto(`${BASE}/v/${videoId}`);
+await openAi(client);
 await client.waitForSelector("[data-testid=ai-summary]", { timeout: 30000 });
 ok("existing summary stays readable after switching off", true);
 await owner.goto(`${BASE}/v/${videoId}`);
+await openAi(owner);
 await owner.waitForSelector("[data-testid=ai-summary]", { timeout: 30000 });
 owner.once("dialog", (d) => d.accept());
 await owner.click("text=Remove transcript and summary");

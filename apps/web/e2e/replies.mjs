@@ -91,6 +91,9 @@ await skipIntro(client);
 await client.waitForSelector("main video", { timeout: 20000 });
 console.log("key removed from address bar:", !client.url().includes("#k="));
 console.log("client plays video, duration", await client.$eval("main video", finiteDuration));
+// On a phone the conversation sits behind a chat bubble; open it to reply.
+await client.click("[data-testid=chat-bubble]");
+await client.waitForSelector("[data-testid=conversation][data-sheet]");
 await client.fill('textarea[aria-label="Reply"]', "Felt strong this week!");
 await client.click("button:has-text('Send reply')");
 await client.waitForSelector("aside ul >> text=Felt strong this week!");
