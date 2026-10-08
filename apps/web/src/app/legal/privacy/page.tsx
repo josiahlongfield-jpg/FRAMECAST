@@ -26,6 +26,11 @@ export default function Page() {
       <h2>What we collect</h2>
       <ul>
         <li><strong>Account details:</strong> your name, email address, business name, branding and settings.</li>
+        <li>
+          <strong>Team details:</strong> for businesses with staff, each team member&rsquo;s name, email address and role, which clients they look after, what
+          they&rsquo;re allowed to see and do, and their team email settings. Reminders that owners and admins send to staff are stored and emailed as written, so
+          they aren&rsquo;t end-to-end encrypted.
+        </li>
         <li><strong>Client details you add:</strong> the names and email addresses of clients you invite, so we can send them links and reminders.</li>
         <li>
           <strong>Encrypted content:</strong> videos, replies, to-dos, notes and schedules. These are encrypted on your device before they reach us, and the keys stay with
@@ -45,11 +50,34 @@ export default function Page() {
 
       <h2>How we use it</h2>
       <ul>
-        <li>To provide {LEGAL.product}: storing and delivering your videos, sending client links, reminders and sign-in emails.</li>
+        <li>
+          To provide {LEGAL.product}: storing and delivering your videos, and sending client links, reminders, sign-in emails, team emails (such as a client
+          replying, or a staff member sending videos) and a warning before a recording is deleted from our servers.
+        </li>
         <li>To bill you and manage your subscription.</li>
         <li>To answer support requests.</li>
         <li>To keep the service secure, prevent misuse and meet our legal obligations.</li>
         <li>To tell you about important changes to the service. We&rsquo;ll only send marketing emails if you&rsquo;ve agreed to them, and you can opt out at any time.</li>
+      </ul>
+
+      <h2>Within a business&rsquo;s team</h2>
+      <p>If a business has staff on {LEGAL.product}, some information is shared inside that business:</p>
+      <ul>
+        <li>
+          <strong>What staff can see:</strong> staff see the clients assigned to them, those clients&rsquo; videos and conversations, and the videos they recorded
+          themselves, unless the owner or an admin gives them access to more. Owners and admins can see every client and video in the business.
+        </li>
+        <li>
+          <strong>Names:</strong> everyone on a team can see the others&rsquo; names, email addresses and roles. If a team member has set their name, clients see it on
+          the videos that person sends, as &ldquo;Name from Business&rdquo;, but never their email address.
+        </li>
+        <li>
+          <strong>Team overview:</strong> owners and admins can see how the team is keeping up with clients, worked out from dates and who sent what: for example
+          videos each staff member sent, clients who haven&rsquo;t had a video for a while, client replies waiting for an answer and average reply times. They can
+          choose to be emailed when staff send videos or clients reply, and can send staff reminders and see whether they were dismissed. None of this involves
+          reading encrypted content.
+        </li>
+        <li>The business is responsible for telling its staff how their activity is shown to owners and admins.</li>
       </ul>
 
       <h2>Our AI support assistant</h2>
@@ -66,7 +94,7 @@ export default function Page() {
       </p>
       <ul>
         <li>
-          <strong>On the device:</strong> the transcript is made in the browser of the team member who opens the video, from the decrypted recording. The audio and
+          <strong>On the device:</strong> when a team member chooses to make one, the transcript is made in their browser from the decrypted recording. The audio and
           video don&rsquo;t leave that device for this. The speech model is downloaded from our own servers or storage, not from a public model site.
         </li>
         <li>
@@ -77,7 +105,7 @@ export default function Page() {
         </li>
         <li>
           <strong>Stored encrypted:</strong> we don&rsquo;t keep a readable copy of the transcript or summary or put them in our logs. The browser encrypts both with
-          the video&rsquo;s key before saving them, so, like replies, only the business&rsquo;s team and the client the video was sent to can read them.
+          the video&rsquo;s key before saving them, so, like replies, only the business&rsquo;s team members who can see the video and the clients it was sent to can read them.
         </li>
         <li>
           <strong>Removing them:</strong> the team can remove a video&rsquo;s transcript and summary at any time. They&rsquo;re also deleted when the video is
@@ -95,7 +123,7 @@ export default function Page() {
       <ul>
         <li>Vercel (hosting) and our database and file storage providers, which store your account data and encrypted content.</li>
         <li>Stripe (payments and subscription management).</li>
-        <li>Our email delivery provider (sign-in links, client links and reminders).</li>
+        <li>Our email delivery provider (sign-in links, client links, reminders and team emails).</li>
         <li>Anthropic (the AI support assistant, and summaries for businesses that use AI transcripts and summaries).</li>
         <li>Google Workspace (our support inbox).</li>
       </ul>
@@ -119,14 +147,35 @@ export default function Page() {
           device it was recorded on. We try to email the person who recorded it about a day before, but please don&rsquo;t rely on that email alone.
         </li>
         <li>With cloud backup, encrypted content is kept until you delete it or close your account.</li>
+        <li>
+          Records of team emails (who was told about which reply or video) are deleted about 30 days after the email is sent. Reminders sent to staff are kept
+          with the account as a history for owners and admins.
+        </li>
         <li>Account details are kept while your account is open. When you delete your account, we delete your workspace and its content.</li>
         <li>We keep billing records for as long as tax law requires, usually 5 years.</li>
       </ul>
 
       <h2>Cookies and local storage</h2>
+      <p>We only use cookies needed to run {LEGAL.product}:</p>
+      <ul>
+        <li>
+          <strong>Sign-in cookie:</strong> keeps you signed in to your account.
+        </li>
+        <li>
+          <strong>sf_active:</strong> records the time of your last activity. It&rsquo;s deleted when you close your browser, and together with the sign-in cookie it
+          signs you out when the browser is closed or after 8 hours without use.
+        </li>
+        <li>
+          <strong>sf_signed_out:</strong> set for 5 minutes after we sign you out this way, so the sign-in page can explain why.
+        </li>
+        <li>
+          <strong>Client link cookie</strong> (fc_client_&hellip;): remembers a client&rsquo;s personal link on their device for up to a year, so they can get back to
+          their videos without an account.
+        </li>
+      </ul>
       <p>
-        We use a cookie to keep you signed in, and your browser&rsquo;s local storage to hold your encryption keys and unsent recordings on your device. We don&rsquo;t use
-        advertising or tracking cookies.
+        We also use your browser&rsquo;s storage to hold your encryption keys and unsent recordings on your device, and, for businesses using AI transcripts, a copy
+        of the speech model so it doesn&rsquo;t download again. We don&rsquo;t use advertising or tracking cookies.
       </p>
 
       <h2>Your choices and rights</h2>

@@ -125,7 +125,7 @@ ok("Solo without the add-on: summary API refuses", res.status() === 403);
 await owner.goto(BASE + "/settings/billing");
 await owner.waitForSelector("[data-testid=ai-assist]");
 const billingText = await owner.textContent("[data-testid=ai-assist]");
-ok("billing explains what leaves the device", billingText.includes("Audio never leaves your device") && billingText.includes("Anthropic") && billingText.includes("$8 per month"));
+ok("billing explains what leaves the device", billingText.includes("The audio isn't sent anywhere to make it") && billingText.includes("Anthropic") && billingText.includes("$8 per month"));
 owner.once("dialog", (d) => d.accept());
 await owner.click("[data-testid=ai-assist] [role=switch]");
 await owner.waitForSelector("[data-testid=ai-assist] [role=switch][aria-checked=true]");

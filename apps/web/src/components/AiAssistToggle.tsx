@@ -40,10 +40,10 @@ export default function AiAssistToggle({ enabled, canEnable, priceLabel, usage, 
         <div>
           <p className="font-semibold text-slate-900">AI transcripts and summaries</p>
           <p className="mt-1 text-sm text-slate-600">
-            Each video gets a transcript and a short summary with key points and action items, shown under the video to your team and the client it was sent to.
+            Press a button under any video to get a transcript and a short summary with key points and action items, shown to your team and the client it was sent to.
           </p>
           <ul className="mt-3 space-y-1 text-sm text-slate-600">
-            <li>• The transcript is made on your own device. Audio never leaves your device.</li>
+            <li>• The transcript is made on your own device. The audio isn&apos;t sent anywhere to make it.</li>
             <li>• The transcript text is sent to Anthropic&apos;s Claude to write the summary. Anthropic doesn&apos;t train its models on it, and we don&apos;t keep a readable copy.</li>
             <li>• The transcript and summary are then end-to-end encrypted like your replies and notes.</li>
             <li>• Your clients see a short note that you use AI summaries. Let them know, and get their consent where your local rules require it.</li>

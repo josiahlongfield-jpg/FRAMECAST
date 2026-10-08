@@ -20,10 +20,24 @@ export default function Page() {
         and &ldquo;you&rdquo; includes the business.
       </p>
 
-      <h2>2. Your account</h2>
+      <h2>2. Your account and your team</h2>
       <ul>
         <li>Keep your sign-in details safe. You&rsquo;re responsible for what happens in your account and in the accounts of staff you invite.</li>
         <li>Tell us straight away at {mail} if you think someone has accessed your account without permission.</li>
+        <li>
+          For your security, you&rsquo;re usually signed out when you close your browser, and after 8 hours without using {LEGAL.product}. Some browsers that
+          restore your tabs can keep you signed in, so sign out yourself on shared devices.
+        </li>
+        <li>
+          The workspace owner, and any admins they appoint, decide who joins the team, which clients each staff member looks after and what each staff member can
+          see and do. You&rsquo;re responsible for these choices and for removing staff who should no longer have access.
+        </li>
+        <li>
+          Owners and admins can see a Team overview of staff activity (such as videos sent, clients waiting for a reply and reply times), can choose to be emailed
+          when staff send videos, and can send staff reminders. You&rsquo;re responsible for telling your staff about this and for following any workplace and
+          privacy laws that apply to you.
+        </li>
+        <li>When a team member has set their name, clients see it on the videos that person sends, as &ldquo;Name from Business&rdquo;.</li>
       </ul>
 
       <h2>3. Encryption and your recovery key</h2>
@@ -217,9 +231,9 @@ export default function Page() {
       </p>
       <ul>
         <li>
-          <strong>How it works.</strong> A transcript of each video is made on the device of the team member who opens it, using a speech-to-text model that runs in
-          the browser. The transcript text (not the audio or video) is then sent to our AI provider to write a short summary. The transcript and summary are stored
-          end-to-end encrypted, and your team and the client the video was sent to can read them.
+          <strong>How it works.</strong> When a team member chooses to make one, a transcript of the video is made on their device, using a speech-to-text model that
+          runs in the browser. The transcript text (not the audio or video) is then sent to our AI provider to write a short summary. The transcript and summary are stored
+          end-to-end encrypted, and your team and the clients the video was sent to can read them.
         </li>
         <li>
           <strong>Devices and browsers.</strong> Making a transcript needs a recent browser and enough memory, and works best on a computer. On older or low-memory
