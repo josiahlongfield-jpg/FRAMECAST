@@ -67,6 +67,12 @@ export default async function Library({ searchParams }: { searchParams: Promise<
                 </>
               )}
             </p>
+            {plan.showsPromo && (
+              <p className="mt-2 text-sm text-slate-500" data-testid="promo-note">
+                Your clients see a short SureFrame intro before each video. Paid plans remove it.{" "}
+                <Link href="/pricing" className="font-medium text-brand-700 hover:underline">See plans</Link>
+              </p>
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
             {(!workspace.cloudBackup || soonCount > 0 || soon) && (
