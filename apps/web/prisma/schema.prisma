@@ -236,6 +236,9 @@ model Video {
   parentKeyWrap   String? /// reply media key, wrapped with the conversation's video key
   /// When the relay copy is deleted (null = kept, e.g. cloud backup).
   purgeAt         DateTime?
+  /// When the recorder was emailed that the relay copy is deleted within 24 hours.
+  /// Cleared whenever purgeAt is rescheduled (cloud backup turned off again).
+  expiryWarnedAt  DateTime?
   /// Set on a copy made to send the same recording to another client. The
   /// copy shares the original's stored file and key but has its own private
   /// conversation, so clients never see each other's replies.
@@ -257,6 +260,7 @@ model Video {
   @@index([workspaceId, createdAt])
   @@index([replyToId])
   @@index([sourceId])
+  @@index([purgeAt])
 }
 
 /// AI transcript and summary of a recording (the AI summaries add-on). Both

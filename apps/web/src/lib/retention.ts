@@ -43,6 +43,7 @@ export async function abortStaleUploads(now = new Date()) {
 export async function applyBackupSetting(workspaceId: string, cloudBackup: boolean) {
   await db.video.updateMany({
     where: { workspaceId, status: { not: "EXPIRED" } },
-    data: { purgeAt: purgeDate(cloudBackup) },
+    // A new date means a new 24-hour warning when it comes round.
+    data: { purgeAt: purgeDate(cloudBackup), expiryWarnedAt: null },
   });
 }

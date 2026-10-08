@@ -116,7 +116,7 @@ export default function Page() {
       <ul>
         <li>
           Without cloud backup, the encrypted copy of a video on our servers is deleted {LEGAL.retentionDays} days after it&rsquo;s recorded. The original stays on the
-          device it was recorded on.
+          device it was recorded on. We try to email the person who recorded it about a day before, but please don&rsquo;t rely on that email alone.
         </li>
         <li>With cloud backup, encrypted content is kept until you delete it or close your account.</li>
         <li>Account details are kept while your account is open. When you delete your account, we delete your workspace and its content.</li>

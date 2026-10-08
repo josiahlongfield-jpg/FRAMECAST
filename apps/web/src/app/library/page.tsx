@@ -2,11 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import AppHeader from "@/components/AppHeader";
 import MemberPlanner from "@/components/MemberPlanner";
+import StorageStatus from "@/components/StorageStatus";
 import { db } from "@/lib/db";
 import { PLANS } from "@/lib/plans";
 import { requirePageUser } from "@/lib/session";
 import { workspaceReminderDefaults } from "@/lib/reminders";
 import { accessOf, isManager, libraryWhere, seesAllClients } from "@/lib/permissions";
+import type { Prisma } from "@prisma/client";
 
 export const metadata: Metadata = { title: "Library" };
 
@@ -16,7 +18,7 @@ const fmt = (ms: number | null) => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 };
 
-export default async function Library({ searchParams }: { searchParams: Promise<{ show?: string }> }) {
+export default async function Library({ searchParams }: { searchParams: Promise<{ show?: string; filter?: string }> }) {
   const me = await requirePageUser("/library");
   const { user, workspace } = me;
   const access = accessOf(me);
@@ -25,40 +27,77 @@ export default async function Library({ searchParams }: { searchParams: Promise<
   const team = seesAllClients(access) && (await db.membership.count({ where: { workspaceId: workspace.id } })) > 1;
   // On a team, "Mine" is what I recorded plus anything for the clients I look after.
   // Staff start on "Mine"; owners and admins on everything.
-  const show = (await searchParams).show;
+  const { show, filter } = await searchParams;
   const mine = team && (show === "mine" || (!isManager(access) && show !== "all"));
-  const videos = await db.video.findMany({
-    where: { ...libraryWhere(access), ...(mine ? { OR: [{ ownerId: user.id }, { client: { assignedToId: user.id } }, { copies: { some: { client: { assignedToId: user.id } } } }] } : {}) },
-    orderBy: { createdAt: "desc" },
-  });
-  const tabs = isManager(access)
-    ? [{ href: "/library", label: "All", active: !mine }, { href: "/library?show=mine", label: "Mine", active: mine }]
-    : [{ href: "/library?show=all", label: "All", active: !mine }, { href: "/library", label: "Mine", active: mine }];
+  const scope: Prisma.VideoWhereInput = { ...libraryWhere(access), ...(mine ? { OR: [{ ownerId: user.id }, { client: { assignedToId: user.id } }, { copies: { some: { client: { assignedToId: user.id } } } }] } : {}) };
+  // "Deleting soon": server copies deleted within a week (no cloud backup), soonest first.
+  const soonWhere: Prisma.VideoWhereInput = { ...scope, AND: [{ purgeAt: { not: null, lte: new Date(Date.now() + 7 * 86_400_000) } }, { status: { notIn: ["EXPIRED", "RECORDING"] } }] };
+  const soon = filter === "soon";
+  const [videos, soonCount] = await Promise.all([
+    db.video.findMany({ where: soon ? soonWhere : scope, orderBy: soon ? { purgeAt: "asc" } : { createdAt: "desc" } }),
+    db.video.count({ where: soonWhere }),
+  ]);
+  const withParams = (p: Record<string, string | undefined>) => {
+    const q = new URLSearchParams(Object.entries(p).filter((e): e is [string, string] => !!e[1])).toString();
+    return q ? `/library?${q}` : "/library";
+  };
+  const showParam = (m: boolean) => (isManager(access) ? (m ? "mine" : undefined) : m ? undefined : "all");
+  const tabs = [
+    { href: withParams({ show: showParam(false), filter: soon ? "soon" : undefined }), label: "All", active: !mine },
+    { href: withParams({ show: showParam(true), filter: soon ? "soon" : undefined }), label: "Mine", active: mine },
+  ];
+  const filters = [
+    { href: withParams({ show: team ? showParam(mine) : undefined }), label: "All videos", active: !soon },
+    { href: withParams({ show: team ? showParam(mine) : undefined, filter: "soon" }), label: `Deleting soon${soonCount ? ` (${soonCount})` : ""}`, active: soon },
+  ];
+  const pill = (active: boolean) => `rounded-md px-3 py-1.5 ${active ? "bg-white font-medium text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`;
 
   return (
     <>
       <AppHeader email={user.email} plan={plan.name} />
       <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-        <div className="mb-8 flex items-end justify-between">
+        <div className="mb-8 flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{team ? "Team videos" : "Your videos"}</h1>
             <p className="mt-1 text-sm text-slate-500">
-              {videos.length} {videos.length === 1 ? "video" : "videos"}
-              {plan.maxVideos !== null && ` of ${plan.maxVideos} on the ${plan.name} plan`}
+              {soon ? `${videos.length} deleting from our servers within 7 days` : (
+                <>
+                  {videos.length} {videos.length === 1 ? "video" : "videos"}
+                  {plan.maxVideos !== null && ` of ${plan.maxVideos} on the ${plan.name} plan`}
+                </>
+              )}
             </p>
           </div>
-          {team && (
-            <nav aria-label="Which videos" className="flex gap-1 rounded-lg bg-slate-100 p-1 text-sm">
-              {tabs.map(({ href, label, active }) => (
-                <Link key={label} href={href} aria-current={active ? "page" : undefined}
-                  className={`rounded-md px-3 py-1.5 ${active ? "bg-white font-medium text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}>
-                  {label}
-                </Link>
-              ))}
-            </nav>
-          )}
+          <div className="flex flex-wrap gap-2">
+            {(!workspace.cloudBackup || soonCount > 0 || soon) && (
+              <nav aria-label="Filter videos" className="flex gap-1 rounded-lg bg-slate-100 p-1 text-sm">
+                {filters.map(({ href, label, active }) => (
+                  <Link key={href} href={href} aria-current={active ? "page" : undefined} className={pill(active)}>{label}</Link>
+                ))}
+              </nav>
+            )}
+            {team && (
+              <nav aria-label="Which videos" className="flex gap-1 rounded-lg bg-slate-100 p-1 text-sm">
+                {tabs.map(({ href, label, active }) => (
+                  <Link key={label} href={href} aria-current={active ? "page" : undefined} className={pill(active)}>{label}</Link>
+                ))}
+              </nav>
+            )}
+          </div>
         </div>
-        {videos.length === 0 ? (
+        {soon && (
+          <p className="-mt-4 mb-6 max-w-2xl text-sm text-slate-600">
+            {workspace.cloudBackup
+              ? "Cloud backup is on, so nothing here is due to be deleted."
+              : "These recordings' encrypted copies are deleted from our servers within 7 days. Open one and choose Save to device to keep a copy; the original also stays on the device it was recorded on unless it was cleared."}
+          </p>
+        )}
+        {videos.length === 0 && soon ? (
+          <div className="rounded-2xl border border-dashed border-slate-300 p-16 text-center">
+            <h2 className="font-semibold text-slate-900">Nothing deleting soon</h2>
+            <p className="mt-1 text-sm text-slate-500">No recordings are due to be deleted from our servers in the next 7 days.</p>
+          </div>
+        ) : videos.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-300 p-16 text-center">
             <h2 className="font-semibold text-slate-900">No videos yet</h2>
             <p className="mt-1 text-sm text-slate-500">Record your first video and it will show up here.</p>
@@ -94,6 +133,7 @@ export default async function Library({ searchParams }: { searchParams: Promise<
                   <p className="text-xs text-slate-500">
                     {v.createdAt.toLocaleDateString("en-US", { dateStyle: "medium" })} · {v.viewCount} {v.viewCount === 1 ? "view" : "views"}
                   </p>
+                  <StorageStatus status={v.status} purgeAt={v.purgeAt?.toISOString() ?? null} cloudBackup={workspace.cloudBackup} />
                 </Link>
               </li>
             ))}
