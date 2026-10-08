@@ -8,7 +8,7 @@ import { RETENTION_DAYS } from "@/lib/retention";
 export const LEGAL = {
   product: BRAND.name,
   operator: "Josiah Longfield",
-  abn: null as string | null,
+  abn: "38 364 192 034" as string | null,
   postalAddress: null as string | null,
   email: "support@sureframe.app",
   website: "sureframe.app",
@@ -16,7 +16,7 @@ export const LEGAL = {
   country: "Australia",
   minimumAge: 18,
   retentionDays: RETENTION_DAYS,
-  updated: "7 October 2026",
+  updated: "8 October 2026",
 };
 
 export const operatorLine = () =>
