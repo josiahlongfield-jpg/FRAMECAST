@@ -19,6 +19,11 @@ ADD COLUMN     "sendToMany" BOOLEAN NOT NULL DEFAULT true,
 ADD COLUMN     "sentNotify" "NotifyScope" NOT NULL DEFAULT 'OFF',
 ADD COLUMN     "sentNotifyStaff" TEXT[] DEFAULT ARRAY[]::TEXT[];
 
+-- Staff who joined before this change keep seeing every client, as they did
+-- before, until an owner or admin turns "See all clients" off. New staff
+-- start with it off.
+UPDATE "Membership" SET "seeAllClients" = true WHERE "role" = 'MEMBER';
+
 -- CreateTable
 CREATE TABLE "TeamNotification" (
     "id" TEXT NOT NULL,
