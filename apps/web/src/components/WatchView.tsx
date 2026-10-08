@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { REACTIONS } from "@/lib/reactions";
 import type { ReplyDTO } from "@/lib/replies";
@@ -143,6 +143,41 @@ function WatchBody({
   const [title, setTitle] = useState(video.title);
   const [replies, setReplies] = useState(initialReplies);
   const listEnd = useRef<HTMLLIElement>(null);
+  const reactionsRow = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLElement>(null);
+  const [expanded, setExpanded] = useState(false);
+
+  // On wide screens the conversation panel ends level with the reactions row,
+  // so a long transcript or summary below the video doesn't stretch it.
+  useLayoutEffect(() => {
+    const row = reactionsRow.current;
+    const aside = panel.current;
+    if (!row || !aside) return;
+    const wide = window.matchMedia("(min-width: 1024px)");
+    const fit = () => {
+      if (!wide.matches || aside.dataset.expanded) return void (aside.style.height = "");
+      const height = row.getBoundingClientRect().bottom - aside.getBoundingClientRect().top;
+      aside.style.height = `${Math.max(420, Math.round(height))}px`;
+    };
+    fit();
+    const watch = new ResizeObserver(fit);
+    watch.observe(row.parentElement ?? row);
+    wide.addEventListener("change", fit);
+    window.addEventListener("resize", fit);
+    return () => {
+      watch.disconnect();
+      wide.removeEventListener("change", fit);
+      window.removeEventListener("resize", fit);
+    };
+  }, [expanded]);
+
+  // The larger view closes with Escape.
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setExpanded(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [expanded]);
   const [copied, setCopied] = useState(false);
   const [burst, setBurst] = useState<{ id: number; emoji: string }[]>([]);
   const viewed = useRef(false);
@@ -367,7 +402,7 @@ function WatchBody({
           </div>
         )}
 
-        <div className="mt-4 flex gap-2">
+        <div ref={reactionsRow} className="mt-4 flex gap-2">
           {REACTIONS.map((e) => (
             <button key={e} onClick={() => react(e)} aria-label={`React ${e}`} className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-lg hover:bg-slate-100">
               {e}
@@ -391,10 +426,37 @@ function WatchBody({
         {ai?.notice && !canEdit && <AiNotice className="mt-4" />}
       </section>
 
-      <aside className="flex flex-col rounded-2xl border border-slate-200 bg-white lg:max-h-[calc(100vh-8rem)]">
-        <div className="border-b border-slate-100 px-5 py-4">
-          <h2 className="font-semibold text-slate-900">Conversation</h2>
-          <p className="text-xs text-slate-500">Reply with a video, a voice note or a message. End-to-end encrypted.</p>
+      {expanded && <div className="fixed inset-0 z-40 bg-slate-900/50" onClick={() => setExpanded(false)} aria-hidden />}
+      <aside
+        ref={panel}
+        data-testid="conversation"
+        data-expanded={expanded || undefined}
+        role={expanded ? "dialog" : undefined}
+        aria-modal={expanded || undefined}
+        aria-label={expanded ? "Conversation" : undefined}
+        className={
+          expanded
+            ? "fixed inset-x-4 inset-y-6 z-50 mx-auto flex max-w-3xl flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl"
+            : "flex max-h-[80vh] flex-col self-start rounded-2xl border border-slate-200 bg-white lg:max-h-none"
+        }
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
+          <div>
+            <h2 className="font-semibold text-slate-900">Conversation</h2>
+            <p className="text-xs text-slate-500">Reply with a video, a voice note or a message. End-to-end encrypted.</p>
+          </div>
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            aria-label={expanded ? "Close larger view" : "Open conversation in a larger view"}
+            title={expanded ? "Close" : "Expand"}
+            className="shrink-0 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+          >
+            {expanded ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" /></svg>
+            )}
+          </button>
         </div>
         <ul className="flex-1 space-y-4 overflow-y-auto px-5 py-4 text-sm">
           {replies.length === 0 && <li className="text-slate-500">No replies yet. Be the first to respond.</li>}
