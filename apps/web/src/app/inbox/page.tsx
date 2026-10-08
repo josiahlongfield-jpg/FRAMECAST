@@ -3,6 +3,8 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import BrandMark from "@/components/BrandMark";
 import MadeWith from "@/components/MadeWith";
+import AiNotice from "@/components/AiNotice";
+import { aiAssistActive } from "@/lib/plans";
 import { brandOf, brandStyle } from "@/lib/branding";
 import ClientKeyCapture from "@/components/ClientKeyCapture";
 import ClientPlanner from "@/components/ClientPlanner";
@@ -22,7 +24,7 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
     ? await db.client.findMany({
         where: { token: { in: tokens }, removedAt: null },
         include: {
-          workspace: { select: { id: true, name: true, plan: true, brandColor: true, brandLogoType: true, brandVersion: true } },
+          workspace: { select: { id: true, name: true, plan: true, brandColor: true, brandLogoType: true, brandVersion: true, aiAssist: true } },
           videos: { where: { replyToId: null, status: { not: "RECORDING" } }, orderBy: { createdAt: "desc" }, include: { owner: { select: { name: true } } } },
         },
       })
@@ -52,6 +54,7 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
           clients.map((c) => (
             <section key={c.id} className="mt-8">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">From {c.workspace.name}</h2>
+              {aiAssistActive(c.workspace) && <AiNotice className="mt-2" />}
               {c.videos.length === 0 ? (
                 <p className="mt-3 text-sm text-slate-500">Nothing yet.</p>
               ) : (

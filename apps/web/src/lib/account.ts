@@ -87,7 +87,7 @@ export async function exportAccount(userId: string) {
         role: m.role,
         workspace: {
           id: w.id, name: w.name, plan: w.plan, subscriptionStatus: w.subscriptionStatus, extraClientSeats: w.extraClientSeats,
-          cloudBackup: w.cloudBackup, timezone: w.timezone, reminderMessage: w.reminderMessage, reminderReplyTo: w.reminderReplyTo,
+          cloudBackup: w.cloudBackup, aiAssist: w.aiAssist, timezone: w.timezone, reminderMessage: w.reminderMessage, reminderReplyTo: w.reminderReplyTo,
           createdAt: w.createdAt,
         },
         clients,

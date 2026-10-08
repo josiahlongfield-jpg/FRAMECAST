@@ -15,6 +15,10 @@ export default function Page() {
       <h2>The short version</h2>
       <ul>
         <li>Your videos, replies, to-dos and notes are end-to-end encrypted in your browser. We can&rsquo;t open them, and neither can anyone we work with.</li>
+        <li>
+          If a business switches on our optional AI transcripts and summaries, the text of each video&rsquo;s transcript (never the audio or video) is sent to our AI
+          provider to write a summary. It&rsquo;s off unless the business turns it on.
+        </li>
         <li>We collect only what we need to run your account, bill you and help you.</li>
         <li>We don&rsquo;t sell personal information, show ads or use advertising trackers.</li>
       </ul>
@@ -55,13 +59,44 @@ export default function Page() {
         team, who can read the conversation. Please don&rsquo;t share passwords, recovery keys or card numbers in the chat. We don&rsquo;t use your content or chats to train AI models, and Anthropic doesn&rsquo;t use them to train its models either.
       </p>
 
+      <h2>AI transcripts and summaries (optional)</h2>
+      <p>
+        Businesses can choose to add AI transcripts and summaries to their videos. It&rsquo;s off by default; only the workspace owner can switch it on, and
+        they can switch it off again at any time in Settings &gt; Billing. When it&rsquo;s on:
+      </p>
+      <ul>
+        <li>
+          <strong>On the device:</strong> the transcript is made in the browser of the team member who opens the video, from the decrypted recording. The audio and
+          video don&rsquo;t leave that device for this. The speech model is downloaded from our own servers or storage, not from a public model site.
+        </li>
+        <li>
+          <strong>Sent to our AI provider:</strong> the transcript text is sent through our servers to Anthropic, which provides the Claude AI model that writes the
+          summary. Anthropic acts as our service provider (sub-processor) and processes it in the United States or other countries where it operates. Anthropic
+          doesn&rsquo;t use it to train its models. It may keep it for a limited time to detect misuse and then deletes it, in line with its commercial terms. The
+          transcript may include anything said in the video, including personal information about the business, its clients or others.
+        </li>
+        <li>
+          <strong>Stored encrypted:</strong> we don&rsquo;t keep a readable copy of the transcript or summary or put them in our logs. The browser encrypts both with
+          the video&rsquo;s key before saving them, so, like replies, only the business&rsquo;s team and the client the video was sent to can read them.
+        </li>
+        <li>
+          <strong>Removing them:</strong> the team can remove a video&rsquo;s transcript and summary at any time. They&rsquo;re also deleted when the video is
+          deleted or the account is closed.
+        </li>
+        <li>
+          <strong>Clients:</strong> clients of a business using the add-on see a note saying so. The business is responsible for telling its clients and getting any
+          consent the law requires. Questions about a business&rsquo;s use of it are best sent to that business first.
+        </li>
+      </ul>
+      <p>Transcripts and summaries are made by machines and can contain mistakes.</p>
+
       <h2>Who we share it with</h2>
       <p>We use trusted service providers to run {LEGAL.product}. They may only use your information to provide their service to us:</p>
       <ul>
         <li>Vercel (hosting) and our database and file storage providers, which store your account data and encrypted content.</li>
         <li>Stripe (payments and subscription management).</li>
         <li>Our email delivery provider (sign-in links, client links and reminders).</li>
-        <li>Anthropic (the AI support assistant).</li>
+        <li>Anthropic (the AI support assistant, and summaries for businesses that use AI transcripts and summaries).</li>
         <li>Google Workspace (our support inbox).</li>
       </ul>
       <p>
@@ -73,7 +108,8 @@ export default function Page() {
       <h2>Overseas storage</h2>
       <p>
         Our providers store and process information outside Australia, mainly in the United States. We choose providers with strong security and privacy practices.
-        Your encrypted content stays encrypted wherever it&rsquo;s stored.
+        Your encrypted content stays encrypted wherever it&rsquo;s stored. The exception is transcript text sent for AI summaries (only for businesses that switch
+        them on), which Anthropic must be able to read to write the summary; it&rsquo;s sent over an encrypted connection and processed mainly in the United States.
       </p>
 
       <h2>How long we keep it</h2>

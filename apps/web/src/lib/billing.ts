@@ -1,6 +1,7 @@
 import type Stripe from "stripe";
 import type { Plan } from "@prisma/client";
 import {
+  AI_ASSIST_PRICES,
   CLOUD_BACKUP_PRICE,
   CLOUD_BACKUP_PRICE_YEARLY,
   EXTRA_SEAT_PRICE,
@@ -21,6 +22,10 @@ const ITEMS = {
   client_seat: { product: "SureFrame extra client", month: EXTRA_SEAT_PRICE, year: EXTRA_SEAT_PRICE_YEARLY },
   staff_seat: { product: "SureFrame extra staff", month: EXTRA_STAFF_PRICE, year: EXTRA_STAFF_PRICE_YEARLY },
   cloud_backup: { product: "SureFrame cloud backup", month: CLOUD_BACKUP_PRICE, year: CLOUD_BACKUP_PRICE_YEARLY },
+  // AI summaries are priced by plan, so each plan has its own add-on item.
+  ai_assist_solo: { product: "SureFrame AI summaries (Solo)", ...AI_ASSIST_PRICES.SOLO },
+  ai_assist_studio: { product: "SureFrame AI summaries (Studio)", ...AI_ASSIST_PRICES.STUDIO },
+  ai_assist_agency: { product: "SureFrame AI summaries (Agency)", ...AI_ASSIST_PRICES.AGENCY },
 } as const;
 
 export type CatalogItem = keyof typeof ITEMS;
@@ -45,6 +50,10 @@ export const CATALOG = Object.fromEntries(
 const TAX_CODE = "txcd_10103001";
 
 export const PLAN_ITEM: Record<PaidPlan, CatalogItem> = { SOLO: "solo", STUDIO: "studio", AGENCY: "agency" };
+
+/** The AI summaries add-on item that goes with each plan. */
+export const AI_ITEM: Record<PaidPlan, CatalogItem> = { SOLO: "ai_assist_solo", STUDIO: "ai_assist_studio", AGENCY: "ai_assist_agency" };
+export const isAiItem = (item: CatalogItem | undefined) => !!item && item.startsWith("ai_assist_");
 
 const cache = new Map<CatalogKey, string>();
 const products = new Map<CatalogItem, string>();

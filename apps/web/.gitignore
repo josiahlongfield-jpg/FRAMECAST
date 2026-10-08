@@ -43,3 +43,6 @@ next-env.d.ts
 # local uploads
 /.data
 !.env.example
+
+# on-device transcription runtime, copied from node_modules on install (scripts/copy-ort.mjs)
+/public/ort/

@@ -8,7 +8,7 @@ import MadeWith from "@/components/MadeWith";
 import { brandOf, brandStyle } from "@/lib/branding";
 import WatchView from "@/components/WatchView";
 import SureFramePromo from "@/components/SureFramePromo";
-import { PLANS } from "@/lib/plans";
+import { aiAssistActive, PLANS } from "@/lib/plans";
 import { db } from "@/lib/db";
 import { viewerFor } from "@/lib/access";
 import { clientLink } from "@/lib/clients";
@@ -72,6 +72,9 @@ export default async function Watch({ params }: Props) {
     : null;
   const expired = !!video.expiresAt && video.expiresAt < new Date();
   const workspace = await db.workspace.findUniqueOrThrow({ where: { id: video.workspaceId } });
+  // AI summaries add-on. Copies sent to other clients share the original recording's transcript.
+  const aiOn = aiAssistActive(workspace);
+  const insight = await db.videoInsight.findUnique({ where: { videoId: video.sourceId ?? video.id }, select: { transcript: true, summary: true } });
   // Clients see the business's branding; the team sees the normal app.
   const brand = isMember ? null : brandOf(workspace);
   const memberEmail = viewer.kind === "member" ? (await db.user.findUnique({ where: { id: viewer.userId }, select: { email: true } }))?.email : null;
@@ -124,6 +127,7 @@ export default async function Watch({ params }: Props) {
                 : undefined
             }
             sentToId={video.clientId}
+            ai={aiOn || insight ? { insight, canMake: isMember && aiOn, notice: !isMember } : undefined}
             initialReplies={replies.map((r) => replyDTO(r, video.ownerId))}
           />
           </>

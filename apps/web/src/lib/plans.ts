@@ -31,7 +31,30 @@ export const EXTRA_STAFF_PRICE_YEARLY = 80;
 export const CLOUD_BACKUP_PRICE = 5;
 export const CLOUD_BACKUP_PRICE_YEARLY = 50;
 
-const paidFeatures = ["Unlimited videos", "Up to 4 hours per video", "1080p and 4K recording", "Custom branding", "No SureFrame intro before your videos", "Extra clients $1.50/month each", "Optional cloud backup"];
+/**
+ * Optional add-on: AI transcripts and summaries. Priced by plan; yearly is 10x
+ * monthly. Not available on Free. Transcripts are made on the team's devices;
+ * only the transcript text is sent to Claude to write the summary.
+ */
+export const AI_ASSIST_PRICES: Record<"SOLO" | "STUDIO" | "AGENCY", { month: number; year: number }> = {
+  SOLO: { month: 8, year: 80 },
+  STUDIO: { month: 15, year: 150 },
+  AGENCY: { month: 29, year: 290 },
+};
+
+/** Fair-use cap on AI summaries per workspace per calendar month (UTC). */
+export const AI_SUMMARIES_PER_MONTH: Record<"SOLO" | "STUDIO" | "AGENCY", number> = {
+  SOLO: 100,
+  STUDIO: 400,
+  AGENCY: 1000,
+};
+
+/** Whether a workspace can use AI transcripts and summaries right now. */
+export function aiAssistActive(w: { plan: Plan; aiAssist: boolean }) {
+  return w.aiAssist && w.plan !== "FREE";
+}
+
+const paidFeatures = ["Unlimited videos", "Up to 4 hours per video", "1080p and 4K recording", "Custom branding", "No SureFrame intro before your videos", "Extra clients $1.50/month each", "Optional cloud backup", "Optional AI transcripts and summaries"];
 
 export const PLANS: Record<Plan, PlanLimits> = {
   FREE: {

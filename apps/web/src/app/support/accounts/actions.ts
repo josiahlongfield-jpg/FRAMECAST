@@ -26,11 +26,36 @@ export async function setComplimentary(_prev: CompResult, form: FormData): Promi
 
   await db.workspace.update({
     where: { id: ws.id },
-    data: plan === "FREE" ? { plan: "FREE", complimentaryPlan: null } : { plan, complimentaryPlan: plan },
+    // Free AI summaries only come with a free plan.
+    data: plan === "FREE" ? { plan: "FREE", complimentaryPlan: null, aiAssistComplimentary: false, aiAssist: false } : { plan, complimentaryPlan: plan },
   });
   revalidatePath("/support/accounts");
   return {
     ok: true,
     message: plan === "FREE" ? `${ws.name} is back on the Free plan.` : `${ws.name} now has ${PLANS[plan].name} free of charge.`,
+  };
+}
+
+/** Gives (or takes back) the AI summaries add-on, free, on a workspace with a complimentary plan. */
+export async function setComplimentaryAi(_prev: CompResult, form: FormData): Promise<CompResult> {
+  const session = await auth();
+  if (!isSupportAgent(session?.user?.email)) redirect("/library");
+  const email = String(form.get("email") ?? "").trim().toLowerCase();
+  const on = form.get("ai") === "on";
+  if (!email.includes("@")) return { ok: false, message: "Enter an email address." };
+
+  const owner = await db.membership.findFirst({ where: { role: "OWNER", user: { email } }, include: { workspace: true } });
+  if (!owner) return { ok: false, message: `${email} hasn't signed up yet, or doesn't own a workspace. Ask them to sign in once first.` };
+  const ws = owner.workspace;
+  if (ws.stripeSubscriptionId) return { ok: false, message: `${ws.name} pays by card, so they can add AI summaries in Settings > Billing. Nothing was changed.` };
+  if (on && !ws.complimentaryPlan) return { ok: false, message: `Give ${ws.name} a free paid plan first. AI summaries aren't available on Free.` };
+
+  await db.workspace.update({ where: { id: ws.id }, data: { aiAssistComplimentary: on, aiAssist: on } });
+  revalidatePath("/support/accounts");
+  return {
+    ok: true,
+    message: on
+      ? `${ws.name} now has AI summaries free of charge, switched on. Their owner or an admin can switch it off in Settings > Billing.`
+      : `AI summaries are off for ${ws.name}.`,
   };
 }

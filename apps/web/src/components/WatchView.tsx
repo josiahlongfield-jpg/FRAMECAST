@@ -9,6 +9,8 @@ import { fixDuration } from "./MediaPlayer";
 import ReplyComposer from "./ReplyComposer";
 import SecureMedia, { useDecryptedUrl } from "./SecureMedia";
 import TeamKeyGate from "./TeamKeyGate";
+import AiInsight, { type SealedInsight } from "./AiInsight";
+import AiNotice from "./AiNotice";
 import { personalLink } from "./ClientsManager";
 import { recoverInterrupted } from "@/lib/recorder/uploader";
 import { decryptText, importKey, unwrapKey, wrapKey, fingerprint } from "@/lib/e2e/crypto";
@@ -54,6 +56,8 @@ type Props = {
   sentToId: string | null;
   initialReplies: ReplyDTO[];
   sendMany?: SendMany;
+  /** AI summaries add-on: the encrypted transcript/summary, whether this viewer may make one, and whether to tell a client AI is used. */
+  ai?: { insight: SealedInsight; canMake: boolean; notice: boolean };
 };
 
 /**
@@ -113,6 +117,9 @@ function Locked({ text }: { text: string }) {
   return <p className="rounded-2xl border border-slate-200 bg-white p-16 text-center text-slate-600">{text}</p>;
 }
 
+/** Statuses where the recording is fully uploaded and safe on the server. */
+const UPLOAD_DONE = new Set(["UPLOADED", "PROCESSING", "READY"]);
+
 const fmt = (ms: number) => {
   const s = Math.floor(ms / 1000);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -127,6 +134,7 @@ function WatchBody({
   sentToId,
   initialReplies,
   sendMany,
+  ai,
   rootKey,
   teamKey,
 }: Props & { canEdit: boolean; rootKey: CryptoKey; teamKey?: CryptoKey }) {
@@ -366,6 +374,21 @@ function WatchBody({
             </button>
           ))}
         </div>
+
+        {ai && !expired && (
+          <AiInsight
+            videoId={video.id}
+            rootKey={rootKey}
+            initial={ai.insight}
+            // Only once the upload has fully finished, so it never competes with the recording.
+            canMake={ai.canMake && canEdit && UPLOAD_DONE.has(video.status)}
+            mediaUrl={playable || null}
+            durationMs={video.durationMs}
+            canRemove={canEdit}
+            onSeek={seek}
+          />
+        )}
+        {ai?.notice && !canEdit && <AiNotice className="mt-4" />}
       </section>
 
       <aside className="flex flex-col rounded-2xl border border-slate-200 bg-white lg:max-h-[calc(100vh-8rem)]">

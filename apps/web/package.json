@@ -7,7 +7,7 @@
     "build": "next build --turbopack",
     "start": "next start",
     "vercel-build": "prisma generate && prisma migrate deploy && next build --turbopack",
-    "postinstall": "prisma generate",
+    "postinstall": "prisma generate && node scripts/copy-ort.mjs",
     "lint": "eslint"
   },
   "dependencies": {
@@ -15,6 +15,7 @@
     "@auth/prisma-adapter": "^2.11.3",
     "@aws-sdk/client-s3": "^3.1146.0",
     "@aws-sdk/s3-request-presigner": "^3.1146.0",
+    "@huggingface/transformers": "4.2.0",
     "@prisma/client": "^6.19.3",
     "hls.js": "^1.7.3",
     "nanoid": "^6.0.2",

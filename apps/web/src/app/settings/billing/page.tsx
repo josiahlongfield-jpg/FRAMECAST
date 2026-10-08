@@ -3,12 +3,31 @@ import Link from "next/link";
 import AppHeader from "@/components/AppHeader";
 import ManageBillingButton from "@/components/ManageBillingButton";
 import CloudBackupToggle from "@/components/CloudBackupToggle";
+import AiAssistToggle from "@/components/AiAssistToggle";
+import { summaryUsage } from "@/lib/ai/summary";
+import { readManifest } from "@/lib/ai/speechModel";
 import { RETENTION_DAYS } from "@/lib/retention";
-import { CLOUD_BACKUP_PRICE, PLANS } from "@/lib/plans";
+import { AI_ASSIST_PRICES, aiAssistActive, CLOUD_BACKUP_PRICE, PLANS } from "@/lib/plans";
+import type { Workspace } from "@prisma/client";
 import { requirePageUser } from "@/lib/session";
 import { BRAND } from "@/lib/brand";
 
 export const metadata: Metadata = { title: "Billing" };
+
+/** The AI summaries add-on for this workspace's plan. */
+async function AiAddOn({ workspace }: { workspace: Workspace }) {
+  const paid = workspace.plan !== "FREE" ? AI_ASSIST_PRICES[workspace.plan] : null;
+  const free = workspace.aiAssistComplimentary && workspace.plan !== "FREE";
+  return (
+    <AiAssistToggle
+      enabled={aiAssistActive(workspace)}
+      canEnable={free || (!!paid && !!workspace.stripeSubscriptionId)}
+      priceLabel={free || !paid ? null : `$${paid.month} per month on ${PLANS[workspace.plan].name} ($${paid.year} per year on yearly billing)`}
+      usage={aiAssistActive(workspace) ? await summaryUsage(workspace) : null}
+      modelReady={!!(await readManifest().catch(() => null))}
+    />
+  );
+}
 
 export default async function Billing({ searchParams }: { searchParams: Promise<{ upgraded?: string }> }) {
   const { upgraded } = await searchParams;
@@ -65,6 +84,7 @@ export default async function Billing({ searchParams }: { searchParams: Promise<
           </div>
         </div>
         <CloudBackupToggle enabled={workspace.cloudBackup} canEnable={workspace.plan !== "FREE"} price={CLOUD_BACKUP_PRICE} days={RETENTION_DAYS} />
+        <AiAddOn workspace={workspace} />
       </main>
     </>
   );

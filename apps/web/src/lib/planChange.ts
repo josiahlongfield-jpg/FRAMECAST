@@ -1,7 +1,7 @@
 import type Stripe from "stripe";
 import type { Workspace } from "@prisma/client";
 import { db } from "@/lib/db";
-import { ACTIVE_STATUSES, catalogKey, catalogOf, PLAN_ITEM, planOf, priceId } from "@/lib/billing";
+import { ACTIVE_STATUSES, AI_ITEM, catalogKey, catalogOf, isAiItem, PLAN_ITEM, planOf, priceId } from "@/lib/billing";
 import { PLANS, staffSeatLimit, TEAM_PLANS, type Interval, type PaidPlan } from "@/lib/plans";
 import { HttpError } from "@/lib/session";
 import { stripe } from "@/lib/stripe";
@@ -44,7 +44,9 @@ export async function planChange(workspace: Workspace, plan: PaidPlan, interval:
         const entry = catalogOf(i.price);
         // Extra staff only exist on team plans.
         if (entry?.item === "staff_seat" && !TEAM_PLANS.includes(plan)) return { id: i.id, deleted: true };
-        return entry && entry.interval !== interval ? { id: i.id, price: await priceId(catalogKey(entry.item, interval)) } : null;
+        // AI summaries are priced by plan, so the add-on follows the new plan.
+        const target = entry && isAiItem(entry.item) ? AI_ITEM[plan] : entry?.item;
+        return entry && target && (entry.interval !== interval || target !== entry.item) ? { id: i.id, price: await priceId(catalogKey(target, interval)) } : null;
       }),
   );
   const items = [item ? { id: item.id, price } : { price, quantity: 1 }, ...extras.filter((x) => x !== null)];

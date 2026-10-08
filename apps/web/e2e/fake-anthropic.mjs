@@ -2,6 +2,9 @@
 // app with ANTHROPIC_BASE_URL=http://localhost:12112 and any ANTHROPIC_API_KEY.
 // The scripted assistant: "refund" hands over (urgent), "my plan" looks at the
 // account first, "explode" fails, anything else gets a plain answer.
+// Summary requests (structured output, for AI summaries) get a JSON summary
+// that quotes the transcript's first line; a transcript containing "explode"
+// fails.
 import { createServer } from "node:http";
 
 export const requests = [];
@@ -14,6 +17,13 @@ const tool = (name, input) => ({ type: "tool_use", id: `toolu_${Math.random().to
 
 function reply(body) {
   const msgs = body.messages;
+  if (body.output_config?.format?.type === "json_schema") {
+    const transcript = String(msgs[0]?.content ?? "");
+    if (/explode/i.test(transcript)) return null;
+    const first = transcript.split("\n").find((l) => /^\[\d+:\d\d\]/.test(l))?.replace(/^\[\d+:\d\d\]\s*/, "") ?? "";
+    const summary = { overview: `The video covers: ${first}`, keyPoints: ["Fake key point one", "Fake key point two"], actionItems: ["Send the signed form by Friday"] };
+    return msg([text(JSON.stringify(summary))], "end_turn");
+  }
   const last = msgs[msgs.length - 1];
   const lastUser = [...msgs].reverse().find((m) => m.role === "user" && typeof m.content === "string")?.content ?? "";
   if (Array.isArray(last.content) && last.content[0]?.type === "tool_result") {

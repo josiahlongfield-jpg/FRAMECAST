@@ -9,6 +9,8 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   ListPartsCommand,
+  NoSuchKey,
+  PutObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
@@ -24,7 +26,11 @@ export interface StorageDriver {
   abort(key: string, uploadId: string | null): Promise<void>;
   delete(key: string): Promise<void>;
   /** A URL the browser can play directly, or null to stream through /api/videos/:id/stream. */
-  playbackUrl(key: string): Promise<string | null>;
+  playbackUrl(key: string, expiresInSeconds?: number): Promise<string | null>;
+  /** Writes a small object (a few MB at most) in one go, replacing any earlier one. */
+  putObject(key: string, body: Uint8Array, contentType: string): Promise<void>;
+  /** Reads a small object whole, or null when there's none. */
+  getObject(key: string): Promise<Buffer | null>;
   /**
    * Object storage only: a short-lived URL the browser can PUT one part to
    * directly, so video bytes never pass through our servers (or their
@@ -89,6 +95,20 @@ class LocalDriver implements StorageDriver {
 
   async playbackUrl() {
     return null;
+  }
+
+  async putObject(key: string, body: Uint8Array) {
+    const file = this.file(key);
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file + ".tmp", body);
+    await fs.rename(file + ".tmp", file);
+  }
+
+  async getObject(key: string) {
+    return fs.readFile(this.file(key)).catch((err: NodeJS.ErrnoException) => {
+      if (err.code === "ENOENT") return null;
+      throw err;
+    });
   }
 
   async open(key: string, range?: { start: number; end: number }) {
@@ -177,8 +197,22 @@ class S3Driver implements StorageDriver {
     await this.s3.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
   }
 
-  async playbackUrl(key: string) {
-    return getSignedUrl(this.s3, new GetObjectCommand({ Bucket: this.bucket, Key: key }), { expiresIn: 60 * 60 });
+  async playbackUrl(key: string, expiresInSeconds = 60 * 60) {
+    return getSignedUrl(this.s3, new GetObjectCommand({ Bucket: this.bucket, Key: key }), { expiresIn: expiresInSeconds });
+  }
+
+  async putObject(key: string, body: Uint8Array, contentType: string) {
+    await this.s3.send(new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: body, ContentType: contentType }));
+  }
+
+  async getObject(key: string) {
+    try {
+      const res = await this.s3.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+      return Buffer.from(await res.Body!.transformToByteArray());
+    } catch (err) {
+      if (err instanceof NoSuchKey || (err as { name?: string }).name === "NoSuchKey") return null;
+      throw err;
+    }
   }
 }
 
@@ -228,6 +262,21 @@ class DbDriver implements StorageDriver {
     return null;
   }
 
+  async putObject(key: string, body: Uint8Array) {
+    const db = await this.db();
+    const data = Buffer.from(body);
+    await db.$transaction([
+      db.storedPart.deleteMany({ where: { key, partNumber: { not: 1 } } }),
+      db.storedPart.upsert({ where: { key_partNumber: { key, partNumber: 1 } }, create: { key, partNumber: 1, size: data.length, data }, update: { size: data.length, data } }),
+    ]);
+  }
+
+  async getObject(key: string) {
+    const db = await this.db();
+    const parts = await db.storedPart.findMany({ where: { key }, orderBy: { partNumber: "asc" }, select: { data: true } });
+    return parts.length ? Buffer.concat(parts.map((p) => p.data)) : null;
+  }
+
   async open(key: string, range?: { start: number; end: number }) {
     const db = await this.db();
     const index = await db.storedPart.findMany({ where: { key }, select: { partNumber: true, size: true }, orderBy: { partNumber: "asc" } });
@@ -262,13 +311,20 @@ let driver: StorageDriver | undefined;
  * S3/R2 when S3_BUCKET is set. Otherwise Postgres on hosts without a
  * writable disk (Vercel) or when STORAGE_DRIVER=db, else local files.
  */
+export function storageKind(): "s3" | "db" | "local" {
+  if (process.env.S3_BUCKET) return "s3";
+  return process.env.STORAGE_DRIVER === "db" || (process.env.VERCEL && process.env.STORAGE_DRIVER !== "local") ? "db" : "local";
+}
+
 export function storage(): StorageDriver {
   if (!driver) {
-    driver = process.env.S3_BUCKET
-      ? new S3Driver(process.env.S3_BUCKET)
-      : process.env.STORAGE_DRIVER === "db" || (process.env.VERCEL && process.env.STORAGE_DRIVER !== "local")
-        ? new DbDriver()
-        : new LocalDriver(path.resolve(process.env.LOCAL_STORAGE_DIR ?? ".data/uploads"));
+    const kind = storageKind();
+    driver =
+      kind === "s3"
+        ? new S3Driver(process.env.S3_BUCKET!)
+        : kind === "db"
+          ? new DbDriver()
+          : new LocalDriver(path.resolve(process.env.LOCAL_STORAGE_DIR ?? ".data/uploads"));
   }
   return driver;
 }

@@ -5,7 +5,9 @@ import { db } from "@/lib/db";
 import { PLANS } from "@/lib/plans";
 import { requirePageUser } from "@/lib/session";
 import { isSupportAgent } from "@/lib/support/tickets";
-import CompForm from "./CompForm";
+import { canInstall, readManifest } from "@/lib/ai/speechModel";
+import CompForm, { CompAiForm } from "./CompForm";
+import SpeechModelPanel, { type ModelStatus } from "./SpeechModelPanel";
 
 export const metadata: Metadata = { title: "Free plans" };
 
@@ -18,6 +20,13 @@ export default async function Accounts() {
     orderBy: { createdAt: "desc" },
     include: { members: { where: { role: "OWNER" }, include: { user: { select: { email: true } } } } },
   });
+  const manifest = canInstall() ? await readManifest(true) : null;
+  const model: ModelStatus = manifest && {
+    revision: manifest.revision,
+    files: Object.keys(manifest.files).length,
+    bytes: Object.values(manifest.files).reduce((n, f) => n + f.bytes, 0),
+    installedAt: manifest.installedAt,
+  };
   return (
     <main className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
       <Link href="/support" className="text-sm text-brand-700 hover:underline">← Support inbox</Link>
@@ -27,6 +36,7 @@ export default async function Accounts() {
         first so their workspace exists.
       </p>
       <CompForm plans={Object.entries(PLANS).map(([id, p]) => ({ id, name: p.name }))} />
+      <CompAiForm />
       <h2 className="mt-8 text-lg font-semibold text-slate-900">Currently free</h2>
       {comped.length === 0 ? (
         <p className="mt-2 text-sm text-slate-600">No one yet.</p>
@@ -37,11 +47,15 @@ export default async function Accounts() {
               <span className="text-slate-900">
                 {w.name} <span className="text-slate-500">({w.members[0]?.user.email})</span>
               </span>
-              <span className="text-slate-600">{w.stripeSubscriptionId ? `Paying, ${PLANS[w.plan].name}` : PLANS[w.complimentaryPlan!].name}</span>
+              <span className="text-slate-600">
+                {w.stripeSubscriptionId ? `Paying, ${PLANS[w.plan].name}` : PLANS[w.complimentaryPlan!].name}
+                {w.aiAssistComplimentary && (w.aiAssist ? " + AI summaries" : " + AI summaries (switched off)")}
+              </span>
             </li>
           ))}
         </ul>
       )}
+      <SpeechModelPanel status={model} canInstall={canInstall()} />
     </main>
   );
 }

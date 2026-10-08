@@ -1,6 +1,7 @@
 import Link from "next/link";
 import LegalPage from "@/components/LegalPage";
 import { LEGAL, operatorLine } from "@/lib/legal";
+import { AI_SUMMARIES_PER_MONTH } from "@/lib/plans";
 
 export const metadata = { title: "Terms of Service" };
 
@@ -209,7 +210,55 @@ export default function Page() {
         <li>We&rsquo;ll send notices to the email address on your account. Send notices to us at {mail}.</li>
       </ul>
 
-      <h2>22. Contact</h2>
+      <h2>22. AI transcripts and summaries</h2>
+      <p>
+        AI transcripts and summaries is an optional paid add-on, off unless the workspace owner switches it on. These points apply to it, on top of the rest of
+        these terms:
+      </p>
+      <ul>
+        <li>
+          <strong>How it works.</strong> A transcript of each video is made on the device of the team member who opens it, using a speech-to-text model that runs in
+          the browser. The transcript text (not the audio or video) is then sent to our AI provider to write a short summary. The transcript and summary are stored
+          end-to-end encrypted, and your team and the client the video was sent to can read them.
+        </li>
+        <li>
+          <strong>Devices and browsers.</strong> Making a transcript needs a recent browser and enough memory, and works best on a computer. On older or low-memory
+          devices, phones, some browsers, or with long videos, a transcript may be slow, may not finish, or may not be possible. Poor audio, accents, background noise,
+          several people talking at once, or some languages can also mean a transcript is incomplete or can&rsquo;t be made.
+        </li>
+        <li>
+          <strong>Accuracy.</strong> Transcripts and summaries are made by machines. They can mishear words, names and numbers, get things wrong, or leave things out.
+          They aren&rsquo;t professional advice (legal, medical, financial or otherwise) and aren&rsquo;t an official record of what was said. Check the video before
+          relying on them, and don&rsquo;t use them as the only basis for important decisions.
+        </li>
+        <li>
+          <strong>Telling your clients.</strong> Before switching it on, you&rsquo;re responsible for telling your clients and staff that you use AI transcripts and
+          summaries, and for getting any consent the law requires, including under recording, surveillance and privacy laws. Take extra care with sensitive
+          information such as health details, and don&rsquo;t use the add-on where you aren&rsquo;t allowed to share that information with a service provider. Your
+          clients also see a short note on their pages that you use AI summaries.
+        </li>
+        <li>
+          <strong>Fair use.</strong> Each workspace can make up to {AI_SUMMARIES_PER_MONTH.SOLO} summaries a month on Solo, {AI_SUMMARIES_PER_MONTH.STUDIO} on Studio
+          and {AI_SUMMARIES_PER_MONTH.AGENCY} on Agency. Once the limit is reached, summaries pause until the next calendar month (UTC). Transcripts made on your
+          devices aren&rsquo;t limited.
+        </li>
+        <li>
+          <strong>Changes.</strong> We may change the speech-to-text model or AI provider, or the models they use, and we may pause or end the add-on (for example if
+          a provider is unavailable). If we end it, we&rsquo;ll stop charging for it and give notice as described in section 14.
+        </li>
+        <li>
+          <strong>Refunds.</strong> Please check the add-on works on your devices soon after switching it on; you can switch it off at any time in Settings &gt;
+          Billing. We don&rsquo;t refund the add-on fee because a device or browser can&rsquo;t make transcripts, except where the Australian Consumer Law requires
+          (see section 15).
+        </li>
+        <li>
+          <strong>Switching it off.</strong> Switching it off stops new transcripts and summaries and removes the add-on from your next bill. Transcripts already made
+          stay with their videos until your team removes them or the video is deleted.
+        </li>
+        <li>Section 16 (limit of liability) applies to any claim about the add-on, including about transcripts or summaries that are missing or wrong.</li>
+      </ul>
+
+      <h2>23. Contact</h2>
       <p>Questions about these terms? Email {mail}.</p>
       {LEGAL.postalAddress && <p>Postal address: {LEGAL.postalAddress}</p>}
     </LegalPage>

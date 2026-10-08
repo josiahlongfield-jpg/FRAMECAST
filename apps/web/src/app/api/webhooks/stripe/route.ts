@@ -1,6 +1,6 @@
 import type Stripe from "stripe";
 import { db } from "@/lib/db";
-import { ACTIVE_STATUSES, catalogOf, planOf } from "@/lib/billing";
+import { ACTIVE_STATUSES, catalogOf, isAiItem, planOf } from "@/lib/billing";
 import { stripe } from "@/lib/stripe";
 import { applyBackupSetting } from "@/lib/retention";
 
@@ -17,6 +17,8 @@ async function syncSubscription(sub: Stripe.Subscription) {
   const seatItem = sub.items.data.find((i) => catalogOf(i.price)?.item === "client_seat");
   const staffItem = sub.items.data.find((i) => catalogOf(i.price)?.item === "staff_seat");
   const cloudBackup = active && sub.items.data.some((i) => catalogOf(i.price)?.item === "cloud_backup");
+  // AI summaries: paid for on the subscription, or given free by the founder (and still switched on).
+  const aiAssist = (active && sub.items.data.some((i) => isAiItem(catalogOf(i.price)?.item))) || (workspace.aiAssistComplimentary && workspace.aiAssist);
   await db.workspace.update({
     where: { id: workspaceId },
     data: {
@@ -29,6 +31,7 @@ async function syncSubscription(sub: Stripe.Subscription) {
       extraClientSeats: active ? (seatItem?.quantity ?? 0) : 0,
       extraStaffSeats: active ? (staffItem?.quantity ?? 0) : 0,
       cloudBackup,
+      aiAssist,
       currentPeriodEnd: active && planItem?.current_period_end ? new Date(planItem.current_period_end * 1000) : null,
     },
   });
