@@ -5,7 +5,7 @@ import { storage } from "@/lib/storage";
 import { handle, HttpError } from "@/lib/session";
 import { startTranscode } from "@/lib/transcode";
 import { purgeDate } from "@/lib/retention";
-import { notifyClientReply } from "@/lib/replyNotify";
+import { notifyClientReply } from "@/lib/teamNotify";
 import { publicVideo, uploadableVideo } from "@/lib/videos";
 
 const Body = z.object({ partCount: z.number().int().min(1).max(10_000), durationMs: z.number().int().min(0).optional() });

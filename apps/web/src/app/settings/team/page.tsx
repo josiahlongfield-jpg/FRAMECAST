@@ -33,6 +33,12 @@ export default async function TeamSettings() {
             ? "You see the clients assigned to you and the videos you record. The owner or an admin chooses what else you can do."
             : "You choose who looks after each client. Members see only the clients assigned to them, unless you let them see all clients. Clients see the name of the person who sent their video, never their email."}
         </p>
+        {role !== "MEMBER" && (
+          <p className="mt-2 text-sm">
+            <Link href="/team" className="font-medium text-brand-700 hover:underline">Open the Team overview</Link>
+            <span className="text-slate-500"> to reassign clients in bulk, choose your team emails, remind staff and see how everyone is keeping up.</span>
+          </p>
+        )}
         {!isTeamPlan && role === "OWNER" && (
           <div className="mt-6 rounded-2xl border border-brand-100 bg-brand-50 p-5 text-sm text-brand-900">
             <p className="font-medium">Working with others?</p>

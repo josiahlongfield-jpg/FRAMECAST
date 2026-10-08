@@ -68,7 +68,7 @@ export const PLANS: Record<Plan, PlanLimits> = {
     clientSeats: 40,
     staffSeats: 3,
     showsPromo: false,
-    features: ["40 clients included", "3 staff logins", "Assign clients to staff", "Choose what each staff member can see and do", "Extra staff $8/month each", "Everything in Solo"],
+    features: ["40 clients included", "3 staff logins", "Assign clients to staff", "Choose what each staff member can see and do", "Team overview: replies waiting, videos sent, staff reminders", "Extra staff $8/month each", "Everything in Solo"],
   },
   AGENCY: {
     name: "Agency",
@@ -80,7 +80,7 @@ export const PLANS: Record<Plan, PlanLimits> = {
     clientSeats: 100,
     staffSeats: 10,
     showsPromo: false,
-    features: ["100 clients included", "10 staff logins", "Assign clients to staff", "Choose what each staff member can see and do", "Extra staff $8/month each", "Everything in Solo"],
+    features: ["100 clients included", "10 staff logins", "Assign clients to staff", "Choose what each staff member can see and do", "Team overview: replies waiting, videos sent, staff reminders", "Extra staff $8/month each", "Everything in Solo"],
   },
 };
 

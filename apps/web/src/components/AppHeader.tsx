@@ -1,7 +1,9 @@
 import Link from "next/link";
-import { auth, signOut } from "@/auth";
+import { signOut } from "@/auth";
 import { db } from "@/lib/db";
+import { currentUser } from "@/lib/session";
 import NamePrompt from "./NamePrompt";
+import StaffNotices from "./StaffNotices";
 import Logo from "./Logo";
 import NavLinks from "./NavLinks";
 import SupportWidget from "./SupportChat";
@@ -17,15 +19,20 @@ const LINKS = [
 ] as const;
 
 export default async function AppHeader({ email, plan }: { email: string; plan: string }) {
-  const userId = (await auth())?.user?.id;
-  const named = userId ? !!(await db.user.findUnique({ where: { id: userId }, select: { name: true } }))?.name : true;
+  const me = await currentUser();
+  const named = !me || !!me.user.name;
+  // Owners and admins get the Team overview; everyone gets reminders sent to them.
+  const links = me && me.role !== "MEMBER" ? [LINKS[0], LINKS[1], ["/team", "Overview"] as const, ...LINKS.slice(2)] : LINKS;
+  const notices = me
+    ? await db.staffNotice.findMany({ where: { toUserId: me.user.id, workspaceId: me.workspace.id, dismissedAt: null }, include: { from: { select: { name: true, email: true } } }, orderBy: { createdAt: "desc" }, take: 5 })
+    : [];
   return (
     <header className="border-b border-slate-200 bg-white">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
         <div className="flex items-center gap-6">
           <Logo href="/library" />
           <nav className="hidden gap-4 text-sm sm:flex">
-            <NavLinks links={LINKS} className="" />
+            <NavLinks links={links} className="" />
           </nav>
         </div>
         <div className="flex items-center gap-3 text-sm">
@@ -42,8 +49,11 @@ export default async function AppHeader({ email, plan }: { email: string; plan: 
       </div>
       {/* On phones the links get their own rows, wrapping so every one stays visible. */}
       <nav className="flex flex-wrap border-t border-slate-100 px-2 text-sm sm:hidden">
-        <NavLinks links={LINKS} className="px-3 py-2" />
+        <NavLinks links={links} className="px-3 py-2" />
       </nav>
+      <StaffNotices
+        initial={notices.map((n) => ({ id: n.id, from: n.from.name ?? n.from.email.split("@")[0], message: n.message, link: n.link, linkLabel: n.linkLabel, createdAt: n.createdAt.toISOString() }))}
+      />
       {!named && <NamePrompt />}
       <SupportWidget signedIn />
     </header>

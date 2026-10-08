@@ -28,6 +28,9 @@ model User {
   assignedClients   Client[]     @relation("ClientAssignee")
   invitesSent       Invite[]     @relation("InviteSender")
   supportTickets SupportTicket[]
+  teamNotifications TeamNotification[]
+  noticesSent       StaffNotice[] @relation("NoticeFrom")
+  noticesReceived   StaffNotice[] @relation("NoticeTo")
 }
 
 model Account {
@@ -121,6 +124,8 @@ model Workspace {
   items                Item[]
   invites              Invite[]
   keyRotations         KeyRotation[]
+  teamNotifications    TeamNotification[]
+  staffNotices         StaffNotice[]
 }
 
 /// An invitation for a staff member to join a workspace. The link carries a
@@ -147,6 +152,14 @@ model Invite {
   @@index([workspaceId])
 }
 
+/// Which team emails an owner or admin gets.
+enum NotifyScope {
+  ALL // everyone's clients
+  SELECTED // only the staff members they picked
+  MINE // only clients assigned to them (and replies they'd get anyway)
+  OFF
+}
+
 model Membership {
   id             String    @id @default(cuid())
   role           Role      @default(MEMBER)
@@ -160,6 +173,14 @@ model Membership {
   deleteAnyVideo Boolean   @default(false)
   /// Send one recording to several clients at once (only clients they can see).
   sendToMany     Boolean   @default(true)
+  /// Owners and admins: which client replies they're emailed about (lib/teamNotify.ts).
+  replyNotify      NotifyScope @default(MINE)
+  /// With SELECTED: replies from the clients of these staff members (user ids).
+  replyNotifyStaff String[]    @default([])
+  /// Owners and admins: which videos sent by staff they're emailed about.
+  sentNotify       NotifyScope @default(OFF)
+  /// With SELECTED: the staff members they asked to hear about ("Tell me when they send a video").
+  sentNotifyStaff  String[]    @default([])
   userId         String
   workspaceId    String
   user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -217,8 +238,6 @@ model Video {
   copies          Video[]      @relation("VideoCopies")
   /// Set when this video is the media of a reply in another video's conversation.
   replyToId       String?
-  /// Last time the team was emailed about a client reply in this conversation (throttles bursts).
-  replyNotifiedAt DateTime?
   /// sha256 of a one-time token that lets a guest (no account) upload this reply's media.
   uploadTokenHash String?
   owner           User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
@@ -458,4 +477,61 @@ model SupportMessage {
   createdAt DateTime      @default(now())
 
   @@index([ticketId, createdAt])
+}
+
+enum TeamNotificationKind {
+  CLIENT_REPLY
+  VIDEO_SENT
+}
+
+/// A team email waiting to go out. Several within 15 minutes for the same
+/// person and conversation (replies) or sender (videos sent) are combined
+/// into one short digest (lib/teamNotify.ts).
+model TeamNotification {
+  id          String               @id @default(cuid())
+  kind        TeamNotificationKind
+  /// Who gets the email.
+  userId      String
+  workspaceId String
+  /// What one email covers: the conversation (replies) or the sender (videos sent).
+  groupKey    String
+  /// The staff member who sent the video (VIDEO_SENT).
+  actorUserId String?
+  clientId    String?
+  videoId     String?
+  createdAt   DateTime             @default(now())
+  sentAt      DateTime?
+  user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([sentAt, createdAt])
+  @@index([userId, groupKey])
+}
+
+/// The last team email per person and group, so bursts send one email per 15 minutes.
+model NotifyThrottle {
+  key        String   @id
+  lastSentAt DateTime
+}
+
+/// A reminder an owner or admin sends to a staff member: emailed, and shown
+/// in the app until they dismiss it. Kept as history.
+model StaffNotice {
+  id          String    @id @default(cuid())
+  workspaceId String
+  fromUserId  String
+  toUserId    String
+  message     String
+  /// Optional app path it links to (/clients/{id} or /v/{id}).
+  link        String?
+  linkLabel   String?
+  createdAt   DateTime  @default(now())
+  emailedAt   DateTime?
+  dismissedAt DateTime?
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  from        User      @relation("NoticeFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  to          User      @relation("NoticeTo", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  @@index([toUserId, workspaceId, dismissedAt])
+  @@index([workspaceId, createdAt])
 }

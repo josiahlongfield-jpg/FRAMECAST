@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { KeyFingerprint, requireCurrentKey } from "@/lib/keys";
@@ -10,6 +11,7 @@ import { clientLink } from "@/lib/clients";
 import { sendMail } from "@/lib/mail";
 import { newVideoEmail } from "@/lib/newVideoEmail";
 import { appUrl } from "@/lib/stripe";
+import { notifyVideosSent } from "@/lib/teamNotify";
 
 const Body = z.object({
   /** Each client, with this video's key wrapped with their key on the sender's device. */
@@ -71,6 +73,8 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
     createdAt: video.createdAt,
   }));
   if (copies.length) await db.video.createMany({ data: copies });
+  const sends = copies.map((c) => ({ videoId: c.id, clientId: c.clientId }));
+  after(() => notifyVideosSent(workspace.id, me.user.id, sends));
 
   let emailed = 0;
   if (body.data.notify) {

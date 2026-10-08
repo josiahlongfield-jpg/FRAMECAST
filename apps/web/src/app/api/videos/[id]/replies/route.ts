@@ -7,7 +7,7 @@ import { handle, HttpError } from "@/lib/session";
 import { viewableVideo } from "@/lib/access";
 import { ALLOWED_MIME, extensionFor, newUploadToken, newVideoId } from "@/lib/videos";
 import { limitByIp } from "@/lib/rateLimit";
-import { notifyClientReply } from "@/lib/replyNotify";
+import { notifyClientReply } from "@/lib/teamNotify";
 
 const MAX_REPLY_MINUTES = 15;
 

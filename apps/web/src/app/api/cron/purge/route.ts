@@ -1,6 +1,7 @@
 import { abortStaleUploads, purgeExpired } from "@/lib/retention";
 import { pruneRateLimits } from "@/lib/rateLimit";
 import { cronAuthorized } from "@/lib/secrets";
+import { pruneTeamNotifications } from "@/lib/teamNotify";
 
 /** Run daily (e.g. Vercel Cron) with Authorization: Bearer $CRON_SECRET. */
 export async function GET(req: Request) {
@@ -8,5 +9,6 @@ export async function GET(req: Request) {
   const purged = await purgeExpired();
   await pruneRateLimits();
   await abortStaleUploads();
+  await pruneTeamNotifications();
   return Response.json({ purged });
 }

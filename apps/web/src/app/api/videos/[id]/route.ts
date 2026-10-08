@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { storage } from "@/lib/storage";
@@ -6,6 +7,7 @@ import { publicVideo } from "@/lib/videos";
 import { accessOf, canDeleteVideo, canSeeClient, visibleVideo } from "@/lib/permissions";
 import { viewableVideo } from "@/lib/access";
 import { KeyFingerprint, requireCurrentKey } from "@/lib/keys";
+import { notifyVideosSent } from "@/lib/teamNotify";
 
 export const GET = handle(async (_req: Request, ctx: { params: Promise<{ id: string }> }) => {
   const { id } = await ctx.params;
@@ -46,6 +48,11 @@ export const PATCH = handle(async (req: Request, ctx: { params: Promise<{ id: st
       ...(body.data.clientId !== undefined ? { clientKeyWrap: body.data.clientId ? body.data.clientKeyWrap : null } : {}),
     },
   });
+  // Owners and admins can ask to hear about videos their staff send.
+  if (body.data.clientId && body.data.clientId !== current.clientId && !video.replyToId) {
+    const sent = { videoId: video.id, clientId: body.data.clientId };
+    after(() => notifyVideosSent(workspace.id, me.user.id, [sent]));
+  }
   return Response.json({ video: publicVideo(video) });
 });
 

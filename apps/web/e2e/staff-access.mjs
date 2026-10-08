@@ -6,6 +6,9 @@
 // client-specific team reminders go to the assigned staff member, and the
 // "Your name" setting shows clients "Name from Business".
 //
+// Owners and admins also get a Team overview: bulk reassignment, their own
+// team email preferences, reminders to staff, and monitoring numbers.
+//
 // Run against a dev server with the fake Stripe (same env as billing.mjs),
 // no RESEND_API_KEY (mail goes to .data/outbox), and CRON_SECRET set:
 //   STRIPE_SECRET_KEY=sk_test_fake STRIPE_API_BASE=http://localhost:12111 STRIPE_WEBHOOK_SECRET=whsec_test npm run dev
@@ -274,7 +277,130 @@ const generalReminders = reminders.filter((m) => m.subject.startsWith("A to-do o
 ok("Ben's to-do reminder goes only to Bob", benReminders.length === 1 && benReminders[0] === bobUser.email, benReminders.join());
 ok("a general to-do reminder still goes to the whole team", generalReminders.length === 3, generalReminders.join());
 
+// ---- Team overview: owner/admin only ----
+const ownerUser = await prisma.user.findUnique({ where: { email: `sa-owner${stamp}@example.com` } });
+const cell = async (page, row, col) => (await page.textContent(`[data-testid=stats-${row}] [data-col=${col}]`))?.trim();
+await amy.goto(BASE + "/team");
+ok("staff can't open the Team overview", !!(await amy.waitForSelector("text=Page not found", { timeout: 10000 }).catch(() => null)) && !(await amy.isVisible("[data-testid=team-stats]")));
+ok("staff have no Overview link", !(await amy.isVisible("nav >> a[href='/team']")));
+ok("staff can't change team email preferences", (await status(amy.request.patch(BASE + "/api/team/prefs", { data: { replyNotify: "ALL" } }))) === 403);
+ok("staff can't send staff reminders", (await status(amy.request.post(BASE + "/api/team/notices", { data: { to: "all", message: "hi" } }))) === 403);
+ok("staff can't bulk-assign clients", (await status(amy.request.post(BASE + "/api/clients/assign", { data: { clientIds: [ben.id], assignedToId: amyUser.id } }))) === 403);
+
+// Monitoring. Known state: videos to clients by owner (Ben, Sha), Bob (Ben), Amy (Ana, a copy to Ana, Sha);
+// Zed has no video; Sha's replies to Amy's and the owner's videos are unanswered; Bob answered Ben.
+await prisma.item.update({ where: { id: ids[0] }, data: { dueAt: new Date(Date.now() - 86_400_000) } }); // Ben's to-do is now overdue
+await prisma.video.update({ where: { id: vOwnerSha }, data: { createdAt: new Date(Date.now() - 40 * 86_400_000) } });
+await owner.goto(BASE + "/team?days=30");
+await owner.waitForSelector("[data-testid=team-stats]");
+ok("owner has an Overview link", await owner.isVisible("nav >> a[href='/team']"));
+ok("videos sent in 30 days per staff member", (await cell(owner, ownerUser.id, "sent")) === "1" && (await cell(owner, bobUser.id, "sent")) === "1" && (await cell(owner, amyUser.id, "sent")) === "3" && (await cell(owner, "all", "sent")) === "5",
+  [await cell(owner, ownerUser.id, "sent"), await cell(owner, bobUser.id, "sent"), await cell(owner, amyUser.id, "sent"), await cell(owner, "all", "sent")].join());
+ok("clients with no video in 14 days (Zed, Amy's)", (await cell(owner, amyUser.id, "stale")) === "1" && (await cell(owner, "all", "stale")) === "1");
+ok("unanswered replies per staff member", (await cell(owner, amyUser.id, "unanswered")) === "1" && (await cell(owner, ownerUser.id, "unanswered")) === "1" && (await cell(owner, bobUser.id, "unanswered")) === "0" && (await cell(owner, "all", "unanswered")) === "2");
+ok("average reply time only where someone answered", (await cell(owner, bobUser.id, "avg")) !== "–" && (await cell(owner, amyUser.id, "avg")) === "–" && (await cell(owner, "all", "avg")) !== "–");
+ok("overdue to-dos counted for the assigned staff member", (await cell(owner, bobUser.id, "overdue")) === "1" && (await cell(owner, "all", "overdue")) === "1");
+const waiting = await owner.textContent("[data-testid=unanswered]");
+ok("waiting list links to each conversation", (await owner.locator(`[data-testid=unanswered] a[href='/v/${vAmySha}']`).count()) === 1 && waiting.includes("Sha"));
+await owner.goto(BASE + "/team?days=90&stale=14");
+await owner.waitForSelector("[data-testid=team-stats]");
+ok("a longer period counts the older video", (await cell(owner, ownerUser.id, "sent")) === "2" && (await cell(owner, "all", "sent")) === "6");
+await owner.screenshot({ path: `${shots}/team-overview.png`, fullPage: true });
+
+// Bulk reassign from the overview.
+await owner.check(`input[aria-label="Pick Zed"]`);
+await owner.check(`input[aria-label="Pick Sha"]`);
+await owner.selectOption('select[aria-label="Assign picked clients to"]', bobUser.id);
+await owner.click("button:has-text('Assign 2 clients')");
+await owner.waitForSelector("text=2 clients now with");
+ok("bulk reassign moves both clients", (await prisma.client.count({ where: { id: { in: [added.client.id, sha.id] }, assignedToId: bobUser.id } })) === 2);
+ok("and Amy loses access to Zed straight away", (await status(amy.request.get(`${BASE}/api/items?clientId=${added.client.id}`))) === 404);
+await owner.request.post(BASE + "/api/clients/assign", { data: { clientIds: [added.client.id], assignedToId: amyUser.id } });
+await owner.request.post(BASE + "/api/clients/assign", { data: { clientIds: [sha.id], assignedToId: null } });
+
+// Email preferences decide who hears about client replies.
+const mailsTo = (from, who, subject) => outbox().slice(from).filter((m) => m.to === who && m.subject.includes(subject));
+const replyAs = async (page, video) => page.request.post(`${BASE}/api/videos/${video}/replies`, { data: { kind: "TEXT", body: "sealed", encrypted: true } });
+const anaClient = await clientPage(ana);
+const prefs = (data) => owner.request.patch(BASE + "/api/team/prefs", { data });
+
+ok("owner picks 'only selected staff' for replies (Amy's clients)", (await prefs({ replyNotify: "SELECTED", replyNotifyStaff: [amyUser.id] })).ok());
+let mark = outbox().length;
+await replyAs(benPage, await record(bob, "Bob 2", ben.id));
+await waitFor(() => mailsTo(mark, bobUser.email, "Ben replied").length);
+await new Promise((r) => setTimeout(r, 1000));
+ok("selected staff: a reply from Bob's client skips the owner", mailsTo(mark, bobUser.email, "Ben replied").length === 1 && mailsTo(mark, ownerUser.email, "replied").length === 0);
+await prefs({ replyNotify: "SELECTED", replyNotifyStaff: [bobUser.id] });
+mark = outbox().length;
+await replyAs(benPage, await record(owner, "Owner 3", ben.id));
+ok("selected staff: with Bob picked the owner hears too", !!(await waitFor(() => mailsTo(mark, ownerUser.email, "Ben replied").length)) && mailsTo(mark, bobUser.email, "Ben replied").length === 1);
+await prefs({ replyNotify: "OFF" });
+mark = outbox().length;
+await replyAs(shaPage, await record(owner, "Owner 4", sha.id));
+await new Promise((r) => setTimeout(r, 2000));
+ok("off: no reply email for the owner, even for their own video", mailsTo(mark, ownerUser.email, "replied").length === 0);
+await prefs({ replyNotify: "ALL" });
+mark = outbox().length;
+await replyAs(anaClient, await record(amy, "Amy 5", ana.id));
+ok("all staff: the owner hears about Amy's client too", !!(await waitFor(() => mailsTo(mark, ownerUser.email, "Ana replied").length)) && mailsTo(mark, amyUser.email, "Ana replied").length === 1);
+await prefs({ replyNotify: "MINE" });
+
+// "Tell me when they send a video", set on the page.
+await owner.goto(BASE + "/team");
+await owner.check('input[name="sentNotify"] >> nth=1'); // Only selected staff
+await owner.check(`input[aria-label="Tell me when sa-bob${stamp} sends a video"]`);
+await waitFor(async () => (await prisma.membership.findFirst({ where: { userId: ownerUser.id, workspaceId } })).sentNotifyStaff.includes(bobUser.id));
+const ownerPrefs = await prisma.membership.findFirst({ where: { userId: ownerUser.id, workspaceId } });
+ok("owner turns on 'Tell me when Bob sends a video'", ownerPrefs.sentNotify === "SELECTED" && ownerPrefs.sentNotifyStaff.join() === bobUser.id);
+mark = outbox().length;
+await record(amy, "Amy 6", ana.id);
+await record(bob, "Bob 6", ben.id);
+const sentMail = await waitFor(() => mailsTo(mark, ownerUser.email, "sent a video").at(0));
+await new Promise((r) => setTimeout(r, 1000));
+ok("Bob's send emails the owner, Amy's doesn't", sentMail?.subject === `sa-bob${stamp} sent a video to clients` && mailsTo(mark, ownerUser.email, "sent").length === 1, JSON.stringify(outbox().slice(mark).map((m) => [m.to, m.subject])));
+ok("the email names the client and links the video, not its title", sentMail.text.includes("Ben") && !sentMail.text.includes("Bob 6"));
+await record(bob, "Bob 7", ben.id);
+await record(bob, "Bob 8", ben.id);
+await new Promise((r) => setTimeout(r, 1500));
+ok("more sends within 15 minutes wait", mailsTo(mark, ownerUser.email, "sent").length === 1);
+await prisma.notifyThrottle.updateMany({ where: { key: { startsWith: `VIDEO_SENT:${ownerUser.id}:` } }, data: { lastSentAt: new Date(Date.now() - 16 * 60_000) } });
+const flush = await (await owner.request.get(BASE + "/api/cron/reminders", { headers: { authorization: `Bearer ${CRON}` } })).json();
+const digest = mailsTo(mark, ownerUser.email, "sent 2 videos");
+ok("then go out together as one digest", flush.digests >= 1 && digest.length === 1 && mailsTo(mark, ownerUser.email, "sent").length === 2, JSON.stringify(flush));
+
+// Reminders to staff.
+ok("a link must open for everyone it's sent to", (await status(owner.request.post(BASE + "/api/team/notices", { data: { to: [amyUser.id], message: "Check Ben", link: { kind: "client", id: ben.id } } }))) === 400);
+await owner.goto(BASE + "/team");
+await owner.check(`input[aria-label="Remind sa-amy${stamp}"]`);
+await owner.fill('textarea[aria-label="Reminder message"]', "Please send Ana her plan by Friday");
+await owner.selectOption('select[aria-label="Link to"]', `client:${ana.id}`);
+mark = outbox().length;
+await owner.click("button:has-text('Send reminder')");
+await owner.waitForSelector("text=Sent to 1 person");
+const remMail = await waitFor(() => mailsTo(mark, amyUser.email, "Reminder from").at(0));
+ok("staff reminder is emailed", remMail?.text.includes("Please send Ana her plan by Friday") && remMail.text.includes(`/clients/${ana.id}`) && remMail.from.startsWith(`Peak ${stamp} <`));
+ok("only to the people chosen", mailsTo(mark, bobUser.email, "Reminder").length === 0);
+await amy.goto(BASE + "/library");
+const notice = await amy.waitForSelector("[data-testid=staff-notice]", { timeout: 10000 }).catch(() => null);
+ok("staff member sees the reminder in the app", !!notice && (await notice.textContent()).includes("Please send Ana her plan by Friday"));
+await amy.screenshot({ path: `${shots}/staff-notice.png`, fullPage: true });
+await amy.goto(BASE + "/clients");
+ok("it stays until dismissed", !!(await amy.waitForSelector("[data-testid=staff-notice]", { timeout: 10000 }).catch(() => null)));
+await amy.click("[data-testid=staff-notice] >> text=Dismiss");
+await waitFor(async () => (await prisma.staffNotice.findFirst({ where: { toUserId: amyUser.id } }))?.dismissedAt);
+await amy.reload();
+await amy.waitForSelector("text=Ana");
+ok("dismissed reminders are gone", !(await amy.isVisible("[data-testid=staff-notice]")));
+ok("Bob can't dismiss Amy's reminder", (await status(bob.request.post(`${BASE}/api/team/notices/${(await prisma.staffNotice.findFirst({ where: { toUserId: amyUser.id } })).id}/dismiss`))) === 404);
+const allRes = await owner.request.post(BASE + "/api/team/notices", { data: { to: "all", message: "Team meeting at 9" } });
+ok("a reminder to all staff reaches everyone else", (await allRes.json()).sent === 2);
+await owner.goto(BASE + "/team");
+const history = await owner.textContent("[data-testid=notice-history]");
+ok("history lists sent reminders and whether they were dismissed", history.includes("Please send Ana her plan by Friday") && history.includes("Seen and dismissed") && history.includes("Team meeting at 9"));
+
 // ---- Display name ----
+// Dev sign-in fills in a name from the email; email-link users start with none.
+await prisma.user.update({ where: { id: amyUser.id }, data: { name: null } });
 await amy.goto(BASE + "/library");
 ok("Amy is asked for her name (non-blocking)", !!(await amy.waitForSelector("[data-testid=name-prompt]", { timeout: 10000 }).catch(() => null)));
 await amy.screenshot({ path: `${shots}/name-prompt.png`, fullPage: true });
@@ -285,9 +411,8 @@ await amy.waitForURL((u) => u.searchParams.get("saved") === "name");
 ok("Amy's name is saved", (await prisma.user.findUnique({ where: { id: amyUser.id } })).name === "Amy Lee");
 await amy.goto(BASE + "/library");
 ok("the name prompt is gone once set", !(await amy.isVisible("[data-testid=name-prompt]")));
-const anaPage = await clientPage(ana);
-await anaPage.goto(BASE + "/inbox");
-const inbox = await anaPage.textContent("main");
+await anaClient.goto(BASE + "/inbox");
+const inbox = await anaClient.textContent("main");
 ok("client inbox shows 'Amy Lee from Business'", inbox.includes(`Amy Lee from Peak ${stamp}`), inbox);
 ok("client inbox never shows staff emails", ![amyUser.email, bobUser.email, `sa-owner${stamp}@example.com`].some((e) => inbox.includes(e)));
 

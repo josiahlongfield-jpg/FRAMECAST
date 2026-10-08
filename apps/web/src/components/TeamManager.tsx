@@ -5,18 +5,10 @@ import { exportKey, generateKey, wrapKey } from "@/lib/e2e/crypto";
 import { saveKey, teamKeyName } from "@/lib/e2e/keystore";
 import { rekey, type Bundle } from "@/lib/e2e/rekey";
 import TeamKeyGate from "./TeamKeyGate";
+import { PermChecks, savePerm, type Perms } from "./StaffPerms";
 
 type Role = "OWNER" | "ADMIN" | "MEMBER";
-type Perms = { seeAllClients: boolean; addClients: boolean; deleteAnyVideo: boolean; sendToMany: boolean };
 type Member = { userId: string; name: string; email: string; role: Role; perms: Perms };
-
-/** What each switch lets a member do. Owners and admins can always do all of it. */
-const PERMS: { key: keyof Perms; label: string; hint: string }[] = [
-  { key: "seeAllClients", label: "See all clients", hint: "Every client, including unassigned ones, with their videos, replies and to-dos. Off: only clients assigned to them." },
-  { key: "addClients", label: "Add new clients", hint: "New clients they add are assigned to them." },
-  { key: "deleteAnyVideo", label: "Delete any video", hint: "Off: they can delete only videos they recorded." },
-  { key: "sendToMany", label: "Send to many", hint: "Send one video to several of the clients they can see." },
-];
 type Invite = { id: string; email: string | null; role: Role; expiresAt: string };
 type Seats = { members: number; pending: number; used: number; limit: number };
 
@@ -111,10 +103,10 @@ function Manager({ teamKey, workspaceId, keyResetNeeded, role, meId, initialSeat
   async function setPerm(m: Member, key: keyof Perms, value: boolean) {
     setError(undefined);
     setMembers((list) => list.map((x) => (x.userId === m.userId ? { ...x, perms: { ...x.perms, [key]: value } } : x)));
-    const res = await fetch(`/api/team/members/${m.userId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ perms: { [key]: value } }) });
-    if (!res.ok) {
+    const error = await savePerm(m.userId, key, value);
+    if (error) {
       setMembers((list) => list.map((x) => (x.userId === m.userId ? { ...x, perms: { ...x.perms, [key]: !value } } : x)));
-      setError((await res.json().catch(() => ({}))).error ?? "Could not change what they can do");
+      setError(error);
     }
   }
 
@@ -256,23 +248,7 @@ function Manager({ teamKey, workspaceId, keyResetNeeded, role, meId, initialSeat
                 )}
               </div>
               {m.role === "MEMBER" && (canManage || m.userId === meId) && (
-                <fieldset className="w-full rounded-xl bg-slate-50 px-4 py-3" data-testid={`perms-${m.email}`}>
-                  <legend className="sr-only">What {m.name} can do</legend>
-                  <p className="text-xs text-slate-600">
-                    {m.userId === meId ? "You see" : `${m.name} sees`} the clients assigned to {m.userId === meId ? "you" : "them"} (with their videos, replies, to-dos and notes) and videos {m.userId === meId ? "you" : "they"} recorded.
-                  </p>
-                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                    {PERMS.map((p) => (
-                      <label key={p.key} className="flex items-start gap-2 text-sm">
-                        <input type="checkbox" className="mt-0.5" checked={m.perms[p.key]} disabled={!canManage || m.userId === meId} onChange={(e) => setPerm(m, p.key, e.target.checked)} aria-label={`${p.label} for ${m.name}`} />
-                        <span>
-                          <span className="font-medium text-slate-800">{p.label}</span>
-                          <span className="block text-xs text-slate-500">{p.hint}</span>
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </fieldset>
+                <PermChecks name={m.name} email={m.email} perms={m.perms} self={m.userId === meId} editable={canManage && m.userId !== meId} onChange={(key, value) => setPerm(m, key, value)} />
               )}
             </li>
           ))}
