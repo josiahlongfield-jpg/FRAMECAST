@@ -4,6 +4,7 @@ import { clientLink } from "@/lib/clients";
 import { sendMail } from "@/lib/mail";
 import { newVideoEmail } from "@/lib/newVideoEmail";
 import { appUrl } from "@/lib/stripe";
+import { clientMailSettings } from "@/lib/reminders";
 
 /**
  * Emails a client that a video is waiting, if they have an address and want
@@ -19,12 +20,13 @@ export async function emailClientVideo(videoId: string) {
   if (!video || !c || c.removedAt || !c.email || c.remindersOff) return false;
   const ws = video.workspace;
   const brand = brandOf(ws, appUrl(""));
+  const assigned = c.assignedToId ? await db.membership.findUnique({ where: { userId_workspaceId: { userId: c.assignedToId, workspaceId: ws.id } } }) : null;
   try {
     await sendMail({
       to: c.email,
       ...newVideoEmail({ business: ws.name, sender: video.owner?.name, clientName: c.name, link: clientLink(c.token, video.id), logoUrl: brand.logoUrl, color: brand.color }),
       fromName: ws.name,
-      replyTo: ws.reminderReplyTo,
+      replyTo: clientMailSettings(ws, assigned).replyTo,
     });
     return true;
   } catch (err) {

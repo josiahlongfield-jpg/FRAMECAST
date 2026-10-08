@@ -85,6 +85,11 @@ export async function exportAccount(userId: string) {
       ]);
       return {
         role: m.role,
+        // Your own settings on this team (staff): reminder defaults, client email message and reply-to, reply emails.
+        mySettings: {
+          reminderDefaults: m.myReminderDefaults, remindClientDefault: m.myRemindClientDefault, remindTeamDefault: m.myRemindTeamDefault,
+          reminderMessage: m.myReminderMessage, reminderReplyTo: m.myReminderReplyTo, replyNotify: m.replyNotify,
+        },
         workspace: {
           id: w.id, name: w.name, plan: w.plan, subscriptionStatus: w.subscriptionStatus, extraClientSeats: w.extraClientSeats,
           cloudBackup: w.cloudBackup, aiAssist: w.aiAssist, timezone: w.timezone, reminderMessage: w.reminderMessage, reminderReplyTo: w.reminderReplyTo,

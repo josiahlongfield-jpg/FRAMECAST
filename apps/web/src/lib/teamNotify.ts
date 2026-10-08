@@ -20,8 +20,11 @@ const isManager = (m: Pick<Membership, "role">) => m.role === "OWNER" || m.role 
 /**
  * Who hears about a client's reply: the person looking after the
  * conversation (assigned staff member, else whoever recorded the video, else
- * the owner), plus owners and admins whose preferences ask for it. An owner
- * or admin who turned reply emails off gets none.
+ * the owner), plus owners and admins whose preferences ask for it. Anyone
+ * who turned their reply emails off gets none (staff do this for their own
+ * clients in Settings > Account). That never affects owners and admins: they
+ * still get what their own preferences ask for, and the Team overview counts
+ * every reply either way.
  */
 export function replyRecipients(members: Member[], o: { assignedToId: string | null; recorderId: string }) {
   const find = (id: string | null) => (id ? members.find((m) => m.userId === id) : undefined);
@@ -29,7 +32,7 @@ export function replyRecipients(members: Member[], o: { assignedToId: string | n
   // Whose client this is, for "Only selected staff".
   const responsible = find(o.assignedToId) ?? find(o.recorderId);
   const out = new Set<string>();
-  if (primary && !(isManager(primary) && primary.replyNotify === "OFF")) out.add(primary.userId);
+  if (primary && primary.replyNotify !== "OFF") out.add(primary.userId);
   for (const m of members) {
     if (!isManager(m)) continue;
     if (m.replyNotify === "ALL") out.add(m.userId);

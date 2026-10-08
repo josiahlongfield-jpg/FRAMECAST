@@ -6,7 +6,7 @@ import StorageStatus from "@/components/StorageStatus";
 import { db } from "@/lib/db";
 import { PLANS } from "@/lib/plans";
 import { requirePageUser } from "@/lib/session";
-import { workspaceReminderDefaults } from "@/lib/reminders";
+import { reminderDefaultsFor } from "@/lib/reminders";
 import { accessOf, isManager, libraryWhere, seesAllClients } from "@/lib/permissions";
 import type { Prisma } from "@prisma/client";
 
@@ -140,7 +140,7 @@ export default async function Library({ searchParams }: { searchParams: Promise<
           </ul>
         )}
         <div className="mt-12 max-w-2xl">
-          <MemberPlanner workspaceId={workspace.id} fingerprint={workspace.keyFingerprint} defaults={{ ...workspaceReminderDefaults(workspace), remindTeam: true }} title="My to-dos & notes" />
+          <MemberPlanner workspaceId={workspace.id} fingerprint={workspace.keyFingerprint} defaults={{ ...reminderDefaultsFor(workspace, me.membership), remindTeam: true }} title="My to-dos & notes" />
         </div>
       </main>
     </>

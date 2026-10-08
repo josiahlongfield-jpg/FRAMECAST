@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { Prisma, type Item, type Workspace } from "@prisma/client";
+import { Prisma, type Item, type Membership, type Workspace } from "@prisma/client";
 import { db } from "@/lib/db";
 import { appUrl } from "@/lib/stripe";
 import { sendMail } from "@/lib/mail";
@@ -28,6 +28,34 @@ export function workspaceReminderDefaults(w: Workspace) {
     remindClient: w.remindClientDefault,
     remindTeam: w.remindTeamDefault,
   };
+}
+
+type OwnSettings = Pick<Membership, "role" | "myReminderDefaults" | "myRemindClientDefault" | "myRemindTeamDefault" | "myReminderMessage" | "myReminderReplyTo">;
+
+/**
+ * What new to-dos start with for this person: a staff member's own defaults
+ * (Settings > Reminders) where they set them, else the business's. Owners and
+ * admins use the business's defaults.
+ */
+export function reminderDefaultsFor(w: Workspace, m?: OwnSettings | null) {
+  const base = workspaceReminderDefaults(w);
+  if (!m || m.role !== "MEMBER") return base;
+  const own = ReminderRules.safeParse(m.myReminderDefaults);
+  return {
+    reminders: m.myReminderDefaults != null && own.success ? own.data : base.reminders,
+    remindClient: m.myRemindClientDefault ?? base.remindClient,
+    remindTeam: m.myRemindTeamDefault ?? base.remindTeam,
+  };
+}
+
+/**
+ * The message and reply-to address on emails to a client (reminders and new
+ * videos): those of the staff member assigned to the client, where they set
+ * their own, else the business's. Owners and admins use the business's.
+ */
+export function clientMailSettings(w: Pick<Workspace, "reminderMessage" | "reminderReplyTo">, assigned?: OwnSettings | null) {
+  const own = assigned?.role === "MEMBER" ? assigned : null;
+  return { message: own?.myReminderMessage ?? w.reminderMessage, replyTo: own?.myReminderReplyTo ?? w.reminderReplyTo };
 }
 
 const rulesOf = (i: Item): ReminderRule[] => {
@@ -135,10 +163,12 @@ export async function runReminders(now = new Date()) {
     if (r.to === "CLIENT") {
       const c = item.client;
       if (!c || c.removedAt || c.remindersOff || !c.email || !item.shared) { await skip("client unavailable"); continue; }
+      // The staff member looking after the client speaks for themselves when they've set their own message and reply-to.
+      const own = clientMailSettings(ws, ws.members.find((m) => m.userId === c.assignedToId));
       mails.push({
         to: c.email,
-        replyTo: ws.reminderReplyTo,
-        m: reminderEmail({ ...base, ...brandOf(ws, appUrl("")), message: ws.reminderMessage, link: appUrl(`/c/${c.token}`), unsubscribe: unsubscribeUrl(c.id) }),
+        replyTo: own.replyTo,
+        m: reminderEmail({ ...base, ...brandOf(ws, appUrl("")), message: own.message, link: appUrl(`/c/${c.token}`), unsubscribe: unsubscribeUrl(c.id) }),
       });
     } else {
       const link = appUrl(item.clientId ? `/clients/${item.clientId}` : "/library");

@@ -31,7 +31,15 @@ export default async function TeamOverviewPage({ searchParams }: { searchParams:
     teamStats(workspace.id, { days, staleDays }),
   ]);
   const display = (u: { name: string | null; email: string }) => u.name ?? u.email.split("@")[0];
-  const staff = members.map((m) => ({ userId: m.userId, name: display(m.user), email: m.user.email, role: m.role, perms: permsOf(m) }));
+  const staff = members.map((m) => ({
+    userId: m.userId, name: display(m.user), email: m.user.email, role: m.role, perms: permsOf(m),
+    own: {
+      replyEmails: m.replyNotify !== "OFF",
+      ownDefaults: m.myReminderDefaults != null || m.myRemindClientDefault != null || m.myRemindTeamDefault != null,
+      message: !!m.myReminderMessage,
+      replyTo: m.myReminderReplyTo,
+    },
+  }));
   const nameOf = (id: string | null) => (id ? (staff.find((s) => s.userId === id)?.name ?? "Former staff") : "Unassigned");
   const now = new Date();
   const rows: { id: string; r: StaffStats }[] = [

@@ -8,7 +8,7 @@ import { db } from "@/lib/db";
 import { clientLink } from "@/lib/clients";
 import { PLANS } from "@/lib/plans";
 import { requirePageUser } from "@/lib/session";
-import { workspaceReminderDefaults } from "@/lib/reminders";
+import { reminderDefaultsFor } from "@/lib/reminders";
 import ClientEmail from "@/components/ClientEmail";
 import { accessOf, canSeeClient } from "@/lib/permissions";
 
@@ -69,7 +69,7 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
             clientName={client.name}
             clientTeamKeyWrap={client.teamKeyWrap}
             client={{ email: client.email, remindersOff: client.remindersOff }}
-            defaults={workspaceReminderDefaults(workspace)}
+            defaults={reminderDefaultsFor(workspace, me.membership)}
             title="To-dos & notes"
           />
         </div>

@@ -5,7 +5,9 @@ import { useState } from "react";
 import { PermChecks, savePerm, type Perms } from "./StaffPerms";
 
 type Role = "OWNER" | "ADMIN" | "MEMBER";
-export type OverviewStaff = { userId: string; name: string; email: string; role: Role; perms: Perms };
+/** A member's own settings, shown to owners and admins so nothing a member sets is hidden from them. */
+export type OwnSettings = { replyEmails: boolean; ownDefaults: boolean; message: boolean; replyTo: string | null };
+export type OverviewStaff = { userId: string; name: string; email: string; role: Role; perms: Perms; own?: OwnSettings };
 export type OverviewClient = { id: string; name: string; assignedToId: string | null };
 type Scope = "ALL" | "SELECTED" | "MINE" | "OFF";
 export type Prefs = { replyNotify: Scope; replyNotifyStaff: string[]; sentNotify: Scope; sentNotifyStaff: string[] };
@@ -69,6 +71,13 @@ export function Delegations({ meId, initialStaff, initialClients }: { meId: stri
               ) : (
                 <p className="mt-2 text-xs text-slate-500">Full access to every client and video.</p>
               )}
+              {s.role === "MEMBER" && s.own && (
+                <p className="mt-2 text-xs text-slate-500" data-testid="own-settings">
+                  Their own settings: reply emails {s.own.replyEmails ? "on" : "off"}
+                  {" · "}reminder defaults: {s.own.ownDefaults ? "their own" : "the business's"}
+                  {" · "}client emails: {s.own.message ? "their own message" : "the business's message"}, replies to {s.own.replyTo ?? "the business's reply-to"}
+                </p>
+              )}
               <p className="mt-3 text-sm text-slate-700">
                 <span className="font-medium">Looks after:</span>{" "}
                 {theirs.length ? theirs.map((c, i) => (
@@ -129,6 +138,7 @@ export function NotifyPrefs({ meId, staff, initial }: { meId: string; staff: Ove
   const [prefs, setPrefs] = useState(initial);
   const [saved, setSaved] = useState<string>();
   const others = staff.filter((s) => s.userId !== meId);
+  const quiet = others.filter((s) => s.role === "MEMBER" && s.own && !s.own.replyEmails);
 
   async function save(next: Prefs) {
     setPrefs(next);
@@ -142,7 +152,12 @@ export function NotifyPrefs({ meId, staff, initial }: { meId: string; staff: Ove
     <div className="grid gap-5 rounded-2xl border border-slate-200 bg-white p-5 text-sm">
       <fieldset>
         <legend className="font-medium text-slate-900">Client replies</legend>
-        <p className="text-xs text-slate-500">You always hear about your own clients unless this is off. Staff hear about replies from their clients.</p>
+        <p className="text-xs text-slate-500">You always hear about your own clients unless this is off. Staff hear about replies from their clients unless they turned that off for themselves.</p>
+        {quiet.length > 0 && (
+          <p className="mt-1 text-xs text-amber-800" data-testid="quiet-staff">
+            {quiet.map((s) => s.name).join(", ")} turned off reply emails for their clients. Pick All staff or select them to hear about those replies yourself.
+          </p>
+        )}
         <div className="mt-2 flex flex-wrap gap-3">
           {SCOPES.map((s) => (
             <label key={s.value} className="flex items-center gap-1.5">

@@ -167,30 +167,41 @@ enum NotifyScope {
 }
 
 model Membership {
-  id               String      @id @default(cuid())
-  role             Role        @default(MEMBER)
+  id                    String      @id @default(cuid())
+  role                  Role        @default(MEMBER)
   /// What a MEMBER may do, set by the owner or an admin (lib/permissions.ts).
   /// Owners and admins always have full access; these only apply to members.
   /// See every client, not only the ones assigned to them (and unassigned "Shared" ones).
-  seeAllClients    Boolean     @default(false)
+  seeAllClients         Boolean     @default(false)
   /// Add new clients (they're assigned to the member who adds them).
-  addClients       Boolean     @default(true)
+  addClients            Boolean     @default(true)
   /// Delete any video they can see, not only the ones they recorded.
-  deleteAnyVideo   Boolean     @default(false)
+  deleteAnyVideo        Boolean     @default(false)
   /// Send one recording to several clients at once (only clients they can see).
-  sendToMany       Boolean     @default(true)
+  sendToMany            Boolean     @default(true)
   /// Owners and admins: which client replies they're emailed about (lib/teamNotify.ts).
-  replyNotify      NotifyScope @default(MINE)
+  /// Members: MINE = emailed when their clients reply (default), OFF = not.
+  replyNotify           NotifyScope @default(MINE)
   /// With SELECTED: replies from the clients of these staff members (user ids).
-  replyNotifyStaff String[]    @default([])
+  replyNotifyStaff      String[]    @default([])
   /// Owners and admins: which videos sent by staff they're emailed about.
-  sentNotify       NotifyScope @default(OFF)
+  sentNotify            NotifyScope @default(OFF)
   /// With SELECTED: the staff members they asked to hear about ("Tell me when they send a video").
-  sentNotifyStaff  String[]    @default([])
-  userId           String
-  workspaceId      String
-  user             User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workspace        Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  sentNotifyStaff       String[]    @default([])
+  /// A member's own reminder settings for their clients (Settings > Reminders).
+  /// Null means "use the business's setting". Owners and admins use the business's.
+  /// Reminder rules pre-selected on to-dos they create (lib/schedule.ts ReminderRule[]).
+  myReminderDefaults    Json?
+  myRemindClientDefault Boolean?
+  myRemindTeamDefault   Boolean?
+  /// Note added to reminder emails to the clients they look after.
+  myReminderMessage     String?
+  /// Where those clients' replies to reminder (and new video) emails go.
+  myReminderReplyTo     String?
+  userId                String
+  workspaceId           String
+  user                  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace             Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([userId, workspaceId])
 }

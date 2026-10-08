@@ -28,7 +28,7 @@ export default function Page() {
         <li><strong>Account details:</strong> your name, email address, business name, branding and settings.</li>
         <li>
           <strong>Team details:</strong> for businesses with staff, each team member&rsquo;s name, email address and role, which clients they look after, what
-          they&rsquo;re allowed to see and do, and their team email settings. Reminders that owners and admins send to staff are stored and emailed as written, so
+          they&rsquo;re allowed to see and do, and their own email and reminder settings (such as a reply-to address for their clients). Reminders that owners and admins send to staff are stored and emailed as written, so
           they aren&rsquo;t end-to-end encrypted.
         </li>
         <li><strong>Client details you add:</strong> the names and email addresses of clients you invite, so we can send them links and reminders.</li>
@@ -74,7 +74,8 @@ export default function Page() {
         <li>
           <strong>Team overview:</strong> owners and admins can see how the team is keeping up with clients, worked out from dates and who sent what: for example
           videos each staff member sent, clients who haven&rsquo;t had a video for a while, client replies waiting for an answer and average reply times. They can
-          choose to be emailed when staff send videos or clients reply, and can send staff reminders and see whether they were dismissed. None of this involves
+          choose to be emailed when staff send videos or clients reply, can see each staff member&rsquo;s own email and reminder settings, and can send staff
+          reminders and see whether they were dismissed. None of this involves
           reading encrypted content.
         </li>
         <li>The business is responsible for telling its staff how their activity is shown to owners and admins.</li>

@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import AppHeader from "@/components/AppHeader";
 import ShowRecoveryKey from "@/components/ShowRecoveryKey";
 import DeleteAccountButton from "@/components/DeleteAccountButton";
+import MyEmailPrefs from "@/components/MyEmailPrefs";
+import Link from "next/link";
 import { signOut } from "@/auth";
 import { deleteAccount } from "@/lib/account";
 import { db } from "@/lib/db";
@@ -14,7 +16,8 @@ export const metadata: Metadata = { title: "Account" };
 
 export default async function AccountSettings({ searchParams }: { searchParams: Promise<{ error?: string; saved?: string }> }) {
   const { error, saved } = await searchParams;
-  const { user, workspace } = await requirePageUser("/settings/account");
+  const { user, workspace, role, membership } = await requirePageUser("/settings/account");
+  const onTeam = role === "MEMBER" || (await db.membership.count({ where: { workspaceId: workspace.id } })) > 1;
 
   async function rename(form: FormData) {
     "use server";
@@ -63,6 +66,18 @@ export default async function AccountSettings({ searchParams }: { searchParams: 
           {saved === "name" && <p role="status" className="mt-2 text-sm text-emerald-700">Saved.</p>}
           {error === "name" && <p className="mt-2 text-sm text-red-700">Enter your name.</p>}
         </section>
+
+        {onTeam && <section id="emails" className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
+          <h2 className="font-semibold text-slate-900">Emails to you</h2>
+          {role === "MEMBER" ? (
+            <MyEmailPrefs initial={{ replyEmails: membership?.replyNotify !== "OFF" }} />
+          ) : (
+            <p className="mt-1 text-sm text-slate-600">
+              Choose which client replies and staff activity you&apos;re emailed about on the{" "}
+              <Link href="/team" className="font-medium text-brand-700 hover:underline">Team overview</Link>.
+            </p>
+          )}
+        </section>}
 
         <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
           <h2 className="font-semibold text-slate-900">Recovery key</h2>
