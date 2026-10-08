@@ -76,6 +76,9 @@ export function startFakeS3({ port = 12114, bucket = "fc-test", origins = ["http
         }
         if (req.method === "POST") {
           const wanted = [...body.toString().matchAll(/<PartNumber>(\d+)<\/PartNumber>/g)].map((m) => Number(m[1]));
+          // Like R2: every part except the last must be the same size.
+          const sizes = wanted.slice(0, -1).map((n) => up.parts.get(n)?.length ?? 0);
+          if (sizes.some((n) => n !== sizes[0])) return xml(res, 400, "<Error><Code>InvalidPart</Code><Message>All non-trailing parts must have the same length.</Message></Error>");
           const data = Buffer.concat(wanted.map((n) => up.parts.get(n) ?? Buffer.alloc(0)));
           objects.set(key, { body: data, type: up.type });
           uploads.delete(q.get("uploadId"));

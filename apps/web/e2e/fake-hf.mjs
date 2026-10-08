@@ -17,7 +17,7 @@ export const files = {
   "preprocessor_config.json": json({ fake: true }),
   "tokenizer.json": json({ fake: true }),
   "tokenizer_config.json": json({ fake: true }),
-  "onnx/encoder_model.onnx": randomBytes(18 * 1024 * 1024), // more than one 16 MiB upload part
+  "onnx/encoder_model.onnx": randomBytes(40 * 1024 * 1024), // three 16 MiB upload parts (the last one shorter)
   "onnx/decoder_model_merged_q4.onnx": randomBytes(300_000),
   "onnx/encoder_model_quantized.onnx": randomBytes(200_000),
   "onnx/decoder_model_merged_quantized.onnx": randomBytes(400_000),
@@ -47,7 +47,13 @@ export function startFakeHf(port = 12113) {
     const cdn = url.pathname.startsWith("/cdn/") ? all[url.pathname.slice(5)] : null;
     if (cdn) {
       res.writeHead(200, { "Content-Type": "application/octet-stream", "Content-Length": cdn.length });
-      return res.end(cdn);
+      // Odd-sized chunks, like a real network, so part boundaries don't line up by luck.
+      for (let i = 0, n = 0; i < cdn.length; n++) {
+        const size = n % 2 ? 700_001 : 1_000_003;
+        res.write(cdn.subarray(i, i + size));
+        i += size;
+      }
+      return res.end();
     }
     res.writeHead(404);
     res.end("not found");

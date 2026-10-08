@@ -131,7 +131,7 @@ await founder.click("text=Install speech model");
 await founder.waitForSelector("text=/Installed version 0123456/", { timeout: 120000 });
 ok("button copied only the missing file", hfRequests.filter((p) => p.startsWith("/cdn/")).length === before + 1);
 await founder.waitForSelector("text=/Installed: version 0123456, 9 files/");
-ok("status shows version, size and date", /Installed: version 0123456, 9 files, 20 MB, on \d+ \w+ \d{4}\./.test(await founder.textContent("[data-testid=speech-model-status]")), await founder.textContent("[data-testid=speech-model-status]"));
+ok("status shows version, size and date", /Installed: version 0123456, 9 files, 43 MB, on \d+ \w+ \d{4}\./.test(await founder.textContent("[data-testid=speech-model-status]")), await founder.textContent("[data-testid=speech-model-status]"));
 ok("downloads only at the exact revision", hfRequests.filter((p) => p.includes("/resolve/")).every((p) => p.includes(`/resolve/${REVISION}/`)));
 const writes = s3Log.map((l, i) => ({ ...l, i })).filter((l) => l.method === "PUT" || l.method === "POST");
 const manifestAt = writes.findLast((l) => l.key === "models/manifest.json").i;
