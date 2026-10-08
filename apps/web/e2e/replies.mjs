@@ -139,7 +139,7 @@ const laptop = await (await browser.newContext({ viewport: { width: 1360, height
 await laptop.goto(BASE + "/login?next=" + encodeURIComponent("/v/" + rootId));
 await laptop.fill('input[name="email"]', email);
 await laptop.click("text=Continue");
-await laptop.waitForSelector("text=Unlock your videos on this device");
+await laptop.waitForSelector("text=Unlock your videos in this browser");
 await laptop.fill('input[aria-label="Recovery key"]', "A".repeat(43));
 await laptop.click("button:has-text('Unlock')");
 // Next.js's route announcer is also role=alert (empty), so wait for the message itself.

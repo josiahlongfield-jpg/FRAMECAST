@@ -111,9 +111,9 @@ export default function TeamKeyGate({
   if (state.kind === "recover") {
     return (
       <div className="mt-6 max-w-md rounded-2xl border border-slate-200 bg-white p-6">
-        <h2 className="font-semibold text-slate-900">Unlock your videos on this device</h2>
+        <h2 className="font-semibold text-slate-900">Unlock your videos in this browser</h2>
         <p className="mt-2 text-sm text-slate-600">
-          Your videos are end-to-end encrypted, so not even we can open them. Enter the recovery key saved when the account was set up. If you joined from an invite link, you can open that link again on this device instead.
+          Your videos are end-to-end encrypted, so not even we can open them. Each browser keeps its own copy of the key, so a new device, a different browser or cleared browser data asks for it once. Enter the recovery key saved when the account was set up. If you joined from an invite link, you can open that link again in this browser instead.
         </p>
         <form onSubmit={recover} className="mt-4 grid gap-3">
           <input
@@ -147,7 +147,7 @@ function RecoveryKeyNotice({ value, onDone }: { value: string; onDone: () => voi
     <div role="dialog" aria-label="Save your recovery key" className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
       <h2 className="font-semibold text-amber-900">Save your recovery key</h2>
       <p className="mt-1 text-sm text-amber-900">
-        Your videos are end-to-end encrypted on this device. You&apos;ll need this key to open them on another computer or phone. We can&apos;t recover it for you.
+        Your videos are end-to-end encrypted on this device. You&apos;ll need this key to open them on another computer, phone or browser. We can&apos;t recover it for you.
       </p>
       <p className="mt-3 break-all rounded-lg bg-white px-3 py-2 font-mono text-sm text-slate-900" data-recovery-key={value}>
         {grouped}
