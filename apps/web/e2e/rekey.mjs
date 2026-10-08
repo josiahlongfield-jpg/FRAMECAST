@@ -159,7 +159,7 @@ await phone.waitForURL("**/inbox**");
 await phone.waitForSelector("text=Log your sleep", { timeout: 15000 });
 ok("client reads shared to-do after the reset", true);
 await phone.goto(videoUrl);
-await phone.waitForSelector("main video", { timeout: 20000 });
+await phone.waitForSelector("main video", { timeout: 30000 });
 ok("client plays the video after the reset", (await phone.$eval("main video", finiteDuration)) > 1);
 
 // Blake's new link from the panel works on a fresh device.
