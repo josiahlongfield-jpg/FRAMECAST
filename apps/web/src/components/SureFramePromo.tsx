@@ -76,7 +76,7 @@ export default function SureFramePromo({ videoId }: { videoId: string }) {
           <p className="text-xs font-semibold uppercase tracking-wider text-brand-700">Sent with SureFrame</p>
           <h2 id="promo-title" className="sr-only">Private video messages for businesses and their clients</h2>
           <p className="mt-2 text-sm text-slate-600">
-            Record once, send to one client, get a video, voice or text reply back. Every video is end-to-end encrypted, and clients never pay.
+            Record once, send to any number of clients, and get a video, voice or text reply back. Every video is end-to-end encrypted, and clients never pay.
           </p>
           <div className="mt-5 grid gap-3">
             <button
