@@ -47,6 +47,8 @@ type Props = {
   video: Video;
   viewer: WatchViewer;
   ownerName: string;
+  /** Members only: may delete this video (staff can be limited to their own recordings). */
+  canDelete?: boolean;
   /** Members only: clients this video can be sent to. */
   clients: ClientOption[];
   sentToId: string | null;
@@ -120,6 +122,7 @@ function WatchBody({
   video,
   ownerName,
   canEdit,
+  canDelete,
   clients,
   sentToId,
   initialReplies,
@@ -293,7 +296,7 @@ function WatchBody({
             </p>
           </div>
           <div className="flex flex-wrap gap-2 sm:shrink-0">
-            {canEdit && recipient && (
+            {canEdit && recipient?.link && (
               <button onClick={copyLink} className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
                 {copied ? "Link copied" : `Copy ${recipient.name.split(" ")[0]}'s link`}
               </button>
@@ -307,7 +310,7 @@ function WatchBody({
                 Save to device
               </a>
             )}
-            {canEdit && (
+            {canEdit && canDelete && (
               <button onClick={remove} className="rounded-xl border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">Delete</button>
             )}
           </div>

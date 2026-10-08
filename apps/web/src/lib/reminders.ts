@@ -7,6 +7,7 @@ import { reminderEmail } from "@/lib/reminderEmail";
 import { brandOf } from "@/lib/branding";
 import { appSecret } from "@/lib/secrets";
 import { rateLimit } from "@/lib/rateLimit";
+import { clientTeam } from "@/lib/permissions";
 import { DEFAULT_REMINDERS, isTimeZone, nextOccurrence, reminderTime, type ReminderRule } from "@/lib/schedule";
 import { Repeat, ReminderRules } from "@/lib/scheduleSchema";
 
@@ -109,7 +110,7 @@ export async function runReminders(now = new Date()) {
       item: {
         include: {
           client: true,
-          workspace: { include: { members: { include: { user: { select: { email: true } } } } } },
+          workspace: { include: { members: { include: { user: { select: { email: true } } }, orderBy: { id: "asc" } } } },
         },
       },
     },
@@ -141,7 +142,10 @@ export async function runReminders(now = new Date()) {
       });
     } else {
       const link = appUrl(item.clientId ? `/clients/${item.clientId}` : "/library");
-      for (const mem of ws.members) {
+      // A client's to-do goes to the staff member looking after that client
+      // (or, when nobody is, to those who can see unassigned clients); general
+      // to-dos go to the whole team.
+      for (const mem of item.client ? clientTeam(ws.members, item.client) : ws.members) {
         mails.push({ to: mem.user.email, m: reminderEmail({ ...base, link, team: true, clientName: item.client?.name }) });
       }
     }

@@ -53,7 +53,7 @@ export function createSubscription(customer, workspaceId, lookupKey, status = "a
   return sub;
 }
 
-export function start(port = 12111) {
+export function start(port = Number(process.env.FAKE_STRIPE_PORT ?? 12111)) {
   const server = createServer(async (req, res) => {
     let body = "";
     for await (const c of req) body += c;

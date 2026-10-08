@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { EXTRA_STAFF_PRICE, PLANS, TEAM_PLANS } from "@/lib/plans";
 import { requirePageUser } from "@/lib/session";
 import { staffUsage } from "@/lib/team";
+import { permsOf } from "@/lib/permissions";
 
 export const metadata: Metadata = { title: "Team" };
 
@@ -28,7 +29,9 @@ export default async function TeamSettings() {
       <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Team</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Staff share one client list and one library, and you choose who looks after each client. Clients never see who&apos;s on your team.
+          {role === "MEMBER"
+            ? "You see the clients assigned to you and the videos you record. The owner or an admin chooses what else you can do."
+            : "You choose who looks after each client. Members see only the clients assigned to them, unless you let them see all clients. Clients see the name of the person who sent their video, never their email."}
         </p>
         {!isTeamPlan && role === "OWNER" && (
           <div className="mt-6 rounded-2xl border border-brand-100 bg-brand-50 p-5 text-sm text-brand-900">
@@ -49,7 +52,7 @@ export default async function TeamSettings() {
           extraStaff={workspace.extraStaffSeats}
           canBuyStaff={isTeamPlan && role === "OWNER" && !!workspace.stripeSubscriptionId}
           staffPrice={EXTRA_STAFF_PRICE}
-          initialMembers={members.map((m) => ({ userId: m.userId, name: m.user.name ?? m.user.email.split("@")[0], email: m.user.email, role: m.role }))}
+          initialMembers={members.map((m) => ({ userId: m.userId, name: m.user.name ?? m.user.email.split("@")[0], email: m.user.email, role: m.role, perms: permsOf(m) }))}
           initialInvites={invites.map((i) => ({ id: i.id, email: i.email, role: i.role, expiresAt: i.expiresAt.toISOString() }))}
           keyResetNeeded={role === "MEMBER" ? null : workspace.keyResetNeeded}
           workspaces={mine.map((m) => ({ id: m.workspaceId, name: m.workspace.name, active: m.workspaceId === workspace.id }))}

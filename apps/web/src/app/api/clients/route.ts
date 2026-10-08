@@ -4,6 +4,7 @@ import { clientLink, newClientToken, seatUsage } from "@/lib/clients";
 import { handle, HttpError, requireUser } from "@/lib/session";
 import { limitByIp } from "@/lib/rateLimit";
 import { KeyFingerprint, requireCurrentKey } from "@/lib/keys";
+import { accessOf, clientScopeWhere, requirePerm } from "@/lib/permissions";
 
 const Body = z.object({
   name: z.string().trim().min(1).max(80),
@@ -14,9 +15,10 @@ const Body = z.object({
 });
 
 export const GET = handle(async () => {
-  const { workspace } = await requireUser();
+  const me = await requireUser();
+  const { workspace } = me;
   const clients = await db.client.findMany({
-    where: { workspaceId: workspace.id, removedAt: null },
+    where: { ...clientScopeWhere(accessOf(me)), removedAt: null },
     orderBy: { name: "asc" },
     include: { _count: { select: { videos: true } } },
   });
@@ -28,7 +30,9 @@ export const GET = handle(async () => {
 
 /** Add a client. Each active client uses one seat; clients never pay. */
 export const POST = handle(async (req: Request) => {
-  const { user, workspace, role } = await requireUser();
+  const me = await requireUser();
+  const { user, workspace, role } = me;
+  requirePerm(accessOf(me), "addClients", "Ask the owner or an admin to add new clients");
   const body = Body.safeParse(await req.json());
   await limitByIp("clients", 30, 3600);
   if (!body.success) throw new HttpError(400, "Enter a name and, optionally, a valid email");

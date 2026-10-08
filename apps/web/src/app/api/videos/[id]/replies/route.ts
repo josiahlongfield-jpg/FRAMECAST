@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { storage } from "@/lib/storage";
@@ -6,6 +7,7 @@ import { handle, HttpError } from "@/lib/session";
 import { viewableVideo } from "@/lib/access";
 import { ALLOWED_MIME, extensionFor, newUploadToken, newVideoId } from "@/lib/videos";
 import { limitByIp } from "@/lib/rateLimit";
+import { notifyClientReply } from "@/lib/replyNotify";
 
 const MAX_REPLY_MINUTES = 15;
 
@@ -51,6 +53,7 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
       data: { kind: "TEXT", body: body.body, encrypted: true, timestampMs: body.timestampMs, authorName, videoId: id, authorUserId: me?.user.id },
       include: { media: true },
     });
+    if (viewer.kind === "client") after(() => notifyClientReply(root.id));
     return Response.json({ reply: replyDTO(reply, root.ownerId) }, { status: 201 });
   }
 

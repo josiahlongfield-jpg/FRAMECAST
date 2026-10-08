@@ -2,6 +2,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { handle, HttpError, requireRole, requireUser } from "@/lib/session";
 import { rateLimit } from "@/lib/rateLimit";
+import { accessOf, clientScopeWhere } from "@/lib/permissions";
 
 const Patch = z.object({
   name: z.string().trim().min(1).max(80).optional(),
@@ -25,7 +26,7 @@ export const PATCH = handle(async (req: Request, ctx: { params: Promise<{ id: st
   }
   await rateLimit(`client-edit:${workspace.id}`, 30, 3600);
   const res = await db.client.updateMany({
-    where: { id, workspaceId: workspace.id, removedAt: null },
+    where: { ...clientScopeWhere(accessOf(me)), id, removedAt: null },
     data: { name: body.data.name, email: body.data.email === undefined ? undefined : body.data.email || null, assignedToId: body.data.assignedToId },
   });
   if (res.count === 0) throw new HttpError(404, "Client not found");

@@ -10,18 +10,21 @@ import { PLANS } from "@/lib/plans";
 import { requirePageUser } from "@/lib/session";
 import { workspaceReminderDefaults } from "@/lib/reminders";
 import ClientEmail from "@/components/ClientEmail";
+import { accessOf, canSeeClient } from "@/lib/permissions";
 
 export const metadata: Metadata = { title: "Client" };
 
 /** One client's space: what was sent to them, plus their to-dos and notes. */
 export default async function ClientPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { user, workspace } = await requirePageUser(`/clients/${id}`);
+  const me = await requirePageUser(`/clients/${id}`);
+  const { user, workspace } = me;
   const client = await db.client.findUnique({
     where: { id },
     include: { videos: { where: { replyToId: null }, orderBy: { createdAt: "desc" } } },
   });
-  if (!client || client.removedAt || client.workspaceId !== workspace.id) notFound();
+  // Staff only open the clients they can see (lib/permissions.ts); others look like they don't exist.
+  if (!client || client.removedAt || !canSeeClient(accessOf(me), client)) notFound();
 
   return (
     <>

@@ -3,7 +3,8 @@ import { db } from "@/lib/db";
 import { KeyFingerprint, requireCurrentKey } from "@/lib/keys";
 import { limitByIp } from "@/lib/rateLimit";
 import { handle, HttpError, requireUser } from "@/lib/session";
-import { newVideoId, ownedVideo } from "@/lib/videos";
+import { newVideoId } from "@/lib/videos";
+import { accessOf, clientScopeWhere, requirePerm, visibleVideo } from "@/lib/permissions";
 import { brandOf } from "@/lib/branding";
 import { clientLink } from "@/lib/clients";
 import { sendMail } from "@/lib/mail";
@@ -25,19 +26,22 @@ const Body = z.object({
  */
 export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
   const { id } = await ctx.params;
-  const { workspace } = await requireUser();
+  const me = await requireUser();
+  const { workspace } = me;
+  const access = accessOf(me);
+  requirePerm(access, "sendToMany", "Ask the owner or an admin to let you send to several clients at once");
   await limitByIp("send", 60, 600);
   const body = Body.safeParse(await req.json());
   if (!body.success) throw new HttpError(400, "Choose at least one client");
   await requireCurrentKey(workspace, body.data.keyFingerprint);
-  const video = await ownedVideo(id, workspace.id);
+  const video = await visibleVideo(access, id);
   if (video.replyToId || video.sourceId) throw new HttpError(400, "Send the original video instead");
   if (video.status === "RECORDING") throw new HttpError(409, "Wait for the upload to finish before sending it to more clients");
   if (!video.encrypted) throw new HttpError(400, "This video can't be sent to more clients");
 
   const wanted = [...new Map(body.data.recipients.map((r) => [r.clientId, r])).values()];
   const [clients, already] = await Promise.all([
-    db.client.findMany({ where: { id: { in: wanted.map((r) => r.clientId) }, workspaceId: workspace.id, removedAt: null }, select: { id: true, name: true, email: true, token: true, remindersOff: true } }),
+    db.client.findMany({ where: { ...clientScopeWhere(access), id: { in: wanted.map((r) => r.clientId) }, removedAt: null }, select: { id: true, name: true, email: true, token: true, remindersOff: true } }),
     db.video.findMany({ where: { sourceId: id }, select: { clientId: true } }),
   ]);
   if (clients.length !== wanted.length) throw new HttpError(400, "One of those clients isn't in your workspace");

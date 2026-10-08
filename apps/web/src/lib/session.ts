@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import type { Role } from "@prisma/client";
+import type { Membership, Role } from "@prisma/client";
 import { db } from "@/lib/db";
 
 export class HttpError extends Error {
@@ -24,14 +24,19 @@ export async function currentUser() {
   if (!user) return null;
   // The workspace they last joined or switched to, else their first one.
   const membership = user.memberships.find((m) => m.workspaceId === user.activeWorkspaceId) ?? user.memberships[0];
-  if (membership) return { user, workspace: membership.workspace, role: membership.role };
+  if (membership) {
+    const { workspace, ...m } = membership;
+    return { user, workspace, role: membership.role, membership: m as Membership };
+  }
   const workspace = await db.workspace.create({
     data: {
       name: `${user.name ?? user.email.split("@")[0]}'s workspace`,
       members: { create: { userId: user.id, role: "OWNER" } },
     },
+    include: { members: true },
   });
-  return { user, workspace, role: "OWNER" as Role };
+  const { members, ...ws } = workspace;
+  return { user, workspace: ws, role: "OWNER" as Role, membership: members[0] };
 }
 
 /** Throws unless the signed-in member has one of the given roles. */

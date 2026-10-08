@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { customAlphabet } from "nanoid";
 import { db } from "@/lib/db";
 import { HttpError, requireUser } from "@/lib/session";
+import { accessOf, visibleVideo } from "@/lib/permissions";
 
 export const newVideoId = customAlphabet("23456789abcdefghijkmnpqrstuvwxyz", 12);
 
@@ -23,7 +24,7 @@ export function newUploadToken() {
 }
 
 /**
- * Who may upload parts to a video: its workspace members, or a guest holding
+ * Who may upload parts to a video: team members who can see it, or a guest holding
  * the one-time upload token issued when they started a reply.
  */
 export async function uploadableVideo(req: Request, id: string) {
@@ -37,15 +38,7 @@ export async function uploadableVideo(req: Request, id: string) {
     }
     return video;
   }
-  const { workspace } = await requireUser();
-  return ownedVideo(id, workspace.id);
-}
-
-/** Load a video the current user is allowed to modify. */
-export async function ownedVideo(id: string, workspaceId: string) {
-  const video = await db.video.findUnique({ where: { id } });
-  if (!video || video.workspaceId !== workspaceId) throw new HttpError(404, "Video not found");
-  return video;
+  return visibleVideo(accessOf(await requireUser()), id);
 }
 
 /** Public projection used by the watch page and API (BigInt is not JSON-safe). */

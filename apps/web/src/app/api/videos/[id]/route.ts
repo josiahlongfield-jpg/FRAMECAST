@@ -2,7 +2,8 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { storage } from "@/lib/storage";
 import { handle, HttpError, requireUser } from "@/lib/session";
-import { ownedVideo, publicVideo } from "@/lib/videos";
+import { publicVideo } from "@/lib/videos";
+import { accessOf, canDeleteVideo, canSeeClient, visibleVideo } from "@/lib/permissions";
 import { viewableVideo } from "@/lib/access";
 import { KeyFingerprint, requireCurrentKey } from "@/lib/keys";
 
@@ -23,14 +24,16 @@ const Patch = z.object({
 
 export const PATCH = handle(async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
   const { id } = await ctx.params;
-  const { workspace } = await requireUser();
-  const current = await ownedVideo(id, workspace.id);
+  const me = await requireUser();
+  const { workspace } = me;
+  const access = accessOf(me);
+  const current = await visibleVideo(access, id);
   const body = Patch.safeParse(await req.json());
   if (!body.success) throw new HttpError(400, "Invalid update");
   if (body.data.clientKeyWrap) await requireCurrentKey(workspace, body.data.keyFingerprint);
   if (body.data.clientId) {
     const client = await db.client.findFirst({ where: { id: body.data.clientId, workspaceId: workspace.id, removedAt: null } });
-    if (!client) throw new HttpError(400, "Unknown client");
+    if (!client || !canSeeClient(access, client)) throw new HttpError(400, "Unknown client");
     if (current.encrypted && !body.data.clientKeyWrap) throw new HttpError(400, "Missing the client's key for this video");
   }
   // Copies sent to other clients keep the same title.
@@ -48,8 +51,9 @@ export const PATCH = handle(async (req: Request, ctx: { params: Promise<{ id: st
 
 export const DELETE = handle(async (_req: Request, ctx: { params: Promise<{ id: string }> }) => {
   const { id } = await ctx.params;
-  const { workspace } = await requireUser();
-  const video = await ownedVideo(id, workspace.id);
+  const access = accessOf(await requireUser());
+  const video = await visibleVideo(access, id);
+  if (!canDeleteVideo(access, video)) throw new HttpError(403, "You can only delete videos you recorded. Ask the owner or an admin.");
   // Deleting an original also deletes the copies sent to other clients.
   const copies = video.sourceId ? [] : await db.video.findMany({ where: { sourceId: id } });
   const conversations = [id, ...copies.map((c) => c.id)];

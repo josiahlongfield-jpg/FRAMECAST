@@ -8,7 +8,7 @@ import { execSync } from "node:child_process";
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const shots = process.argv[2] ?? "/tmp";
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM });
-const sql = (q) => execSync(`su postgres -c "psql -d framecast -tAc \\"${q.replace(/"/g, '\\\\\\"')}\\""`).toString().trim();
+const sql = (q) => execSync(`su postgres -c "psql -d ${process.env.PGDATABASE ?? "framecast"} -tAc \\"${q.replace(/"/g, '\\\\\\"')}\\""`).toString().trim();
 const ok = (label, cond) => {
   console.log(`${cond ? "PASS" : "FAIL"} ${label}`);
   if (!cond) process.exitCode = 1;

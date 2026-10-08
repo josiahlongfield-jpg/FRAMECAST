@@ -30,6 +30,10 @@ type Props = {
   canBuySeats: boolean;
   /** Owners and admins assign and remove clients; members record and reply. */
   canManage: boolean;
+  /** May add new clients (staff can be stopped by the owner or an admin). */
+  canAdd: boolean;
+  /** Sees every client, not only their own. Staff without it get only their clients from the server. */
+  seesAll: boolean;
   /** Only the owner handles billing. */
   isOwner: boolean;
   meId: string;
@@ -56,6 +60,8 @@ function Manager({
   seatPrice,
   canBuySeats,
   canManage,
+  canAdd,
+  seesAll,
   isOwner,
   meId,
   staff,
@@ -69,9 +75,11 @@ function Manager({
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState<string>();
   const [buyQty, setBuyQty] = useState(5);
-  const [show, setShow] = useState<"all" | "mine">("all");
+  // Staff start on their own clients; owners and admins on everyone.
+  const [show, setShow] = useState<"all" | "mine">(canManage ? "all" : "mine");
   const full = seats.used >= seats.limit;
-  const team = staff.length > 1;
+  // Tabs only make sense when there are other people's clients to see.
+  const team = staff.length > 1 && seesAll;
   const shown = show === "mine" ? clients.filter((c) => c.assignedToId === meId) : clients;
   const staffName = (id: string | null) => staff.find((p) => p.id === id)?.name;
   // What Solo would cost after this purchase, against Studio's flat price.
@@ -174,6 +182,7 @@ function Manager({
         )}
       </section>
 
+      {canAdd && (
       <section className="rounded-2xl border border-slate-200 bg-white p-6">
         <h2 className="font-semibold text-slate-900">Add a client</h2>
         <form onSubmit={add} className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
@@ -186,6 +195,7 @@ function Manager({
         {full && <p className="mt-2 text-sm text-amber-700">All seats are in use. Add seats or remove a client to add someone new.</p>}
         {error && <p role="alert" className="mt-2 text-sm text-red-700">{error}</p>}
       </section>
+      )}
 
       <section className="rounded-2xl border border-slate-200 bg-white">
         {team && (
@@ -199,7 +209,7 @@ function Manager({
           </div>
         )}
         {shown.length === 0 ? (
-          <p className="p-6 text-sm text-slate-500">{clients.length === 0 ? "No clients yet." : "No clients are assigned to you yet."}</p>
+          <p className="p-6 text-sm text-slate-500">{clients.length === 0 && seesAll ? "No clients yet." : "No clients are assigned to you yet."}</p>
         ) : (
           <ul className="divide-y divide-slate-100">
             {shown.map((c) => (
@@ -208,11 +218,11 @@ function Manager({
                   <Link href={`/clients/${c.id}`} className="font-medium text-slate-900 hover:text-brand-700 hover:underline">{c.name}</Link>
                   <p className="text-xs text-slate-500">
                     {c.email ? `${c.email} · ` : ""}{c.videoCount} {c.videoCount === 1 ? "video" : "videos"}
-                    {team && !canManage && ` · ${staffName(c.assignedToId) ?? "Shared"}`}
+                    {staff.length > 1 && seesAll && !canManage && ` · ${staffName(c.assignedToId) ?? "Shared"}`}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2 text-sm">
-                  {team && canManage && (
+                  {staff.length > 1 && canManage && (
                     <select aria-label={`Who looks after ${c.name}`} value={c.assignedToId ?? ""} onChange={(e) => assign(c, e.target.value || null)}
                       className="rounded-lg border border-slate-300 bg-white px-2 py-1.5">
                       <option value="">Shared</option>

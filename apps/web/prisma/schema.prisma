@@ -148,12 +148,22 @@ model Invite {
 }
 
 model Membership {
-  id          String    @id @default(cuid())
-  role        Role      @default(MEMBER)
-  userId      String
-  workspaceId String
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  id             String    @id @default(cuid())
+  role           Role      @default(MEMBER)
+  /// What a MEMBER may do, set by the owner or an admin (lib/permissions.ts).
+  /// Owners and admins always have full access; these only apply to members.
+  /// See every client, not only the ones assigned to them (and unassigned "Shared" ones).
+  seeAllClients  Boolean   @default(false)
+  /// Add new clients (they're assigned to the member who adds them).
+  addClients     Boolean   @default(true)
+  /// Delete any video they can see, not only the ones they recorded.
+  deleteAnyVideo Boolean   @default(false)
+  /// Send one recording to several clients at once (only clients they can see).
+  sendToMany     Boolean   @default(true)
+  userId         String
+  workspaceId    String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([userId, workspaceId])
 }
@@ -207,6 +217,8 @@ model Video {
   copies          Video[]      @relation("VideoCopies")
   /// Set when this video is the media of a reply in another video's conversation.
   replyToId       String?
+  /// Last time the team was emailed about a client reply in this conversation (throttles bursts).
+  replyNotifiedAt DateTime?
   /// sha256 of a one-time token that lets a guest (no account) upload this reply's media.
   uploadTokenHash String?
   owner           User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)

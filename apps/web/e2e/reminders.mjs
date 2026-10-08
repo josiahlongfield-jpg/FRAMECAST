@@ -13,7 +13,7 @@ const CRON = process.env.CRON_SECRET ?? "test-cron-secret";
 const shots = process.argv[2] ?? "/tmp";
 const TZ = "Australia/Sydney";
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM });
-const sql = (q) => execSync(`su postgres -c "psql -d framecast -tAc \\"${q.replace(/"/g, '\\\\\\"')}\\""`).toString().trim();
+const sql = (q) => execSync(`su postgres -c "psql -d ${process.env.PGDATABASE ?? "framecast"} -tAc \\"${q.replace(/"/g, '\\\\\\"')}\\""`).toString().trim();
 const ok = (label, cond, extra = "") => {
   console.log(`${cond ? "PASS" : "FAIL"} ${label}${extra ? ` (${extra})` : ""}`);
   if (!cond) process.exitCode = 1;

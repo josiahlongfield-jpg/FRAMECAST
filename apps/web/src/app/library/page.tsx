@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { PLANS } from "@/lib/plans";
 import { requirePageUser } from "@/lib/session";
 import { workspaceReminderDefaults } from "@/lib/reminders";
+import { accessOf, isManager, libraryWhere, seesAllClients } from "@/lib/permissions";
 
 export const metadata: Metadata = { title: "Library" };
 
@@ -16,15 +17,23 @@ const fmt = (ms: number | null) => {
 };
 
 export default async function Library({ searchParams }: { searchParams: Promise<{ show?: string }> }) {
-  const { user, workspace } = await requirePageUser("/library");
+  const me = await requirePageUser("/library");
+  const { user, workspace } = me;
+  const access = accessOf(me);
   const plan = PLANS[workspace.plan];
-  const team = (await db.membership.count({ where: { workspaceId: workspace.id } })) > 1;
+  // Staff who only see their own clients have nothing else to switch to.
+  const team = seesAllClients(access) && (await db.membership.count({ where: { workspaceId: workspace.id } })) > 1;
   // On a team, "Mine" is what I recorded plus anything for the clients I look after.
-  const mine = team && (await searchParams).show === "mine";
+  // Staff start on "Mine"; owners and admins on everything.
+  const show = (await searchParams).show;
+  const mine = team && (show === "mine" || (!isManager(access) && show !== "all"));
   const videos = await db.video.findMany({
-    where: { workspaceId: workspace.id, replyToId: null, sourceId: null, ...(mine ? { OR: [{ ownerId: user.id }, { client: { assignedToId: user.id } }, { copies: { some: { client: { assignedToId: user.id } } } }] } : {}) },
+    where: { ...libraryWhere(access), ...(mine ? { OR: [{ ownerId: user.id }, { client: { assignedToId: user.id } }, { copies: { some: { client: { assignedToId: user.id } } } }] } : {}) },
     orderBy: { createdAt: "desc" },
   });
+  const tabs = isManager(access)
+    ? [{ href: "/library", label: "All", active: !mine }, { href: "/library?show=mine", label: "Mine", active: mine }]
+    : [{ href: "/library?show=all", label: "All", active: !mine }, { href: "/library", label: "Mine", active: mine }];
 
   return (
     <>
@@ -40,9 +49,9 @@ export default async function Library({ searchParams }: { searchParams: Promise<
           </div>
           {team && (
             <nav aria-label="Which videos" className="flex gap-1 rounded-lg bg-slate-100 p-1 text-sm">
-              {[["", "All"], ["mine", "Mine"]].map(([k, label]) => (
-                <Link key={k} href={k ? `/library?show=${k}` : "/library"} aria-current={(mine ? "mine" : "") === k ? "page" : undefined}
-                  className={`rounded-md px-3 py-1.5 ${(mine ? "mine" : "") === k ? "bg-white font-medium text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}>
+              {tabs.map(({ href, label, active }) => (
+                <Link key={label} href={href} aria-current={active ? "page" : undefined}
+                  className={`rounded-md px-3 py-1.5 ${active ? "bg-white font-medium text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}>
                   {label}
                 </Link>
               ))}

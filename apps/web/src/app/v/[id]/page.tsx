@@ -14,6 +14,7 @@ import { viewerFor } from "@/lib/access";
 import { clientLink } from "@/lib/clients";
 import { publicVideo } from "@/lib/videos";
 import { replyDTO, visibleReplies } from "@/lib/replies";
+import { canDeleteVideo, clientScopeWhere, effectivePerms } from "@/lib/permissions";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -54,15 +55,21 @@ export default async function Watch({ params }: Props) {
   }
 
   const isMember = viewer.kind === "member";
+  const access = viewer.kind === "member" ? viewer.access : null;
+  const perms = access ? effectivePerms(access) : null;
   const [replies, clients, staff, copies] = await Promise.all([
     db.reply.findMany({ where: { videoId: id, ...visibleReplies }, orderBy: { createdAt: "asc" }, include: { media: true } }),
-    isMember
-      ? db.client.findMany({ where: { workspaceId: video.workspaceId, removedAt: null }, orderBy: { name: "asc" } })
-      : Promise.resolve([]),
-    isMember ? db.membership.findMany({ where: { workspaceId: video.workspaceId }, include: { user: true }, orderBy: { id: "asc" } }) : Promise.resolve([]),
+    // Only the clients this person may see (lib/permissions.ts).
+    access ? db.client.findMany({ where: { ...clientScopeWhere(access), removedAt: null }, orderBy: { name: "asc" } }) : Promise.resolve([]),
+    // Quick picks by staff member only help someone who can see everyone's clients.
+    access && perms?.seeAllClients ? db.membership.findMany({ where: { workspaceId: video.workspaceId }, include: { user: true }, orderBy: { id: "asc" } }) : Promise.resolve([]),
     // The other clients this recording went to, each with their own conversation.
-    isMember && !video.sourceId ? db.video.findMany({ where: { sourceId: video.id }, select: { id: true, clientId: true }, orderBy: { createdAt: "asc" } }) : Promise.resolve([]),
+    access && !video.sourceId ? db.video.findMany({ where: { sourceId: video.id, client: clientScopeWhere(access) }, select: { id: true, clientId: true }, orderBy: { createdAt: "asc" } }) : Promise.resolve([]),
   ]);
+  // Staff can open a video they recorded that went to someone else's client: show who, nothing more.
+  const recipient = access && video.clientId && !clients.some((c) => c.id === video.clientId)
+    ? await db.client.findUnique({ where: { id: video.clientId }, select: { id: true, name: true } })
+    : null;
   const expired = !!video.expiresAt && video.expiresAt < new Date();
   const workspace = await db.workspace.findUniqueOrThrow({ where: { id: video.workspaceId } });
   // Clients see the business's branding; the team sees the normal app.
@@ -92,15 +99,22 @@ export default async function Watch({ params }: Props) {
           {!isMember && PLANS[workspace.plan].showsPromo && <SureFramePromo videoId={video.id} />}
           <WatchView
             video={publicVideo(video)}
-            ownerName={video.owner.name ?? video.owner.email.split("@")[0]}
+            ownerName={
+              // Clients see "Sam from Business" (never an email); the team sees the name or email.
+              isMember ? (video.owner.name ?? video.owner.email.split("@")[0]) : video.owner.name ? `${video.owner.name} from ${workspace.name}` : workspace.name
+            }
+            canDelete={!!access && canDeleteVideo(access, video)}
             viewer={
               viewer.kind === "member"
                 ? { kind: "member", workspaceId: video.workspaceId, fingerprint: workspace.keyFingerprint }
                 : { kind: "client", clientId: viewer.client.id }
             }
-            clients={clients.map((c) => ({ id: c.id, name: c.name, link: clientLink(c.token, video.id), teamKeyWrap: c.teamKeyWrap, assignedToId: c.assignedToId }))}
+            clients={[
+              ...clients.map((c) => ({ id: c.id, name: c.name, link: clientLink(c.token, video.id), teamKeyWrap: c.teamKeyWrap, assignedToId: c.assignedToId })),
+              ...(recipient ? [{ id: recipient.id, name: recipient.name, link: "", teamKeyWrap: null, assignedToId: null }] : []),
+            ]}
             sendMany={
-              viewer.kind === "member"
+              viewer.kind === "member" && perms?.sendToMany
                 ? {
                     meId: viewer.userId,
                     sourceId: video.sourceId,

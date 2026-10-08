@@ -23,7 +23,7 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
         where: { token: { in: tokens }, removedAt: null },
         include: {
           workspace: { select: { id: true, name: true, plan: true, brandColor: true, brandLogoType: true, brandVersion: true } },
-          videos: { where: { replyToId: null, status: { not: "RECORDING" } }, orderBy: { createdAt: "desc" } },
+          videos: { where: { replyToId: null, status: { not: "RECORDING" } }, orderBy: { createdAt: "desc" }, include: { owner: { select: { name: true } } } },
         },
       })
     : [];
@@ -59,8 +59,12 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
                   {c.videos.map((v) => (
                     <li key={v.id}>
                       <Link href={`/v/${v.id}`} className="flex items-center justify-between px-5 py-4 hover:bg-slate-50">
-                        <span className="font-medium text-slate-900">{v.title}</span>
-                        <span className="text-sm text-slate-500">{v.createdAt.toLocaleDateString("en-US", { dateStyle: "medium" })}</span>
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium text-slate-900">{v.title}</span>
+                          {/* Who sent it, never their email: "Sam from Business". */}
+                          {v.owner.name && <span className="block text-xs text-slate-500">{v.owner.name} from {c.workspace.name}</span>}
+                        </span>
+                        <span className="shrink-0 pl-3 text-sm text-slate-500">{v.createdAt.toLocaleDateString("en-US", { dateStyle: "medium" })}</span>
                       </Link>
                     </li>
                   ))}

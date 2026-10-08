@@ -6,6 +6,7 @@ import { handle, HttpError, requireUser } from "@/lib/session";
 import { ALLOWED_MIME, extensionFor, newVideoId, publicVideo } from "@/lib/videos";
 import { limitByIp } from "@/lib/rateLimit";
 import { KeyFingerprint, requireCurrentKey } from "@/lib/keys";
+import { accessOf, libraryWhere } from "@/lib/permissions";
 
 const CreateBody = z.object({
   mimeType: z.string().regex(ALLOWED_MIME),
@@ -53,7 +54,7 @@ export const POST = handle(async (req: Request) => {
 });
 
 export const GET = handle(async () => {
-  const { workspace } = await requireUser();
-  const videos = await db.video.findMany({ where: { workspaceId: workspace.id, replyToId: null, sourceId: null }, orderBy: { createdAt: "desc" } });
+  const access = accessOf(await requireUser());
+  const videos = await db.video.findMany({ where: libraryWhere(access), orderBy: { createdAt: "desc" } });
   return Response.json({ videos: videos.map(publicVideo) });
 });

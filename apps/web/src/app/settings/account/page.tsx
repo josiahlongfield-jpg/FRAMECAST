@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import AppHeader from "@/components/AppHeader";
 import ShowRecoveryKey from "@/components/ShowRecoveryKey";
 import DeleteAccountButton from "@/components/DeleteAccountButton";
@@ -11,9 +12,19 @@ import { requirePageUser } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Account" };
 
-export default async function AccountSettings({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  const { error } = await searchParams;
+export default async function AccountSettings({ searchParams }: { searchParams: Promise<{ error?: string; saved?: string }> }) {
+  const { error, saved } = await searchParams;
   const { user, workspace } = await requirePageUser("/settings/account");
+
+  async function rename(form: FormData) {
+    "use server";
+    const { user } = await requirePageUser("/settings/account");
+    const name = String(form.get("name") ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
+    if (!name) redirect("/settings/account?error=name#name");
+    await db.user.update({ where: { id: user.id }, data: { name } });
+    revalidatePath("/", "layout");
+    redirect("/settings/account?saved=name#name");
+  }
 
   async function remove(form: FormData) {
     "use server";
@@ -38,6 +49,20 @@ export default async function AccountSettings({ searchParams }: { searchParams: 
       <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Account</h1>
         <p className="mt-1 text-sm text-slate-500">Signed in as {user.email}</p>
+
+        <section id="name" className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
+          <h2 className="font-semibold text-slate-900">Your name</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Clients see it on the videos you send, as &ldquo;{user.name || "Your name"} from {workspace.name}&rdquo;. Your team sees it too.
+          </p>
+          <form action={rename} className="mt-4 flex flex-wrap gap-2">
+            <input name="name" defaultValue={user.name ?? ""} required maxLength={80} autoComplete="name" aria-label="Your name" placeholder="e.g. Sam Lee"
+              className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+            <button className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">Save name</button>
+          </form>
+          {saved === "name" && <p role="status" className="mt-2 text-sm text-emerald-700">Saved.</p>}
+          {error === "name" && <p className="mt-2 text-sm text-red-700">Enter your name.</p>}
+        </section>
 
         <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
           <h2 className="font-semibold text-slate-900">Recovery key</h2>

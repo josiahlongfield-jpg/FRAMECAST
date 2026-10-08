@@ -5,6 +5,7 @@ import { storage } from "@/lib/storage";
 import { handle, HttpError } from "@/lib/session";
 import { startTranscode } from "@/lib/transcode";
 import { purgeDate } from "@/lib/retention";
+import { notifyClientReply } from "@/lib/replyNotify";
 import { publicVideo, uploadableVideo } from "@/lib/videos";
 
 const Body = z.object({ partCount: z.number().int().min(1).max(10_000), durationMs: z.number().int().min(0).optional() });
@@ -44,5 +45,10 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
   await db.uploadPart.deleteMany({ where: { videoId: id } });
   // Encrypted recordings can't be read by the server, so they aren't transcoded.
   if (!updated.encrypted) after(() => startTranscode(id).catch((e) => console.error("transcode", e)));
+  // A client's video or voice reply has arrived: tell the person looking after them.
+  if (updated.replyToId) {
+    const reply = await db.reply.findUnique({ where: { mediaId: id }, select: { authorUserId: true } });
+    if (reply && !reply.authorUserId) after(() => notifyClientReply(updated.replyToId!));
+  }
   return Response.json({ video: publicVideo(updated) });
 });

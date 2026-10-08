@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { handle, requireUser } from "@/lib/session";
 import { staffUsage } from "@/lib/team";
+import { permsOf } from "@/lib/permissions";
 
 /** The team: who's in it, invites still waiting, and staff seats. */
 export const GET = handle(async () => {
@@ -15,7 +16,7 @@ export const GET = handle(async () => {
   return Response.json({
     role,
     seats: await staffUsage(workspace),
-    members: members.map((m) => ({ userId: m.userId, name: m.user.name, email: m.user.email, role: m.role, you: m.userId === user.id })),
+    members: members.map((m) => ({ userId: m.userId, name: m.user.name, email: m.user.email, role: m.role, you: m.userId === user.id, ...(role !== "MEMBER" || m.userId === user.id ? { perms: permsOf(m) } : {}) })),
     invites: invites.map((i) => ({ id: i.id, email: i.email, role: i.role, expiresAt: i.expiresAt })),
     workspaces: mine.map((m) => ({ id: m.workspaceId, name: m.workspace.name, role: m.role, active: m.workspaceId === workspace.id })),
   });

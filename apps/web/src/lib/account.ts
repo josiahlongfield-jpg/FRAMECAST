@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { storage } from "@/lib/storage";
 import { stripe } from "@/lib/stripe";
+import { clientScopeWhere, permsOf, seesAllClients } from "@/lib/permissions";
 
 async function deleteVideoFiles(where: { workspaceId: string } | { ownerId: string }) {
   const videos = await db.video.findMany({ where, select: { storageKey: true, uploadId: true, status: true } });
@@ -53,17 +54,21 @@ export async function exportAccount(userId: string) {
     where: { id: userId },
     select: { id: true, name: true, email: true, createdAt: true, accounts: { select: { provider: true } } },
   });
-  const memberships = await db.membership.findMany({ where: { userId }, select: { role: true, workspaceId: true } });
+  const memberships = await db.membership.findMany({ where: { userId } });
   const workspaces = await Promise.all(
     memberships.map(async (m) => {
       const w = await db.workspace.findUniqueOrThrow({ where: { id: m.workspaceId } });
+      // Staff export only what they can see in the app (lib/permissions.ts).
+      const access = { userId, workspaceId: w.id, role: m.role, perms: permsOf(m) };
+      const all = seesAllClients(access);
+      const mineOnly = { OR: [{ ownerId: userId }, { client: { assignedToId: userId } }, { asReply: { video: { OR: [{ ownerId: userId }, { client: { assignedToId: userId } }] } } }] };
       const [clients, videos, items] = await Promise.all([
         db.client.findMany({
-          where: { workspaceId: w.id },
+          where: clientScopeWhere(access),
           select: { id: true, name: true, email: true, createdAt: true, removedAt: true, remindersOff: true },
         }),
         db.video.findMany({
-          where: { workspaceId: w.id },
+          where: { workspaceId: w.id, ...(all ? {} : mineOnly) },
           select: {
             id: true, title: true, status: true, durationMs: true, sizeBytes: true, createdAt: true, clientId: true,
             encrypted: true, purgeAt: true, replyToId: true, viewCount: true,
@@ -71,7 +76,7 @@ export async function exportAccount(userId: string) {
           },
         }),
         db.item.findMany({
-          where: { workspaceId: w.id },
+          where: { workspaceId: w.id, ...(all ? {} : { OR: [{ clientId: null }, { client: { assignedToId: userId } }] }) },
           select: {
             kind: true, body: true, done: true, dueAt: true, shared: true, repeat: true, reminders: true,
             remindClient: true, remindTeam: true, authorName: true, createdAt: true, clientId: true,

@@ -1,5 +1,7 @@
 import Link from "next/link";
-import { signOut } from "@/auth";
+import { auth, signOut } from "@/auth";
+import { db } from "@/lib/db";
+import NamePrompt from "./NamePrompt";
 import Logo from "./Logo";
 import NavLinks from "./NavLinks";
 import SupportWidget from "./SupportChat";
@@ -14,7 +16,9 @@ const LINKS = [
   ["/settings/account", "Account"],
 ] as const;
 
-export default function AppHeader({ email, plan }: { email: string; plan: string }) {
+export default async function AppHeader({ email, plan }: { email: string; plan: string }) {
+  const userId = (await auth())?.user?.id;
+  const named = userId ? !!(await db.user.findUnique({ where: { id: userId }, select: { name: true } }))?.name : true;
   return (
     <header className="border-b border-slate-200 bg-white">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
@@ -40,6 +44,7 @@ export default function AppHeader({ email, plan }: { email: string; plan: string
       <nav className="flex flex-wrap border-t border-slate-100 px-2 text-sm sm:hidden">
         <NavLinks links={LINKS} className="px-3 py-2" />
       </nav>
+      {!named && <NamePrompt />}
       <SupportWidget signedIn />
     </header>
   );

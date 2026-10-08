@@ -13,7 +13,7 @@ const BASE = process.env.BASE ?? "http://localhost:3000";
 const shots = process.argv[2] ?? "/tmp";
 const args = ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"];
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM, args });
-const sql = (q) => execSync(`su postgres -c "psql -d framecast -tAc \\"${q.replace(/"/g, '\\\\\\"')}\\""`).toString().trim();
+const sql = (q) => execSync(`su postgres -c "psql -d ${process.env.PGDATABASE ?? "framecast"} -tAc \\"${q.replace(/"/g, '\\\\\\"')}\\""`).toString().trim();
 
 const finiteDuration = (el) => new Promise((r) => {
   const check = () => (Number.isFinite(el.duration) && el.duration > 0 ? r(el.duration) : setTimeout(check, 200));
