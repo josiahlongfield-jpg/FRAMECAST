@@ -95,10 +95,15 @@ export async function installFile(revision: string, name: string): Promise<Model
   let pendingBytes = 0;
   let uploadId: string | null | undefined; // undefined until the file turns out to need more than one part
   const parts: { partNumber: number; etag: string | null }[] = [];
-  const flush = async () => {
-    const body = Buffer.concat(pending, pendingBytes);
-    pending = [];
-    pendingBytes = 0;
+  // R2 (like S3) needs every part but the last to be exactly the same size,
+  // so each flush sends PART_BYTES and carries the rest into the next part.
+  const flush = async (last = false) => {
+    const all = Buffer.concat(pending, pendingBytes);
+    const size = last ? all.length : PART_BYTES;
+    const body = all.subarray(0, size);
+    const rest = all.subarray(size);
+    pending = rest.length ? [rest] : [];
+    pendingBytes = rest.length;
     if (uploadId === undefined) uploadId = await driver.begin(key, type);
     const partNumber = parts.length + 1;
     parts.push({ partNumber, etag: await driver.putPart(key, uploadId, partNumber, body) });
@@ -113,7 +118,7 @@ export async function installFile(revision: string, name: string): Promise<Model
       bytes += value.length;
       pending.push(value);
       pendingBytes += value.length;
-      if (pendingBytes >= PART_BYTES) await flush();
+      while (pendingBytes >= PART_BYTES) await flush();
     }
     const sha256 = hash.digest("hex");
     if (want.bytes !== null && bytes !== want.bytes) throw new InstallError(`${name} downloaded incompletely (${bytes} of ${want.bytes} bytes).`);
@@ -121,7 +126,7 @@ export async function installFile(revision: string, name: string): Promise<Model
     if (uploadId === undefined) {
       await driver.putObject(key, Buffer.concat(pending, pendingBytes), type);
     } else {
-      if (pendingBytes) await flush();
+      if (pendingBytes) await flush(true);
       await driver.complete(key, uploadId, parts);
     }
     const file = { sha256, bytes };
