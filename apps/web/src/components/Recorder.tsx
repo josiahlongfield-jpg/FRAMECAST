@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useVideoFrame } from "@/lib/videoFrame";
 import { useRouter } from "next/navigation";
 import MicLevel from "./MicLevel";
 import * as store from "@/lib/recorder/store";
@@ -72,6 +73,16 @@ export default function Recorder({
   }, []);
 
   const preview = useRef<HTMLVideoElement>(null);
+  // The camera preview takes the camera's own shape (portrait on most phones), so it fills its frame.
+  const frame = useVideoFrame("70vh");
+  const frameRef = frame.ref;
+  const previewRef = useCallback(
+    (v: HTMLVideoElement | null) => {
+      preview.current = v;
+      frameRef(v);
+    },
+    [frameRef],
+  );
   const camStream = useRef<MediaStream | null>(null);
   const live = useRef<{
     recorder: MediaRecorder;
@@ -330,9 +341,12 @@ export default function Recorder({
 
   return (
     <div className="grid gap-8 lg:grid-cols-[1fr_340px]">
-      <div className="relative aspect-video overflow-hidden rounded-2xl border border-slate-200 bg-slate-900 shadow-sm">
+      <div
+        style={mode !== "screen" ? frame.style : undefined}
+        className={`relative mx-auto overflow-hidden rounded-2xl border border-slate-200 bg-slate-900 shadow-sm ${mode !== "screen" ? "" : "aspect-video w-full"}`}
+      >
         {mode !== "screen" ? (
-          <video ref={preview} autoPlay muted playsInline className="h-full w-full -scale-x-100 object-cover" />
+          <video ref={previewRef} autoPlay muted playsInline className="absolute inset-0 h-full w-full -scale-x-100 object-cover" />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-slate-300">
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="4" width="20" height="13" rx="2" /><path d="M8 21h8M12 17v4" /></svg>

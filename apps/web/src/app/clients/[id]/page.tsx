@@ -36,7 +36,7 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
             <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{client.name}</h1>
             <ClientEmail clientId={client.id} firstName={client.name.split(" ")[0]} initial={client.email} optedOut={client.remindersOff} />
           </div>
-          <CopyClientLink workspaceId={workspace.id} fingerprint={workspace.keyFingerprint} link={clientLink(client.token)} teamKeyWrap={client.teamKeyWrap} />
+          <CopyClientLink workspaceId={workspace.id} fingerprint={workspace.keyFingerprint} clientId={client.id} link={clientLink(client.token)} teamKeyWrap={client.teamKeyWrap} />
         </div>
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_1.1fr]">

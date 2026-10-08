@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { REACTIONS } from "@/lib/reactions";
 import type { ReplyDTO } from "@/lib/replies";
@@ -11,8 +11,9 @@ import SecureMedia, { useDecryptedUrl } from "./SecureMedia";
 import TeamKeyGate from "./TeamKeyGate";
 import AiInsight, { type SealedInsight } from "./AiInsight";
 import AiNotice from "./AiNotice";
-import { personalLink } from "./ClientsManager";
+import { markLinkSent, personalLink } from "./ClientsManager";
 import { recoverInterrupted } from "@/lib/recorder/uploader";
+import { useVideoFrame } from "@/lib/videoFrame";
 import { decryptText, importKey, unwrapKey, wrapKey, fingerprint } from "@/lib/e2e/crypto";
 import { clientKeyName, loadClientKey, saveKey } from "@/lib/e2e/keystore";
 
@@ -37,8 +38,8 @@ type ClientOption = {
   link: string;
   teamKeyWrap: string | null;
   assignedToId?: string | null;
-  /** The client has opened their personal link on some device, so emails about new videos work. */
-  linkOpened?: boolean;
+  /** The client has their personal link (they opened it, or the business copied it to send), so a plain Send emails them. */
+  hasLink?: boolean;
   /** Has an email address and hasn't turned emails off. */
   emailable?: boolean;
   /** For a copy sent to another client: that client's own conversation. */
@@ -131,7 +132,7 @@ function ClientUnlock({ clientId, ...props }: Props & { clientId: string }) {
  * yet. Their key only exists on the team's devices, so we can't email it:
  * the business sends the link once, then new videos are emailed for them.
  */
-function FirstLinkDialog({ clients, videoId, teamKey, onClose }: { clients: ClientOption[]; videoId: string; teamKey: CryptoKey; onClose: () => void }) {
+function FirstLinkDialog({ clients, videoId, teamKey, onCopied, onClose }: { clients: ClientOption[]; videoId: string; teamKey: CryptoKey; onCopied: (clientId: string) => void; onClose: () => void }) {
   const [copied, setCopied] = useState<string>();
   const one = clients.length === 1 ? clients[0] : null;
   const first = (n: string) => n.split(" ")[0];
@@ -146,6 +147,7 @@ function FirstLinkDialog({ clients, videoId, teamKey, onClose }: { clients: Clie
     const url = new URL(c.link);
     url.searchParams.set("v", c.copyId ?? videoId);
     await navigator.clipboard.writeText(await personalLink(url.toString(), c.teamKeyWrap, teamKey));
+    onCopied(c.id);
     setCopied(c.id);
     setTimeout(() => setCopied(undefined), 2000);
   }
@@ -170,7 +172,7 @@ function FirstLinkDialog({ clients, videoId, teamKey, onClose }: { clients: Clie
           <p>
             Why: your videos are end-to-end encrypted. Each client&apos;s link holds their private key, and only your team&apos;s devices have it, so we can&apos;t email it for you without being able to see their videos.
           </p>
-          <p>Once they open it, that phone or computer remembers it. From then on we email them each new video automatically, if they have an email address saved.</p>
+          <p>Once they open it, that phone or computer remembers it. From then on you just press Send and we email them each new video, if they have an email address saved.</p>
         </div>
         <ul className="mt-4 grid gap-2">
           {clients.map((c) => (
@@ -215,7 +217,7 @@ function WatchBody({
   ownerName,
   canEdit,
   canDelete,
-  clients,
+  clients: initialClients,
   sentToId,
   initialReplies,
   sendMany,
@@ -225,7 +227,24 @@ function WatchBody({
 }: Props & { canEdit: boolean; rootKey: CryptoKey; teamKey?: CryptoKey }) {
   const router = useRouter();
   const player = useRef<HTMLVideoElement>(null);
+  // The player takes the recording's own shape (a phone's portrait camera too), so there are no black bars.
+  const frame = useVideoFrame("75vh");
+  const frameRef = frame.ref;
+  const playerRef = useCallback(
+    (v: HTMLVideoElement | null) => {
+      player.current = v;
+      frameRef(v);
+    },
+    [frameRef],
+  );
   const [title, setTitle] = useState(video.title);
+  // Clients whose link was copied on this page count as having it straight away.
+  const [linked, setLinked] = useState<ReadonlySet<string>>(new Set());
+  const clients = useMemo(() => initialClients.map((c) => (linked.has(c.id) ? { ...c, hasLink: true } : c)), [initialClients, linked]);
+  const linkCopied = useCallback((clientId: string) => {
+    void markLinkSent(clientId);
+    setLinked((cur) => new Set(cur).add(clientId));
+  }, []);
   const [replies, setReplies] = useState(initialReplies);
   const listEnd = useRef<HTMLLIElement>(null);
   const reactionsRow = useRef<HTMLDivElement>(null);
@@ -442,14 +461,28 @@ function WatchBody({
     const clientKeyWrap = client?.teamKeyWrap ? await wrapKey(rootKey, await unwrapKey(client.teamKeyWrap, teamKey)) : undefined;
     setSentTo(clientId);
     setEmailed(null);
+    setSendError(undefined);
     // First video for a client who hasn't opened their personal link yet: explain why it's on them to send it.
-    if (client && !client.linkOpened) setFirstLink([client]);
+    if (client && !client.hasLink) setFirstLink([client]);
     const res = await fetch(`/api/videos/${video.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clientId, clientKeyWrap, keyFingerprint: await fingerprint(teamKey), notify: true }),
+      body: JSON.stringify({ clientId, clientKeyWrap, keyFingerprint: await fingerprint(teamKey) }),
     });
+    if (!res.ok) setSendError((await res.json().catch(() => ({}))).error ?? "Couldn't choose that client");
+  }
+
+  // Send: email the chosen client that the video is waiting (it opens from their personal link).
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string>();
+  async function send() {
+    if (!recipient) return;
+    setSending(true);
+    setSendError(undefined);
+    const res = await fetch(`/api/videos/${video.id}/notify`, { method: "POST" });
     const data = await res.json().catch(() => ({}));
+    setSending(false);
+    if (!res.ok) return setSendError(data.error ?? "Couldn't send it. Try again.");
     setEmailed(data.emailed ?? null);
   }
 
@@ -457,9 +490,12 @@ function WatchBody({
     if (!recipient || !teamKey) return;
     const link = await personalLink(recipient.link, recipient.teamKeyWrap, teamKey);
     await navigator.clipboard.writeText(link);
+    linkCopied(recipient.id);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
+
+  const showPlayer = video.status !== "RECORDING" && !expired && !playError;
 
   const seek = (ms: number | null) => {
     if (ms === null || !player.current) return;
@@ -470,7 +506,7 @@ function WatchBody({
   return (
     <div className="grid gap-8 pb-20 lg:grid-cols-[1fr_340px] lg:pb-0">
       <section>
-        <div className="relative overflow-hidden rounded-2xl bg-black shadow-sm">
+        <div style={showPlayer ? frame.style : undefined} className="relative mx-auto overflow-hidden rounded-2xl bg-black shadow-sm">
           {video.status === "RECORDING" ? (
             <div className="grid aspect-video place-items-center text-slate-300">This recording is still uploading. Refresh in a moment.</div>
           ) : expired ? (
@@ -480,7 +516,7 @@ function WatchBody({
           ) : playError ? (
             <div className="grid aspect-video place-items-center text-slate-300">Couldn&apos;t unlock this recording on this device.</div>
           ) : (
-            <video ref={player} controls playsInline onPlay={onPlay} className="aspect-video w-full bg-black" />
+            <video ref={playerRef} controls playsInline onPlay={onPlay} className="absolute inset-0 h-full w-full bg-black object-contain" />
           )}
           <div className="pointer-events-none absolute bottom-16 right-6 flex flex-col items-center">
             {burst.map((b) => (
@@ -507,11 +543,25 @@ function WatchBody({
             </p>
           </div>
           <div className="flex flex-wrap gap-2 sm:shrink-0">
-            {canEdit && recipient?.link && (
+            {canEdit && recipient?.link && (recipient.hasLink && recipient.emailable ? (
+              <>
+                <button
+                  onClick={send}
+                  disabled={sending || !!emailed}
+                  data-testid="send-button"
+                  className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
+                >
+                  {emailed ? "Sent" : sending ? "Sending…" : `Send to ${recipient.name.split(" ")[0]}`}
+                </button>
+                <button onClick={copyLink} className="rounded-xl border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">
+                  {copied ? "Link copied" : "Copy link"}
+                </button>
+              </>
+            ) : (
               <button onClick={copyLink} className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
                 {copied ? "Link copied" : `Copy ${recipient.name.split(" ")[0]}'s link`}
               </button>
-            )}
+            ))}
             {playable && (
               <a
                 href={playable}
@@ -562,24 +612,26 @@ function WatchBody({
             <p className="mt-2 text-xs text-slate-500" data-testid="send-status">
               {!recipient
                 ? "Nobody outside your team can watch this until you send it to a client."
-                : !recipient.linkOpened
-                  ? <>Only your team and {recipient.name} can watch this. {recipient.name} hasn&apos;t opened their personal link yet, so send it to them yourself this first time.{" "}
+                : sendError
+                  ? sendError
+                : !recipient.hasLink
+                  ? <>Only your team and {recipient.name} can watch this. {recipient.name} hasn&apos;t had their personal link yet, so send it to them yourself this first time.{" "}
                       <button type="button" onClick={() => setFirstLink([recipient])} className="font-medium text-brand-700 hover:underline">Why?</button></>
                   : emailed === "sent"
                     ? `Only your team and ${recipient.name} can watch this. We've emailed ${recipient.name} to say it's waiting.`
                     : emailed === "when-ready"
                       ? `Only your team and ${recipient.name} can watch this. We'll email ${recipient.name} as soon as the upload finishes.`
                       : recipient.emailable
-                        ? `Only your team and ${recipient.name} can watch this.`
+                        ? `Only your team and ${recipient.name} can watch this. Press Send to email ${recipient.name} that it's waiting.`
                         : `Only your team and ${recipient.name} can watch this. ${recipient.name} has no email address saved, so send them the link yourself.`}
             </p>
             {sendMany && teamKey && video.encrypted && video.status !== "RECORDING" && (
-              <SendToMany videoId={video.id} clients={clients} primaryId={sentTo} sendMany={sendMany} rootKey={rootKey} teamKey={teamKey} onFirstLink={setFirstLink} />
+              <SendToMany videoId={video.id} clients={clients} primaryId={sentTo} sendMany={sendMany} rootKey={rootKey} teamKey={teamKey} onFirstLink={setFirstLink} onLinkCopied={linkCopied} />
             )}
           </div>
         )}
         {firstLink && teamKey && (
-          <FirstLinkDialog clients={firstLink} videoId={video.id} teamKey={teamKey} onClose={() => setFirstLink(null)} />
+          <FirstLinkDialog clients={firstLink} videoId={video.id} teamKey={teamKey} onCopied={linkCopied} onClose={() => setFirstLink(null)} />
         )}
 
         <div ref={reactionsRow} className="mt-4 flex gap-2">
@@ -763,6 +815,7 @@ function SendToMany({
   rootKey,
   teamKey,
   onFirstLink,
+  onLinkCopied,
 }: {
   videoId: string;
   clients: ClientOption[];
@@ -771,6 +824,7 @@ function SendToMany({
   rootKey: CryptoKey;
   teamKey: CryptoKey;
   onFirstLink: (clients: ClientOption[]) => void;
+  onLinkCopied: (clientId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [copies, setCopies] = useState(sendMany.copies);
@@ -805,7 +859,7 @@ function SendToMany({
       setPicked(new Set());
       // Clients who haven't opened their personal link yet need it from you first.
       const sent = data.sent as { id: string; clientId: string }[];
-      const firstTimers = clients.filter((c) => !c.linkOpened && sent.some((x) => x.clientId === c.id)).map((c) => ({ ...c, copyId: sent.find((x) => x.clientId === c.id)!.id }));
+      const firstTimers = clients.filter((c) => !c.hasLink && sent.some((x) => x.clientId === c.id)).map((c) => ({ ...c, copyId: sent.find((x) => x.clientId === c.id)!.id }));
       if (firstTimers.length) onFirstLink(firstTimers);
       setNote(`Sent to ${data.sent.length} ${data.sent.length === 1 ? "client" : "clients"}${data.emailed ? `, ${data.emailed} emailed` : ""}.`);
     } catch (err) {
@@ -821,6 +875,7 @@ function SendToMany({
     const url = new URL(c.link);
     url.searchParams.set("v", copy.id);
     await navigator.clipboard.writeText(await personalLink(url.toString(), c.teamKeyWrap, teamKey));
+    onLinkCopied(c.id);
     setCopied(copy.id);
     setTimeout(() => setCopied(undefined), 2000);
   }

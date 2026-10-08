@@ -85,7 +85,17 @@ export default function Home() {
                 <div className="absolute left-6 top-6 h-3 w-40 rounded bg-white/20" />
                 <div className="absolute left-6 top-14 h-2 w-64 rounded bg-white/10" />
                 <div className="absolute left-6 top-20 h-2 w-52 rounded bg-white/10" />
-                <div className="absolute bottom-6 left-6 h-24 w-24 rounded-full border-4 border-white/80 bg-gradient-to-br from-brand-500 to-brand-700 sm:h-32 sm:w-32" />
+                {/* The floating camera bubble from "Screen + Camera" recording: the person talking over their screen. */}
+                <div
+                  aria-label="Camera bubble"
+                  className="absolute bottom-6 left-6 h-24 w-24 overflow-hidden rounded-full border-4 border-white/80 bg-gradient-to-br from-brand-400 to-brand-700 sm:h-32 sm:w-32"
+                >
+                  <svg viewBox="0 0 100 100" className="h-full w-full" aria-hidden="true">
+                    <circle cx="50" cy="40" r="17" fill="#f1c7a8" />
+                    <path d="M33 34c0-12 8-19 17-19s17 7 17 18c-4-6-10-8-17-8s-13 3-17 9z" fill="#3b2a20" />
+                    <path d="M14 104c2-22 17-34 36-34s34 12 36 34z" fill="#ffffff" fillOpacity="0.92" />
+                  </svg>
+                </div>
                 <div className="absolute right-6 top-6 flex items-center gap-2 rounded-full bg-black/60 px-3 py-1 text-xs text-white">
                   <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" /> Recording · 1:24
                 </div>

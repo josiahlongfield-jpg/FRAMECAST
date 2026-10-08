@@ -264,7 +264,11 @@ m2 = outbox().length;
 await calPage.request.post(`${BASE}/api/videos/${vCal2}/replies`, { data: { kind: "TEXT", body: "sealed", encrypted: true } });
 ok("with reply emails on, Amy hears about Cal's reply", !!(await waitFor(() => outbox().slice(m2).find((m) => m.to === amyUser.email && m.subject.includes("Cal replied")))));
 await amy.goto(BASE + "/settings/reminders");
-await amy.click("text=Use the business's defaults");
+// A click before the page has hydrated does nothing, so click until it takes.
+for (let i = 0; i < 20 && !(await amy.textContent("[data-testid=defaults-source]")).includes("Using your business"); i++) {
+  await amy.click("text=Use the business's defaults").catch(() => {});
+  await amy.waitForTimeout(250);
+}
 await amy.click("text=Save changes");
 await amy.waitForSelector("role=status >> text=Saved");
 am = await amyMembership();

@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import TeamKeyGate from "./TeamKeyGate";
-import { personalLink } from "./ClientsManager";
+import { markLinkSent, personalLink } from "./ClientsManager";
 
-export default function CopyClientLink(props: { workspaceId: string; fingerprint: string | null; link: string; teamKeyWrap: string | null }) {
+export default function CopyClientLink(props: { workspaceId: string; fingerprint: string | null; clientId: string; link: string; teamKeyWrap: string | null }) {
   return (
     <TeamKeyGate workspaceId={props.workspaceId} fingerprint={props.fingerprint}>
       {(teamKey) => <Button {...props} teamKey={teamKey} />}
@@ -12,12 +12,13 @@ export default function CopyClientLink(props: { workspaceId: string; fingerprint
   );
 }
 
-function Button({ link, teamKeyWrap, teamKey }: { link: string; teamKeyWrap: string | null; teamKey: CryptoKey }) {
+function Button({ clientId, link, teamKeyWrap, teamKey }: { clientId: string; link: string; teamKeyWrap: string | null; teamKey: CryptoKey }) {
   const [copied, setCopied] = useState(false);
   return (
     <button
       onClick={async () => {
         await navigator.clipboard.writeText(await personalLink(link, teamKeyWrap, teamKey));
+        void markLinkSent(clientId);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       }}

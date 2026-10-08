@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as store from "@/lib/recorder/store";
 import { ChunkedUploader, lockName, type UploadState } from "@/lib/recorder/uploader";
 import { bitrateFor, pickMimeType, stopAll } from "@/lib/recorder/media";
 import { encryptFrame, encryptText, generateKey, wrapKey } from "@/lib/e2e/crypto";
 import type { ReplyDTO } from "@/lib/replies";
 import MicLevel from "./MicLevel";
+import { useVideoFrame } from "@/lib/videoFrame";
 
 type Mode = "TEXT" | "VIDEO" | "AUDIO";
 type Phase = "idle" | "preview" | "recording" | "sending";
@@ -53,6 +54,16 @@ export default function ReplyComposer({
   const [session, setSession] = useState(0);
 
   const preview = useRef<HTMLVideoElement>(null);
+  // The camera preview takes the camera's own shape (portrait on most phones), so it fills its frame.
+  const frame = useVideoFrame("55vh");
+  const frameRef = frame.ref;
+  const previewRef = useCallback(
+    (v: HTMLVideoElement | null) => {
+      preview.current = v;
+      frameRef(v);
+    },
+    [frameRef],
+  );
   const stream = useRef<MediaStream | null>(null);
   const live = useRef<{
     recorder: MediaRecorder;
@@ -263,8 +274,8 @@ export default function ReplyComposer({
       ) : (
         <div>
           {mode === "VIDEO" ? (
-            <div className="relative overflow-hidden rounded-lg bg-slate-900">
-              <video ref={preview} autoPlay muted playsInline className={`aspect-video w-full object-cover ${facing === "user" ? "-scale-x-100" : ""}`} />
+            <div style={frame.style} className="relative mx-auto overflow-hidden rounded-lg bg-slate-900">
+              <video ref={previewRef} autoPlay muted playsInline className={`absolute inset-0 h-full w-full object-cover ${facing === "user" ? "-scale-x-100" : ""}`} />
               {phase === "preview" && (
                 <button onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))} className="absolute right-2 top-2 rounded-full bg-black/60 px-3 py-1 text-xs font-medium text-white">
                   Flip camera

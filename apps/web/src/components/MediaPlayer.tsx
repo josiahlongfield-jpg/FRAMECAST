@@ -1,6 +1,7 @@
 "use client";
 
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import { useVideoFrame } from "@/lib/videoFrame";
 
 /**
  * Plays a raw browser recording. WebM files recorded in the browser have no
@@ -23,10 +24,16 @@ const MediaPlayer = forwardRef<HTMLMediaElement | null, Props>(function MediaPla
   const el = useRef<HTMLVideoElement & HTMLAudioElement>(null);
   useImperativeHandle(ref, () => el.current!, []);
   useEffect(() => (el.current ? fixDuration(el.current) : undefined), [src]);
-  return kind === "AUDIO" ? (
-    <audio ref={el} src={src} controls preload="metadata" className={className ?? "w-full"} />
-  ) : (
-    <video ref={el} src={src} controls playsInline preload="metadata" className={className ?? "aspect-video w-full rounded-lg bg-black"} />
+  // Video replies take their own shape (a phone's portrait camera too), so they fill the frame without black bars.
+  const frame = useVideoFrame("60vh");
+  const frameRef = frame.ref;
+  useEffect(() => frameRef(el.current), [frameRef, src]);
+  if (kind === "AUDIO") return <audio ref={el} src={src} controls preload="metadata" className={className ?? "w-full"} />;
+  if (className) return <video ref={el} src={src} controls playsInline preload="metadata" className={className} />;
+  return (
+    <div style={frame.style} className="relative mx-auto overflow-hidden rounded-lg bg-black">
+      <video ref={el} src={src} controls playsInline preload="metadata" className="absolute inset-0 h-full w-full object-contain" />
+    </div>
   );
 });
 

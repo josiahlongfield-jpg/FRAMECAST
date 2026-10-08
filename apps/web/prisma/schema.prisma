@@ -367,6 +367,9 @@ model Client {
   /// First time the client opened their personal link (the one with their key).
   /// Until then a business is reminded to send it themselves.
   linkOpenedAt   DateTime?
+  /// First time the business copied the client's personal link (to send it).
+  /// From then on new videos are sent with a plain Send, not the link reminder.
+  linkSentAt     DateTime?
   /// The staff member who looks after this client (Studio and Agency teams).
   assignedToId   String?
   assignedTo     User?         @relation("ClientAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)

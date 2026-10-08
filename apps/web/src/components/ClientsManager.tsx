@@ -19,6 +19,11 @@ export async function personalLink(link: string, teamKeyWrap: string | null, tea
   return `${link}#k=${await exportKey(clientKey)}`;
 }
 
+/** Remembers that the team copied a client's link to send it, so new videos get a plain Send. */
+export function markLinkSent(clientId: string) {
+  return fetch(`/api/clients/${clientId}/link-sent`, { method: "POST" }).catch(() => {});
+}
+
 type Props = {
   workspaceId: string;
   fingerprint: string | null;
@@ -126,6 +131,7 @@ function Manager({
 
   async function copy(c: Client) {
     await navigator.clipboard.writeText(await personalLink(c.link, c.teamKeyWrap, teamKey));
+    void markLinkSent(c.id);
     setCopied(c.id);
     setTimeout(() => setCopied(undefined), 2000);
   }
