@@ -1,6 +1,6 @@
 import { limitByIp } from "@/lib/rateLimit";
 
-/** Browser-side errors from the help chat, written to the logs for diagnosis. */
+/** Browser-side errors (help chat, AI transcripts), written to the logs for diagnosis. */
 export async function POST(req: Request) {
   try {
     await limitByIp("client-error", 20, 3600);

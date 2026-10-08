@@ -100,7 +100,9 @@ async function load(device: "webgpu" | "wasm", modelBase: string, manifest: Mode
   env.allowLocalModels = false;
   env.allowRemoteModels = true;
   env.remoteHost = modelBase;
-  env.remotePathTemplate = "{model}/{revision}/";
+  // Pinned in the path itself: some files are requested with the default
+  // revision ("main"), which would miss the installed copy.
+  env.remotePathTemplate = `{model}/${manifest.revision}/`;
   // Its own browser cache would skip the checks above; ours keeps verified copies instead.
   env.useBrowserCache = false;
   // The ONNX runtime comes from our own site too (copied there on install).
@@ -141,7 +143,13 @@ self.onmessage = async (e: MessageEvent<WorkerIn>) => {
     const audio = channels.length === 1 ? channels[0] : new Float32Array(channels[0].length);
     if (channels.length > 1) for (const ch of channels) for (let i = 0; i < ch.length; i++) audio[i] += ch[i] / channels.length;
 
-    loading ??= load(device, modelBase, manifest);
+    // Some browsers (Brave, for one) report WebGPU but won't run the model on
+    // it; fall back to the processor, which works in every modern browser.
+    loading ??= load(device, modelBase, manifest).catch((err) => {
+      if (device !== "webgpu") throw err;
+      post({ type: "progress", stage: "download", fraction: 0 });
+      return load("wasm", modelBase, manifest);
+    });
     const asr = await loading;
     const segments: TranscriptSegment[] = [];
     const step = SEGMENT_SECONDS * SAMPLE_RATE;

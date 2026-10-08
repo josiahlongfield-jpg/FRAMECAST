@@ -102,9 +102,21 @@ async function decodeAudio(media: Blob): Promise<Float32Array[]> {
   }
 }
 
+/** WebGPU only when the browser will actually hand out a graphics adapter. */
+async function usableDevice(device: "webgpu" | "wasm"): Promise<"webgpu" | "wasm"> {
+  if (device !== "webgpu") return device;
+  try {
+    const gpu = (navigator as Navigator & { gpu?: { requestAdapter(): Promise<unknown> } }).gpu;
+    return (await gpu?.requestAdapter()) ? "webgpu" : "wasm";
+  } catch {
+    return "wasm";
+  }
+}
+
 const runModel: Transcriber = async (media, onProgress) => {
-  const { device } = deviceSupport();
-  if (!device) throw new UnsupportedDevice("This browser can't make transcripts.");
+  const found = deviceSupport().device;
+  if (!found) throw new UnsupportedDevice("This browser can't make transcripts.");
+  const device = await usableDevice(found);
   const manifest = await fetchManifest();
   onProgress({ stage: "audio", fraction: 0 });
   const channels = await decodeAudio(media);

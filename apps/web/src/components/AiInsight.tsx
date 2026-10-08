@@ -33,6 +33,12 @@ type Status =
 
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
+/** Sends why a transcript failed (never any transcript text) to the server logs. */
+function logFailure(message: string) {
+  const body = JSON.stringify({ where: "ai-transcript", message: message.slice(0, 500), browser: navigator.userAgent });
+  void fetch("/api/support/client-error", { method: "POST", body, keepalive: true }).catch(() => {});
+}
+
 /**
  * The AI summary and transcript under a video. The team makes them on their
  * own device (transcript) plus Claude (summary from the transcript text);
@@ -111,6 +117,7 @@ export default function AiInsight({ videoId, rootKey, initial, canMake, mediaUrl
       } catch (err) {
         console.warn("Transcript unavailable:", (err as Error).message);
         setStatus({ kind: "failed", message: (err as Error).message, device: err instanceof UnsupportedDevice, model: err instanceof ModelUnavailable });
+        logFailure((err as Error).message);
         return;
       }
       setTranscript(t);
@@ -161,6 +168,7 @@ export default function AiInsight({ videoId, rootKey, initial, canMake, mediaUrl
               ? "This device may not be able to make transcripts. A computer with Chrome or Edge and plenty of memory works best."
               : "Something went wrong making the transcript. Your video is safe and unchanged."}
           </p>
+          {status.message && !status.model && <p className="mt-1 text-xs text-amber-700">Details: {status.message}</p>}
           <button onClick={make} className="mt-2 rounded-lg border border-amber-300 bg-white px-3 py-1.5 font-medium hover:bg-amber-100">Try again</button>
         </div>
       )}
