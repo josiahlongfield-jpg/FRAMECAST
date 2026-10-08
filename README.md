@@ -89,6 +89,8 @@ Set `S3_BUCKET`, `S3_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com`, `S
 [{ "AllowedOrigins": ["https://sureframe.app"], "AllowedMethods": ["GET", "PUT", "HEAD"], "AllowedHeaders": ["*"], "ExposeHeaders": ["ETag"], "MaxAgeSeconds": 3600 }]
 ```
 
+The `GET` in that rule is also what lets browsers download the on-device speech model (AI transcripts add-on): `/models/...` answers with a redirect to a short-lived bucket link, fetched from the app's page. Install the model once from **Support → Free plans → AI speech model → Install speech model** (founder only). It copies `onnx-community/whisper-base` at the current exact revision from Hugging Face into the bucket under `models/`, one file per request, and writes `models/manifest.json` (every file's sha256) last; browsers check each file against it. Press it again to update; it's safe to repeat.
+
 Also add a lifecycle rule (bucket → Settings → Object lifecycle rules) that aborts incomplete multipart uploads after 7 days. The purge job already expires uploads abandoned for 7 days, and the rule catches any parts it misses.
 
 ### Sign in with Google

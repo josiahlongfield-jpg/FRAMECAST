@@ -28,7 +28,7 @@ type Status =
   | { kind: "idle" }
   | { kind: "working"; progress: Progress }
   | { kind: "summarising" }
-  | { kind: "failed"; message: string; device: boolean }
+  | { kind: "failed"; message: string; device: boolean; model?: boolean }
   | { kind: "summaryFailed"; message: string };
 
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
@@ -103,13 +103,14 @@ export default function AiInsight({ videoId, rootKey, initial, canMake, mediaUrl
     started.current = true;
     setStatus({ kind: "working", progress: { stage: "audio", fraction: 0 } });
     try {
-      const { transcribe, UnsupportedDevice } = await import("@/lib/ai/transcribe");
+      const { transcribe, ModelUnavailable, UnsupportedDevice } = await import("@/lib/ai/transcribe");
       let t: Transcript;
       try {
         const media = await (await fetch(mediaUrl)).blob();
         t = await transcribe(media, (progress) => setStatus({ kind: "working", progress }));
       } catch (err) {
-        setStatus({ kind: "failed", message: (err as Error).message, device: err instanceof UnsupportedDevice });
+        console.warn("Transcript unavailable:", (err as Error).message);
+        setStatus({ kind: "failed", message: (err as Error).message, device: err instanceof UnsupportedDevice, model: err instanceof ModelUnavailable });
         return;
       }
       setTranscript(t);
@@ -154,7 +155,9 @@ export default function AiInsight({ videoId, rootKey, initial, canMake, mediaUrl
         <div role="alert" className="mt-2 rounded-xl bg-amber-50 p-3 text-sm text-amber-900" data-testid="ai-failed">
           <p className="font-medium">Transcript unavailable, try again.</p>
           <p className="mt-1 text-amber-800">
-            {status.device || support?.mobile || support?.lowMemory
+            {status.model
+              ? "Transcripts aren't ready on SureFrame yet: the speech model isn't installed. Please try again later."
+              : status.device || support?.mobile || support?.lowMemory
               ? "This device may not be able to make transcripts. A computer with Chrome or Edge and plenty of memory works best."
               : "Something went wrong making the transcript. Your video is safe and unchanged."}
           </p>

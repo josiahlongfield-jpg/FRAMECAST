@@ -5,7 +5,9 @@ import { db } from "@/lib/db";
 import { PLANS } from "@/lib/plans";
 import { requirePageUser } from "@/lib/session";
 import { isSupportAgent } from "@/lib/support/tickets";
+import { canInstall, readManifest } from "@/lib/ai/speechModel";
 import CompForm, { CompAiForm } from "./CompForm";
+import SpeechModelPanel, { type ModelStatus } from "./SpeechModelPanel";
 
 export const metadata: Metadata = { title: "Free plans" };
 
@@ -18,6 +20,13 @@ export default async function Accounts() {
     orderBy: { createdAt: "desc" },
     include: { members: { where: { role: "OWNER" }, include: { user: { select: { email: true } } } } },
   });
+  const manifest = canInstall() ? await readManifest(true) : null;
+  const model: ModelStatus = manifest && {
+    revision: manifest.revision,
+    files: Object.keys(manifest.files).length,
+    bytes: Object.values(manifest.files).reduce((n, f) => n + f.bytes, 0),
+    installedAt: manifest.installedAt,
+  };
   return (
     <main className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
       <Link href="/support" className="text-sm text-brand-700 hover:underline">← Support inbox</Link>
@@ -46,6 +55,7 @@ export default async function Accounts() {
           ))}
         </ul>
       )}
+      <SpeechModelPanel status={model} canInstall={canInstall()} />
     </main>
   );
 }

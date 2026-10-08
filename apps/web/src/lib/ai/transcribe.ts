@@ -5,14 +5,14 @@
 // running in a web worker on this device. Audio never leaves the device.
 // Nothing here is loaded unless the workspace has the add-on switched on.
 
-import manifest from "./whisper-model.json";
+import { isManifest, type ModelManifest } from "./modelManifest";
 
 export type TranscriptSegment = { start: number; end: number; text: string };
 export type Transcript = { v: 1; segments: TranscriptSegment[] };
 export type Summary = { overview: string; keyPoints: string[]; actionItems: string[] };
 
 export type Progress = { stage: "audio" | "download" | "transcribe"; fraction: number; bytes?: number };
-export type WorkerIn = { channels: Float32Array[]; device: "webgpu" | "wasm"; modelBase: string };
+export type WorkerIn = { channels: Float32Array[]; device: "webgpu" | "wasm"; modelBase: string; manifest: ModelManifest };
 export type WorkerOut =
   | { type: "progress"; stage: "download" | "transcribe"; fraction: number; bytes?: number }
   | { type: "done"; transcript: Transcript }
@@ -38,6 +38,8 @@ const STALL_MS = 10 * 60_000;
 
 /** Thrown when this browser or device can't run the model. */
 export class UnsupportedDevice extends Error {}
+/** Thrown when the speech model isn't installed on the server yet. */
+export class ModelUnavailable extends Error {}
 
 export type DeviceSupport = {
   /** Run on the graphics chip, on the processor only, or not at all. */
@@ -47,8 +49,20 @@ export type DeviceSupport = {
   lowMemory: boolean;
 };
 
-/** Where the self-hosted model lives: our own site by default, or our storage bucket. */
-export const modelBase = () => new URL(process.env.NEXT_PUBLIC_AI_MODEL_BASE || "/models/", window.location.origin).toString();
+/**
+ * Where the self-hosted model lives: our own site, which hands out each file
+ * from our storage bucket. Nothing is ever fetched from Hugging Face or a CDN.
+ */
+export const modelBase = () => new URL("/models/", window.location.origin).toString();
+
+/** The installed model's manifest (exact revision and every file's sha256), read fresh each time. */
+async function fetchManifest(): Promise<ModelManifest> {
+  const res = await fetch(`${modelBase()}manifest.json`, { cache: "no-store" }).catch(() => null);
+  if (res?.status === 404) throw new ModelUnavailable("The speech model isn't installed on this server yet.");
+  const manifest = res?.ok ? await res.json().catch(() => null) : null;
+  if (!isManifest(manifest)) throw new Error("Couldn't check the transcription model just now.");
+  return manifest;
+}
 
 /** What this device can do. */
 export function deviceSupport(): DeviceSupport {
@@ -91,7 +105,7 @@ async function decodeAudio(media: Blob): Promise<Float32Array[]> {
 const runModel: Transcriber = async (media, onProgress) => {
   const { device } = deviceSupport();
   if (!device) throw new UnsupportedDevice("This browser can't make transcripts.");
-  if (!manifest.revision) throw new UnsupportedDevice("Transcripts aren't set up on this server yet.");
+  const manifest = await fetchManifest();
   onProgress({ stage: "audio", fraction: 0 });
   const channels = await decodeAudio(media);
   const worker = new Worker(new URL("./whisper.worker.ts", import.meta.url), { type: "module" });
@@ -117,7 +131,7 @@ const runModel: Transcriber = async (media, onProgress) => {
       };
       worker.onmessageerror = () => reject(new UnsupportedDevice("The transcription model couldn't start on this device."));
       worker.onerror = (e) => reject(new UnsupportedDevice(e.message || "The transcription model couldn't start on this device."));
-      worker.postMessage({ channels, device, modelBase: modelBase() } satisfies WorkerIn, channels.map((c) => c.buffer));
+      worker.postMessage({ channels, device, modelBase: modelBase(), manifest } satisfies WorkerIn, channels.map((c) => c.buffer));
     });
   } finally {
     worker.terminate();

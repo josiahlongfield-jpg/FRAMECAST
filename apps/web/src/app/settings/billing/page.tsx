@@ -5,6 +5,7 @@ import ManageBillingButton from "@/components/ManageBillingButton";
 import CloudBackupToggle from "@/components/CloudBackupToggle";
 import AiAssistToggle from "@/components/AiAssistToggle";
 import { summaryUsage } from "@/lib/ai/summary";
+import { readManifest } from "@/lib/ai/speechModel";
 import { RETENTION_DAYS } from "@/lib/retention";
 import { AI_ASSIST_PRICES, aiAssistActive, CLOUD_BACKUP_PRICE, PLANS } from "@/lib/plans";
 import type { Workspace } from "@prisma/client";
@@ -23,6 +24,7 @@ async function AiAddOn({ workspace }: { workspace: Workspace }) {
       canEnable={free || (!!paid && !!workspace.stripeSubscriptionId)}
       priceLabel={free || !paid ? null : `$${paid.month} per month on ${PLANS[workspace.plan].name} ($${paid.year} per year on yearly billing)`}
       usage={aiAssistActive(workspace) ? await summaryUsage(workspace) : null}
+      modelReady={!!(await readManifest().catch(() => null))}
     />
   );
 }

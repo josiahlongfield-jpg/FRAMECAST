@@ -9,10 +9,12 @@ type Props = {
   /** Price for this workspace's plan, e.g. "$15 per month"; null when given free. */
   priceLabel: string | null;
   usage: { used: number; limit: number } | null;
+  /** The speech model is installed on the server, so transcripts can be made. */
+  modelReady: boolean;
 };
 
 /** Settings > Billing: the AI transcripts and summaries add-on, with exactly what leaves the device. */
-export default function AiAssistToggle({ enabled, canEnable, priceLabel, usage }: Props) {
+export default function AiAssistToggle({ enabled, canEnable, priceLabel, usage, modelReady }: Props) {
   const [on, setOn] = useState(enabled);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
@@ -51,6 +53,11 @@ export default function AiAssistToggle({ enabled, canEnable, priceLabel, usage }
             {!canEnable && !on ? "Available with a paid subscription (not on Free)." : priceLabel ? `${priceLabel}, optional.` : "Included free with your plan."}
             {usage && ` ${usage.used} of ${usage.limit} summaries used this month.`}
           </p>
+          {!modelReady && (on || canEnable) && (
+            <p className="mt-2 text-xs text-amber-800" data-testid="ai-model-missing">
+              The speech model isn&apos;t installed yet, so new transcripts can&apos;t be made for now. We&apos;re setting it up.
+            </p>
+          )}
         </div>
         <button
           role="switch"
