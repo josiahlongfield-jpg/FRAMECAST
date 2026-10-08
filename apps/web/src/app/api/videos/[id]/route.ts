@@ -8,6 +8,7 @@ import { accessOf, canDeleteVideo, canSeeClient, visibleVideo } from "@/lib/perm
 import { viewableVideo } from "@/lib/access";
 import { KeyFingerprint, requireCurrentKey } from "@/lib/keys";
 import { notifyVideosSent } from "@/lib/teamNotify";
+import { emailClientVideo } from "@/lib/emailClientVideo";
 
 export const GET = handle(async (_req: Request, ctx: { params: Promise<{ id: string }> }) => {
   const { id } = await ctx.params;
@@ -22,6 +23,8 @@ const Patch = z.object({
   /** The video key wrapped with that client's key, made on the sender's device. */
   clientKeyWrap: z.string().min(40).max(200).optional(),
   keyFingerprint: KeyFingerprint,
+  /** Email the client (if they have an address) when sending it to them. */
+  notify: z.boolean().optional(),
 });
 
 export const PATCH = handle(async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
@@ -45,15 +48,25 @@ export const PATCH = handle(async (req: Request, ctx: { params: Promise<{ id: st
     data: {
       title: body.data.title,
       clientId: body.data.clientId,
-      ...(body.data.clientId !== undefined ? { clientKeyWrap: body.data.clientId ? body.data.clientKeyWrap : null } : {}),
+      ...(body.data.clientId !== undefined ? { clientKeyWrap: body.data.clientId ? body.data.clientKeyWrap : null, emailClientWhenReady: false } : {}),
     },
   });
+  // Tell the client by email, now or once the upload has finished.
+  let emailed: "sent" | "when-ready" | null = null;
+  if (body.data.notify && body.data.clientId && body.data.clientId !== current.clientId && !video.replyToId) {
+    if (video.status === "RECORDING") {
+      await db.video.update({ where: { id }, data: { emailClientWhenReady: true } });
+      emailed = "when-ready";
+    } else if (await emailClientVideo(id)) {
+      emailed = "sent";
+    }
+  }
   // Owners and admins can ask to hear about videos their staff send.
   if (body.data.clientId && body.data.clientId !== current.clientId && !video.replyToId) {
     const sent = { videoId: video.id, clientId: body.data.clientId };
     after(() => notifyVideosSent(workspace.id, me.user.id, [sent]));
   }
-  return Response.json({ video: publicVideo(video) });
+  return Response.json({ video: publicVideo(video), emailed });
 });
 
 export const DELETE = handle(async (_req: Request, ctx: { params: Promise<{ id: string }> }) => {

@@ -89,6 +89,10 @@ await owner.click(`button:has-text("sm-staff${stamp}'s clients")`);
 ok("staff quick pick selects their two clients", (await owner.isChecked("li label:has-text('Ben') >> input")) && (await owner.isChecked("li label:has-text('Cal') >> input")) && !(await owner.isChecked("li label:has-text('Dee') >> input")));
 await owner.click("button:has-text('Send to 2 clients')");
 await owner.waitForSelector("text=/Sent to 2 clients/");
+// Neither has opened their personal link yet, so the owner is told to send it.
+const firstLink = await owner.waitForSelector("[data-testid=first-link-dialog]", { timeout: 5000 }).catch(() => null);
+ok("first-time clients: told to send their personal links", !!firstLink && (await firstLink.textContent()).includes("Ben") && (await firstLink.textContent()).includes("Cal"));
+await owner.click("[data-testid=first-link-dialog] >> text=Done");
 await owner.screenshot({ path: `${shots}/send-many.png`, fullPage: true });
 const copies = await prisma.video.findMany({ where: { sourceId: videoId } });
 const original = await prisma.video.findUnique({ where: { id: videoId } });
@@ -96,7 +100,8 @@ ok("one copy per client", copies.length === 2 && new Set(copies.map((c) => c.cli
 ok("copies share the stored file, nothing re-uploaded", copies.every((c) => c.storageKey === original.storageKey));
 ok("each copy has that client's own key wrap", copies.every((c) => c.clientKeyWrap && c.clientKeyWrap !== original.clientKeyWrap));
 const mails = readdirSync(".data/outbox").filter((f) => !outboxBefore.has(f)).map((f) => JSON.parse(readFileSync(`.data/outbox/${f}`, "utf8")));
-ok("both clients emailed", mails.filter((m) => /sent you a video/.test(m.subject)).length === 2);
+const toThem = (m) => [clients.Ben.email, clients.Cal.email].includes(m.to);
+ok("both clients emailed", mails.filter((m) => toThem(m) && /sent you a video/.test(m.subject)).length === 2);
 const recorder = await prisma.user.findUnique({ where: { id: original.ownerId } });
 ok("emails name who recorded it", mails.filter((m) => /sent you a video/.test(m.subject)).every((m) => m.subject.startsWith(`${recorder.name} from `)), mails.map((m) => m.subject).join(" | "));
 ok("emails carry no key", mails.every((m) => !m.text.includes("#k=")));

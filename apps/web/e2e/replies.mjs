@@ -68,7 +68,9 @@ await coach.waitForSelector("text=Sam Client");
 await coach.goto(link);
 await coach.selectOption("select", { label: "Sam Client" });
 await coach.waitForTimeout(500);
-await coach.click("text=Copy Sam's link");
+// First video for Sam: the pop-up offers the link (it holds Sam's key).
+await coach.click("[data-testid=first-link-dialog] >> text=Copy Sam's link");
+await coach.click("[data-testid=first-link-dialog] >> text=Done");
 const personal = await coach.evaluate(() => navigator.clipboard.readText());
 console.log("personal link carries key in fragment:", /\?v=\w+#k=[\w-]{43}$/.test(personal));
 await coach.screenshot({ path: `${shots}/send-to-client.png` });

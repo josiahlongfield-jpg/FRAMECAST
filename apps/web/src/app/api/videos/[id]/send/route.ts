@@ -6,12 +6,8 @@ import { limitByIp } from "@/lib/rateLimit";
 import { handle, HttpError, requireUser } from "@/lib/session";
 import { newVideoId } from "@/lib/videos";
 import { accessOf, clientScopeWhere, requirePerm, visibleVideo } from "@/lib/permissions";
-import { brandOf } from "@/lib/branding";
-import { clientLink } from "@/lib/clients";
-import { sendMail } from "@/lib/mail";
-import { newVideoEmail } from "@/lib/newVideoEmail";
-import { appUrl } from "@/lib/stripe";
 import { notifyVideosSent } from "@/lib/teamNotify";
+import { emailClientVideo } from "@/lib/emailClientVideo";
 
 const Body = z.object({
   /** Each client, with this video's key wrapped with their key on the sender's device. */
@@ -77,21 +73,6 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
   after(() => notifyVideosSent(workspace.id, me.user.id, sends));
 
   let emailed = 0;
-  if (body.data.notify) {
-    const byId = new Map(clients.map((c) => [c.id, c]));
-    const brand = brandOf(workspace, appUrl(""));
-    // Clients see who recorded it, as in the app.
-    const sender = (await db.user.findUnique({ where: { id: video.ownerId }, select: { name: true } }))?.name;
-    for (const copy of copies) {
-      const c = byId.get(copy.clientId)!;
-      if (!c.email || c.remindersOff) continue;
-      try {
-        await sendMail({ to: c.email, ...newVideoEmail({ business: workspace.name, sender, clientName: c.name, link: clientLink(c.token, copy.id), logoUrl: brand.logoUrl, color: brand.color }), fromName: workspace.name, replyTo: workspace.reminderReplyTo });
-        emailed++;
-      } catch (err) {
-        console.error("new video email failed", err);
-      }
-    }
-  }
+  if (body.data.notify) for (const copy of copies) if (await emailClientVideo(copy.id)) emailed++;
   return Response.json({ sent: copies.map((c) => ({ id: c.id, clientId: c.clientId })), skipped: wanted.length - fresh.length, emailed }, { status: 201 });
 });

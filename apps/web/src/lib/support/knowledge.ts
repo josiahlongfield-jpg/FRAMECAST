@@ -66,6 +66,7 @@ ${plan("AGENCY")}
 
 ## Clients
 - Add clients on the Clients page. Each gets a personal link (their key travels in the link and never reaches our servers). Free includes 3 clients.
+- First video to a client: the business sends the client's personal link itself (Copy personal link on the Clients page, or the pop-up that appears when sending). The link holds the client's private key, which only the team's devices have, so ${BRAND.name} can't email it. Once the client has opened it, that device remembers it and each new video is emailed to them automatically if they have an email address saved (both "Send to" and "Send to more clients" email them). A new phone or browser needs the personal link again.
 - Sending one video to several clients: open the video and use "Send to more clients" (quick picks for all the clients you can see, your own clients, or a staff member's clients). Each client gets a private copy and their own conversation.
 - Removing a client, or removing a staff member, resets the workspace keys automatically. Clients who stay get new links by email if they have an email on file; otherwise copy their new link from the Clients page.
 - Clients can turn reminder emails off themselves.

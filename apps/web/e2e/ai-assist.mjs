@@ -241,7 +241,9 @@ await owner.waitForSelector("[data-testid=ai-summary]", { timeout: 30000 });
 await owner.selectOption("select:near(:text('Send to'))", ana.id);
 await owner.waitForSelector("text=Only your team and Ana can watch this");
 for (let i = 0; i < 30 && (await prisma.video.findUnique({ where: { id: videoId } })).clientId !== ana.id; i++) await owner.waitForTimeout(100);
-await owner.click("text=/Copy Ana's link/");
+// First video for Ana: the pop-up offers her personal link.
+await owner.click("[data-testid=first-link-dialog] >> text=/Copy Ana's link/");
+await owner.click("[data-testid=first-link-dialog] >> text=Done");
 const link = await owner.evaluate(() => navigator.clipboard.readText());
 const clientCtx = await browser.newContext(perms);
 await clientCtx.addInitScript(stubTranscriber());

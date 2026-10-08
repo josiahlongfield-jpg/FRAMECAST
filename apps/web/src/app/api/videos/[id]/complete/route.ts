@@ -7,6 +7,7 @@ import { startTranscode } from "@/lib/transcode";
 import { purgeDate } from "@/lib/retention";
 import { notifyClientReply } from "@/lib/teamNotify";
 import { publicVideo, uploadableVideo } from "@/lib/videos";
+import { emailClientVideo } from "@/lib/emailClientVideo";
 
 const Body = z.object({ partCount: z.number().int().min(1).max(10_000), durationMs: z.number().int().min(0).optional() });
 
@@ -40,11 +41,14 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
       uploadId: null,
       uploadTokenHash: null, // a guest's token is single-use
       purgeAt: purgeDate((await db.workspace.findUniqueOrThrow({ where: { id: video.workspaceId } })).cloudBackup),
+      emailClientWhenReady: false,
     },
   });
   await db.uploadPart.deleteMany({ where: { videoId: id } });
   // Encrypted recordings can't be read by the server, so they aren't transcoded.
   if (!updated.encrypted) after(() => startTranscode(id).catch((e) => console.error("transcode", e)));
+  // It was sent to a client while still uploading: tell them now it's ready.
+  if (video.emailClientWhenReady && updated.clientId) after(() => emailClientVideo(id));
   // A client's video or voice reply has arrived: tell the person looking after them.
   if (updated.replyToId) {
     const reply = await db.reply.findUnique({ where: { mediaId: id }, select: { authorUserId: true } });

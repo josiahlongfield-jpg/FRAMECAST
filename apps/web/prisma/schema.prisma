@@ -12,12 +12,12 @@ datasource db {
 // ---------- Auth.js ----------
 
 model User {
-  id                String          @id @default(cuid())
+  id                String             @id @default(cuid())
   name              String?
-  email             String          @unique
+  email             String             @unique
   emailVerified     DateTime?
   image             String?
-  createdAt         DateTime        @default(now())
+  createdAt         DateTime           @default(now())
   accounts          Account[]
   sessions          Session[]
   memberships       Membership[]
@@ -25,12 +25,12 @@ model User {
   replies           Reply[]
   /// The workspace this user is working in when they belong to several (e.g. their own and an employer's).
   activeWorkspaceId String?
-  assignedClients   Client[]        @relation("ClientAssignee")
-  invitesSent       Invite[]        @relation("InviteSender")
+  assignedClients   Client[]           @relation("ClientAssignee")
+  invitesSent       Invite[]           @relation("InviteSender")
   supportTickets    SupportTicket[]
   teamNotifications TeamNotification[]
-  noticesSent       StaffNotice[]   @relation("NoticeFrom")
-  noticesReceived   StaffNotice[]   @relation("NoticeTo")
+  noticesSent       StaffNotice[]      @relation("NoticeFrom")
+  noticesReceived   StaffNotice[]      @relation("NoticeTo")
 }
 
 model Account {
@@ -81,26 +81,26 @@ enum Role {
 }
 
 model Workspace {
-  id                    String        @id @default(cuid())
+  id                    String             @id @default(cuid())
   name                  String
-  plan                  Plan          @default(FREE)
-  stripeCustomerId      String?       @unique
-  stripeSubscriptionId  String?       @unique
+  plan                  Plan               @default(FREE)
+  stripeCustomerId      String?            @unique
+  stripeSubscriptionId  String?            @unique
   subscriptionStatus    String?
   /// A paid plan given free by the founder (trials, partners). Used whenever there's no active subscription.
   complimentaryPlan     Plan?
   currentPeriodEnd      DateTime?
   /// Client seats bought on top of the plan's included seats.
-  extraClientSeats      Int           @default(0)
+  extraClientSeats      Int                @default(0)
   /// Staff seats bought on top of the plan's included staff (Studio and Agency).
-  extraStaffSeats       Int           @default(0)
+  extraStaffSeats       Int                @default(0)
   /// Paid add-on: keep encrypted copies on the server instead of expiring them.
-  cloudBackup           Boolean       @default(false)
+  cloudBackup           Boolean            @default(false)
   /// Paid add-on: AI transcripts and summaries. Transcripts are made on the
   /// team's devices; only the transcript text is sent to Claude for the summary.
-  aiAssist              Boolean       @default(false)
+  aiAssist              Boolean            @default(false)
   /// AI summaries given free by the founder (complimentary plans, no card).
-  aiAssistComplimentary Boolean       @default(false)
+  aiAssistComplimentary Boolean            @default(false)
   /// Fingerprint of the team's end-to-end key. The key itself never reaches the server.
   keyFingerprint        String?
   /// Someone left without an admin removing them (deleted their account), so
@@ -110,8 +110,8 @@ model Workspace {
   timezone              String?
   /// Reminder rules pre-selected on new to-dos (see lib/schedule.ts ReminderRule[]).
   reminderDefaults      Json?
-  remindClientDefault   Boolean       @default(true)
-  remindTeamDefault     Boolean       @default(false)
+  remindClientDefault   Boolean            @default(true)
+  remindTeamDefault     Boolean            @default(false)
   /// Optional note the business adds to every reminder email.
   reminderMessage       String?
   /// Where client replies to reminder emails go.
@@ -121,8 +121,8 @@ model Workspace {
   brandLogoType         String?
   brandColor            String?
   /// Bumped on every branding change so logo URLs bust caches.
-  brandVersion          Int           @default(0)
-  createdAt             DateTime      @default(now())
+  brandVersion          Int                @default(0)
+  createdAt             DateTime           @default(now())
   members               Membership[]
   videos                Video[]
   clients               Client[]
@@ -167,18 +167,18 @@ enum NotifyScope {
 }
 
 model Membership {
-  id             String    @id @default(cuid())
-  role           Role      @default(MEMBER)
+  id               String      @id @default(cuid())
+  role             Role        @default(MEMBER)
   /// What a MEMBER may do, set by the owner or an admin (lib/permissions.ts).
   /// Owners and admins always have full access; these only apply to members.
   /// See every client, not only the ones assigned to them (and unassigned "Shared" ones).
-  seeAllClients  Boolean   @default(false)
+  seeAllClients    Boolean     @default(false)
   /// Add new clients (they're assigned to the member who adds them).
-  addClients     Boolean   @default(true)
+  addClients       Boolean     @default(true)
   /// Delete any video they can see, not only the ones they recorded.
-  deleteAnyVideo Boolean   @default(false)
+  deleteAnyVideo   Boolean     @default(false)
   /// Send one recording to several clients at once (only clients they can see).
-  sendToMany     Boolean   @default(true)
+  sendToMany       Boolean     @default(true)
   /// Owners and admins: which client replies they're emailed about (lib/teamNotify.ts).
   replyNotify      NotifyScope @default(MINE)
   /// With SELECTED: replies from the clients of these staff members (user ids).
@@ -187,10 +187,10 @@ model Membership {
   sentNotify       NotifyScope @default(OFF)
   /// With SELECTED: the staff members they asked to hear about ("Tell me when they send a video").
   sentNotifyStaff  String[]    @default([])
-  userId         String
-  workspaceId    String
-  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  userId           String
+  workspaceId      String
+  user             User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace        Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([userId, workspaceId])
 }
@@ -207,55 +207,57 @@ enum VideoStatus {
 }
 
 model Video {
-  id              String        @id // short public id used in share links
-  title           String        @default("Untitled recording")
-  status          VideoStatus   @default(RECORDING)
-  mimeType        String
-  durationMs      Int?
-  sizeBytes       BigInt        @default(0)
-  storageKey      String
-  uploadId        String? // S3 multipart upload id
-  playbackUrl     String? // HLS url once transcoded
-  thumbnailUrl    String?
-  viewCount       Int           @default(0)
-  password        String?
-  expiresAt       DateTime?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  ownerId         String
-  workspaceId     String
+  id                   String        @id // short public id used in share links
+  title                String        @default("Untitled recording")
+  status               VideoStatus   @default(RECORDING)
+  mimeType             String
+  durationMs           Int?
+  sizeBytes            BigInt        @default(0)
+  storageKey           String
+  uploadId             String? // S3 multipart upload id
+  playbackUrl          String? // HLS url once transcoded
+  thumbnailUrl         String?
+  viewCount            Int           @default(0)
+  /// Sent to a client while the upload was still finishing: email them once it's done.
+  emailClientWhenReady Boolean       @default(false)
+  password             String?
+  expiresAt            DateTime?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  ownerId              String
+  workspaceId          String
   /// The client this video was sent to. Videos are private: only workspace
   /// members and this client can watch them.
-  clientId        String?
-  client          Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  clientId             String?
+  client               Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
   /// End-to-end encryption. The server stores only ciphertext and these
   /// wrapped (encrypted) copies of the video's key:
-  encrypted       Boolean       @default(false)
-  teamKeyWrap     String? /// video key, wrapped with the team key
-  clientKeyWrap   String? /// video key, wrapped with the recipient client's key
-  parentKeyWrap   String? /// reply media key, wrapped with the conversation's video key
+  encrypted            Boolean       @default(false)
+  teamKeyWrap          String? /// video key, wrapped with the team key
+  clientKeyWrap        String? /// video key, wrapped with the recipient client's key
+  parentKeyWrap        String? /// reply media key, wrapped with the conversation's video key
   /// When the relay copy is deleted (null = kept, e.g. cloud backup).
-  purgeAt         DateTime?
+  purgeAt              DateTime?
   /// When the recorder was emailed that the relay copy is deleted within 24 hours.
   /// Cleared whenever purgeAt is rescheduled (cloud backup turned off again).
-  expiryWarnedAt  DateTime?
+  expiryWarnedAt       DateTime?
   /// Set on a copy made to send the same recording to another client. The
   /// copy shares the original's stored file and key but has its own private
   /// conversation, so clients never see each other's replies.
-  sourceId        String?
-  source          Video?        @relation("VideoCopies", fields: [sourceId], references: [id], onDelete: Cascade)
-  copies          Video[]       @relation("VideoCopies")
+  sourceId             String?
+  source               Video?        @relation("VideoCopies", fields: [sourceId], references: [id], onDelete: Cascade)
+  copies               Video[]       @relation("VideoCopies")
   /// Set when this video is the media of a reply in another video's conversation.
-  replyToId       String?
+  replyToId            String?
   /// sha256 of a one-time token that lets a guest (no account) upload this reply's media.
-  uploadTokenHash String?
-  owner           User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  workspace       Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  parts           UploadPart[]
-  replies         Reply[]       @relation("Conversation")
-  asReply         Reply?        @relation("ReplyMedia")
-  reactions       Reaction[]
-  insight         VideoInsight?
+  uploadTokenHash      String?
+  owner                User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  workspace            Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parts                UploadPart[]
+  replies              Reply[]       @relation("Conversation")
+  asReply              Reply?        @relation("ReplyMedia")
+  reactions            Reaction[]
+  insight              VideoInsight?
 
   @@index([workspaceId, createdAt])
   @@index([replyToId])
@@ -351,6 +353,9 @@ model Client {
   keyFingerprint String?
   /// The client turned reminder emails off (from an email's unsubscribe link or their inbox).
   remindersOff   Boolean       @default(false)
+  /// First time the client opened their personal link (the one with their key).
+  /// Until then a business is reminded to send it themselves.
+  linkOpenedAt   DateTime?
   /// The staff member who looks after this client (Studio and Agency teams).
   assignedToId   String?
   assignedTo     User?         @relation("ClientAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)

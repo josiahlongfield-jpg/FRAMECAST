@@ -11,6 +11,7 @@ export default function ClientKeyCapture({ clientId }: { clientId: string }) {
     if (!k) return;
     importKey(k)
       .then((key) => saveKey(clientKeyName(clientId), key))
+      .then(() => fetch(`/api/clients/${clientId}/opened`, { method: "POST" }))
       .catch(() => {})
       .finally(() => history.replaceState(null, "", window.location.pathname));
   }, [clientId]);
