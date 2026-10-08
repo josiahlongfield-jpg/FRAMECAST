@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import MicLevel from "./MicLevel";
 import * as store from "@/lib/recorder/store";
 import { encryptFrame, fingerprint, generateKey, wrapKey } from "@/lib/e2e/crypto";
 import { ChunkedUploader, lockName, recoverInterrupted, type UploadState } from "@/lib/recorder/uploader";
@@ -391,6 +392,7 @@ export default function Recorder({
                   {mics.map((d) => <option key={d.deviceId} value={d.deviceId}>{d.label || "Microphone"}</option>)}
                 </select>
               </label>
+              {phase === "setup" && <MicLevel deviceId={micId} />}
               <label className="grid gap-1">
                 <span className="font-medium text-slate-700">Quality</span>
                 <select className="rounded-lg border border-slate-300 bg-white px-3 py-2" value={quality} onChange={(e) => setQuality(Number(e.target.value) as Quality)}>
