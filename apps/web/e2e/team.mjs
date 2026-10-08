@@ -30,7 +30,8 @@ async function webhook(page, type, sub) {
 }
 
 // Free and Solo have one login.
-ok("Free plan points to Studio for staff", await owner.isVisible("text=Studio includes 3 staff logins"));
+// The page streams in after the URL changes (app/loading.tsx), so wait for the text.
+ok("Free plan points to Studio for staff", !!(await owner.waitForSelector("text=Studio includes 3 staff logins", { timeout: 15000 }).catch(() => null)));
 const freeInvite = await owner.request.post(BASE + "/api/team/invites", { data: { teamKeyWrap: "x".repeat(44) } });
 ok("Free plan can't invite staff", freeInvite.status() === 402);
 
@@ -93,7 +94,7 @@ ok("member can't change the plan", (await staff.request.post(BASE + "/api/billin
 ok("member can't invite", (await staff.request.post(BASE + "/api/team/invites", { data: { teamKeyWrap: "x".repeat(44) } })).status() === 403);
 ok("member can't assign clients", (await staff.request.patch(`${BASE}/api/clients/${avery.id}`, { data: { assignedToId: staffUser.id } })).status() === 403);
 await staff.goto(BASE + "/settings/billing");
-ok("member sees billing is owner-only", await staff.isVisible("text=Only the workspace owner"));
+ok("member sees billing is owner-only", !!(await staff.waitForSelector("text=Only the workspace owner", { timeout: 15000 }).catch(() => null)));
 
 // A used link can't be reused by someone else.
 const other = await (await browser.newContext()).newPage();

@@ -142,10 +142,13 @@ await laptop.click("text=Continue");
 await laptop.waitForSelector("text=Unlock your videos on this device");
 await laptop.fill('input[aria-label="Recovery key"]', "A".repeat(43));
 await laptop.click("button:has-text('Unlock')");
-console.log("wrong recovery key:", await laptop.textContent("[role=alert]"));
+// Next.js's route announcer is also role=alert (empty), so wait for the message itself.
+console.log("wrong recovery key:", await laptop.textContent("p[role=alert]", { timeout: 15000 }));
 await laptop.fill('input[aria-label="Recovery key"]', recoveryKey);
 await laptop.click("button:has-text('Unlock')");
 await laptop.waitForSelector("main video", { timeout: 20000 });
+// Decrypting the whole file on a fresh device can take a while on a dev server.
+await laptop.waitForFunction(() => Number.isFinite(document.querySelector("main video")?.duration), null, { timeout: 30000 }).catch(() => {});
 console.log("new device with recovery key, duration", await laptop.$eval("main video", finiteDuration));
 
 // Seat limit on Free (3)

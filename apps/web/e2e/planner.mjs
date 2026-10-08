@@ -26,7 +26,7 @@ await pro.click("text=I've saved it");
 // Their own private list
 await pro.fill('textarea[aria-label="New to-do"]', "Order new stock");
 await pro.click("form >> button:has-text('Add')");
-await pro.waitForSelector("text=Order new stock");
+await pro.waitForSelector('li:has-text("Order new stock")');
 ok("own to-do added in library", true);
 
 // A client and their space
@@ -41,17 +41,17 @@ await pro.fill('textarea[aria-label="New to-do"]', "Send your weekly check-in");
 await pro.fill('input[aria-label="Due date"]', "2026-01-05T09:00");
 await pro.check("text=Share with Riley");
 await pro.click("form >> button:has-text('Add')");
-await pro.waitForSelector("text=Send your weekly check-in");
+await pro.waitForSelector('li:has-text("Send your weekly check-in")');
 
 await pro.click("role=tab[name='Note']");
 await pro.fill('textarea[aria-label="New note"]', "Remember to stretch before sessions");
 await pro.click("form >> button:has-text('Add')");
-await pro.waitForSelector("text=Remember to stretch before sessions");
+await pro.waitForSelector('li:has-text("Remember to stretch before sessions")');
 
 await pro.uncheck("text=Share with Riley");
 await pro.fill('textarea[aria-label="New note"]', "Prefers morning calls");
 await pro.click("form >> button:has-text('Add')");
-await pro.waitForSelector("text=Prefers morning calls");
+await pro.waitForSelector('li:has-text("Prefers morning calls")');
 ok("overdue due date shown in red", (await pro.getAttribute("text=/^Due .*Jan 5/", "class"))?.includes("text-red-600"));
 await pro.screenshot({ path: `${shots}/client-space.png`, fullPage: true });
 

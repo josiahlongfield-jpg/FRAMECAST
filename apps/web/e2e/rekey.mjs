@@ -72,11 +72,11 @@ await owner.goto(`${BASE}/clients/${avery.id}`);
 await owner.fill('textarea[aria-label="New to-do"]', "Log your sleep");
 await owner.check("text=Share with Avery");
 await owner.click("form >> button:has-text('Add')");
-await owner.waitForSelector("text=Log your sleep");
+await owner.waitForSelector('li:has-text("Log your sleep")');
 await owner.uncheck("text=Share with Avery");
 await owner.fill('textarea[aria-label="New to-do"]', "Team-only note on Avery");
 await owner.click("form >> button:has-text('Add')");
-await owner.waitForSelector("text=Team-only note on Avery");
+await owner.waitForSelector('li:has-text("Team-only note on Avery")');
 await owner.click("text=Copy personal link");
 const averyOldLink = await clip(owner);
 

@@ -25,7 +25,8 @@ const ok = (label, cond, extra = "") => {
 const prisma = new PrismaClient();
 await prisma.rateLimit.deleteMany();
 const hf = await startFakeHf();
-const s3 = await startFakeS3();
+// The bucket only allows the app's own origin (CORS), whichever port it runs on.
+const s3 = await startFakeS3({ origins: [new URL(BASE).origin] });
 const args = ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--enable-unsafe-webgpu"];
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM, args });
 const stamp = Date.now();

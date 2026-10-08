@@ -106,14 +106,15 @@ export default function Planner({
     e.preventDefault();
     const shared = !!clientId && share;
     const key = keyFor(shared);
-    if (!text.trim() || !key) return;
+    const submitted = text;
+    if (!submitted.trim() || !key) return;
     setError(undefined);
     const res = await fetch("/api/items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         kind,
-        body: await encryptText(text.trim(), key),
+        body: await encryptText(submitted.trim(), key),
         clientId,
         shared,
         keyFingerprint,
@@ -122,8 +123,9 @@ export default function Planner({
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return setError(data.error ?? "Could not save");
-    setItems((cur) => [{ ...data.item, text: text.trim() }, ...cur]);
-    setText("");
+    setItems((cur) => [{ ...data.item, text: submitted.trim() }, ...cur]);
+    // Keep anything typed while the save was in flight.
+    setText((cur) => (cur === submitted ? "" : cur));
     setSchedule(fresh());
   }
 
