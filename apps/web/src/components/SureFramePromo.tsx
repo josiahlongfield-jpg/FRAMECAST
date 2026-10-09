@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import LogoMark, { Wordmark } from "./LogoMark";
 
 const WAIT_SECONDS = 10;
 
@@ -44,11 +45,9 @@ export default function SureFramePromo({ videoId }: { videoId: string }) {
         {/* A 10-second animated promo, drawn on the page: no video file, nothing loaded from elsewhere. */}
         <div className="sf-promo relative aspect-video overflow-hidden bg-gradient-to-br from-slate-900 via-slate-900 to-brand-900" aria-hidden="true">
           <div className="sf-s1 absolute inset-0 grid place-items-center">
-            <div className="flex items-center gap-3 text-2xl font-semibold tracking-tight text-white">
-              <span className="grid h-11 w-11 place-items-center rounded-xl bg-brand-600">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z" /></svg>
-              </span>
-              SureFrame
+            <div className="flex items-center gap-3 text-2xl text-white">
+              <LogoMark size={44} tone="dark" />
+              <Wordmark />
             </div>
           </div>
           <div className="sf-s2 absolute inset-0 flex items-center justify-center gap-4 px-6">
