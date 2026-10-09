@@ -81,7 +81,7 @@ const client = await clientCtx.newPage();
 // The coach is on the Free plan, so clients see a short SureFrame intro first; wait it out and continue.
 const skipIntro = (p) =>
   p.addLocatorHandler(p.getByTestId("sureframe-promo"), async () => {
-    await p.click("text=/^Watch your video$/", { timeout: 8000 });
+    await p.click("text=/^Watch your video$/", { timeout: 12000 });
   });
 client.on("console", (m) => m.type() === "error" && console.log("client console:", m.text()));
 await client.goto(personal);
