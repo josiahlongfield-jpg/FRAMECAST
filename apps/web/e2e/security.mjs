@@ -67,22 +67,27 @@ const huge = await page.request.post(`${BASE}/api/videos/${vid}/complete`, { dat
 ok("absurd part count refused quickly", huge.status() === 400, String(huge.status()));
 
 // A recording longer than the plan allows is refused when it completes.
-const long = await (await page.request.post(BASE + "/api/videos", { data: { mimeType: "video/webm" } })).json();
-await page.request.put(`${BASE}/api/videos/${long.video.id}/parts/1`, { data: Buffer.from("x".repeat(1000)), headers: { "content-type": "application/octet-stream" } });
-const tooLong = await page.request.post(`${BASE}/api/videos/${long.video.id}/complete`, { data: { partCount: 1, durationMs: 3 * 60 * 60 * 1000 } });
+const ws = (await prisma.membership.findFirst({ where: { user: { email } } })).workspaceId;
+const fp = "f".repeat(32), wrap = "w".repeat(44);
+await prisma.workspace.update({ where: { id: ws }, data: { keyFingerprint: fp } });
+const newVideo = async () => (await (await page.request.post(BASE + "/api/videos", { data: { mimeType: "video/webm", teamKeyWrap: wrap, keyFingerprint: fp } })).json()).video.id;
+const upload = (id, ch) => page.request.put(`${BASE}/api/videos/${id}/parts/1`, { data: Buffer.from(ch.repeat(1000)), headers: { "content-type": "application/octet-stream" } });
+const longId = await newVideo();
+await upload(longId, "x");
+const tooLong = await page.request.post(`${BASE}/api/videos/${longId}/complete`, { data: { partCount: 1, durationMs: 3 * 60 * 60 * 1000 } });
 ok("recording over the plan's length refused", tooLong.status() === 413, String(tooLong.status()));
 
 // Once a client has replied, the video can't be moved to another client (their replies would go with it).
-const ws = (await prisma.membership.findFirst({ where: { user: { email } } })).workspaceId;
 const [c1, c2] = await Promise.all(["Ann", "Ben"].map((name) => prisma.client.create({ data: { name, token: crypto.randomBytes(16).toString("hex"), workspaceId: ws } })));
-const short = await (await page.request.post(BASE + "/api/videos", { data: { mimeType: "video/webm" } })).json();
-await page.request.put(`${BASE}/api/videos/${short.video.id}/parts/1`, { data: Buffer.from("y".repeat(1000)), headers: { "content-type": "application/octet-stream" } });
-await page.request.post(`${BASE}/api/videos/${short.video.id}/complete`, { data: { partCount: 1, durationMs: 2000 } });
-ok("video sent to a client", (await page.request.patch(`${BASE}/api/videos/${short.video.id}`, { data: { clientId: c1.id } })).ok());
-await prisma.reply.create({ data: { kind: "TEXT", body: "hi", authorName: "Ann", videoId: short.video.id } });
-const moved = await page.request.patch(`${BASE}/api/videos/${short.video.id}`, { data: { clientId: c2.id } });
+const shortId = await newVideo();
+await upload(shortId, "y");
+await page.request.post(`${BASE}/api/videos/${shortId}/complete`, { data: { partCount: 1, durationMs: 2000 } });
+const sendTo = (clientId) => page.request.patch(`${BASE}/api/videos/${shortId}`, { data: { clientId, clientKeyWrap: wrap, keyFingerprint: fp } });
+ok("video sent to a client", (await sendTo(c1.id)).ok());
+await prisma.reply.create({ data: { kind: "TEXT", body: "hi", authorName: "Ann", videoId: shortId } });
+const moved = await sendTo(c2.id);
 ok("after a reply, moving it to another client is refused", moved.status() === 409, String(moved.status()));
-ok("the video stays with the first client", (await prisma.video.findUnique({ where: { id: short.video.id } })).clientId === c1.id);
+ok("the video stays with the first client", (await prisma.video.findUnique({ where: { id: shortId } })).clientId === c1.id);
 
 // Cron needs the exact secret.
 ok("cron refuses a wrong secret", (await anon.request.get(BASE + "/api/cron/purge", { headers: { authorization: "Bearer nope" } })).status() === 401);
