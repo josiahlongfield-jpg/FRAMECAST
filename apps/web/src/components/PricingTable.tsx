@@ -37,10 +37,10 @@ export default function PricingTable() {
               {featured && <span className="absolute -top-3 left-6 w-fit rounded-full bg-brand-600 px-3 py-1 text-xs font-semibold text-white">Most popular</span>}
               <h2 className="text-lg font-semibold text-slate-900">{p.name}</h2>
               <p className="mt-4 flex items-baseline gap-1">
-                <span className="text-4xl font-semibold text-slate-900">${price}</span>
+                <span className="text-4xl font-semibold text-slate-900">{price > 0 && <span className="text-xl align-top">US</span>}${price}</span>
                 <span className="text-sm text-slate-500">{price ? `/ ${interval}` : "forever"}</span>
               </p>
-              {interval === "year" && price > 0 && <p className="mt-1 text-xs text-slate-500">${(price / 12).toFixed(2)} a month, billed yearly</p>}
+              {interval === "year" && price > 0 && <p className="mt-1 text-xs text-slate-500">US${(price / 12).toFixed(2)} a month, billed yearly</p>}
               <ul className="mt-6 flex-1 space-y-3 text-sm text-slate-700">
                 {p.features.map((f) => (
                   <li key={f} className="flex gap-2">

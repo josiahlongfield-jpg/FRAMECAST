@@ -54,7 +54,7 @@ export function aiAssistActive(w: { plan: Plan; aiAssist: boolean }) {
   return w.aiAssist && w.plan !== "FREE";
 }
 
-const paidFeatures = ["Unlimited videos", "Up to 4 hours per video", "1080p and 4K recording", "Custom branding", "No SureFrame intro before your videos", "Extra clients $1.50/month each", "Optional cloud backup", "Optional AI transcripts and summaries"];
+const paidFeatures = ["Unlimited videos", "Up to 4 hours per video", "1080p and 4K recording", "Custom branding", "No SureFrame intro before your videos", "Extra clients US$1.50/month each", "Optional cloud backup", "Optional AI transcripts and summaries"];
 
 export const PLANS: Record<Plan, PlanLimits> = {
   FREE: {
@@ -91,7 +91,7 @@ export const PLANS: Record<Plan, PlanLimits> = {
     clientSeats: 40,
     staffSeats: 3,
     showsPromo: false,
-    features: ["40 clients included", "3 staff logins", "Assign clients to staff", "Choose what each staff member can see and do", "Team overview: replies waiting, videos sent, staff reminders", "Extra staff $8/month each", "Everything in Solo"],
+    features: ["40 clients included", "3 staff logins", "Assign clients to staff", "Choose what each staff member can see and do", "Team overview: replies waiting, videos sent, staff reminders", "Extra staff US$8/month each", "Everything in Solo"],
   },
   AGENCY: {
     name: "Agency",
@@ -103,7 +103,7 @@ export const PLANS: Record<Plan, PlanLimits> = {
     clientSeats: 100,
     staffSeats: 10,
     showsPromo: false,
-    features: ["100 clients included", "10 staff logins", "Assign clients to staff", "Choose what each staff member can see and do", "Team overview: replies waiting, videos sent, staff reminders", "Extra staff $8/month each", "Everything in Solo"],
+    features: ["100 clients included", "10 staff logins", "Assign clients to staff", "Choose what each staff member can see and do", "Team overview: replies waiting, videos sent, staff reminders", "Extra staff US$8/month each", "Everything in Solo"],
   },
 };
 

@@ -30,7 +30,7 @@ export default function CloudBackupToggle({ enabled, canEnable, price, days }: {
             Your videos live on your devices and are end-to-end encrypted. We only relay an encrypted copy so clients can watch it, and delete it after {days} days.
             Cloud backup keeps those encrypted copies until you delete them. We still can&apos;t open them.
           </p>
-          <p className="mt-2 text-xs text-slate-500">${price} per month, optional.</p>
+          <p className="mt-2 text-xs text-slate-500">US${price} per month, optional.</p>
         </div>
         <button
           role="switch"

@@ -22,7 +22,7 @@ async function AiAddOn({ workspace }: { workspace: Workspace }) {
     <AiAssistToggle
       enabled={aiAssistActive(workspace)}
       canEnable={free || (!!paid && !!workspace.stripeSubscriptionId)}
-      priceLabel={free || !paid ? null : `$${paid.month} per month on ${PLANS[workspace.plan].name} ($${paid.year} per year on yearly billing)`}
+      priceLabel={free || !paid ? null : `US$${paid.month} per month on ${PLANS[workspace.plan].name} (US$${paid.year} per year on yearly billing)`}
       usage={aiAssistActive(workspace) ? await summaryUsage(workspace) : null}
       modelReady={!!(await readManifest().catch(() => null))}
     />

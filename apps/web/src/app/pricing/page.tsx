@@ -17,7 +17,8 @@ export default function Pricing() {
           <p className="mt-4 text-slate-600">Pick a plan by how many clients you work with.</p>
         </div>
         <PricingTable />
-        <p className="mt-10 text-center text-sm text-slate-500">More than 100 clients? Add extra clients for $1.50 a month each.</p>
+        <p className="mt-10 text-center text-sm text-slate-500">More than 100 clients? Add extra clients for US$1.50 a month each.</p>
+        <p className="mt-2 text-center text-sm text-slate-500" data-testid="currency-note">All prices are in US dollars (USD). Your bank converts them to your own currency when you pay.</p>
 
         <section className="mx-auto mt-16 max-w-3xl" aria-labelledby="add-ons">
           <h2 id="add-ons" className="text-center text-2xl font-semibold tracking-tight text-slate-900">Optional add-ons</h2>
@@ -33,7 +34,7 @@ export default function Pricing() {
                   <li key={id} className="flex justify-between gap-3">
                     <span>{PLANS[id].name}</span>
                     <span>
-                      ${AI_ASSIST_PRICES[id].month}/month or ${AI_ASSIST_PRICES[id].year}/year · up to {AI_SUMMARIES_PER_MONTH[id]} summaries a month
+                      US${AI_ASSIST_PRICES[id].month}/month or US${AI_ASSIST_PRICES[id].year}/year · up to {AI_SUMMARIES_PER_MONTH[id]} summaries a month
                     </span>
                   </li>
                 ))}
@@ -43,7 +44,7 @@ export default function Pricing() {
             <div className="rounded-2xl border border-slate-200 bg-white p-6">
               <h3 className="font-semibold text-slate-900">Cloud backup</h3>
               <p className="mt-2 text-sm text-slate-600">Keep the encrypted copies of your videos on our servers until you delete them, instead of for {RETENTION_DAYS} days. We still can&apos;t open them.</p>
-              <p className="mt-4 text-sm text-slate-700">${CLOUD_BACKUP_PRICE}/month or ${CLOUD_BACKUP_PRICE_YEARLY}/year on any paid plan</p>
+              <p className="mt-4 text-sm text-slate-700">US${CLOUD_BACKUP_PRICE}/month or US${CLOUD_BACKUP_PRICE_YEARLY}/year on any paid plan</p>
             </div>
           </div>
         </section>

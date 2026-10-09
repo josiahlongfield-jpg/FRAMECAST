@@ -43,7 +43,7 @@ export default async function TeamSettings() {
           <div className="mt-6 rounded-2xl border border-brand-100 bg-brand-50 p-5 text-sm text-brand-900">
             <p className="font-medium">Working with others?</p>
             <p className="mt-1">
-              Studio includes 3 staff logins and Agency includes 10, with more at ${EXTRA_STAFF_PRICE}/month each. Everyone records, replies and keeps track of their own clients.
+              Studio includes 3 staff logins and Agency includes 10, with more at US${EXTRA_STAFF_PRICE}/month each. Everyone records, replies and keeps track of their own clients.
             </p>
             <Link href="/pricing" className="mt-3 inline-block font-medium underline">See plans</Link>
           </div>

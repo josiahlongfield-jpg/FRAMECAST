@@ -9,8 +9,8 @@ type Seats = { used: number; limit: number };
 type Client = { id: string; name: string; email: string | null; link: string; teamKeyWrap: string | null; videoCount: number; assignedToId: string | null };
 type Staff = { id: string; name: string };
 
-/** $37.50, $45 */
-const money = (n: number) => `$${Number.isInteger(n) ? n : n.toFixed(2)}`;
+/** US$37.50, US$45 */
+const money = (n: number) => `US$${Number.isInteger(n) ? n : n.toFixed(2)}`;
 
 /** A client's personal link, with their decryption key in the #fragment (never sent to the server). */
 export async function personalLink(link: string, teamKeyWrap: string | null, teamKey: CryptoKey) {
@@ -183,7 +183,7 @@ function Manager({
           </div>
         ) : (
           <p className="mt-5 border-t border-slate-100 pt-5 text-sm text-slate-600">
-            <Link href="/pricing" className="font-medium text-brand-700 hover:underline">Upgrade</Link> for 10 or more client seats, with extra seats at ${seatPrice} each per month.
+            <Link href="/pricing" className="font-medium text-brand-700 hover:underline">Upgrade</Link> for 10 or more client seats, with extra seats at US${seatPrice} each per month.
           </p>
         )}
       </section>
