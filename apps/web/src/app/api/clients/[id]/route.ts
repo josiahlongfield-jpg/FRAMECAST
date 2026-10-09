@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { enforceSeatLimits } from "@/lib/seatLimits";
 import { handle, HttpError, requireRole, requireUser } from "@/lib/session";
 import { rateLimit } from "@/lib/rateLimit";
 import { accessOf, clientScopeWhere } from "@/lib/permissions";
@@ -41,5 +42,7 @@ export const DELETE = handle(async (_req: Request, ctx: { params: Promise<{ id: 
   const { workspace } = me;
   const res = await db.client.updateMany({ where: { id, workspaceId: workspace.id, removedAt: null }, data: { removedAt: new Date() } });
   if (res.count === 0) throw new HttpError(404, "Client not found");
+  // A freed seat restores a paused client.
+  await enforceSeatLimits(workspace.id);
   return new Response(null, { status: 204 });
 });

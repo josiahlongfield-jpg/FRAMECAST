@@ -11,7 +11,7 @@ const money = (n: number) => `US$${Number.isInteger(n) ? n : n.toFixed(2)}`;
 import { PermChecks, savePerm, type Perms } from "./StaffPerms";
 
 type Role = "OWNER" | "ADMIN" | "MEMBER";
-type Member = { userId: string; name: string; email: string; role: Role; perms: Perms };
+type Member = { userId: string; name: string; email: string; role: Role; perms: Perms; paused?: boolean };
 type Invite = { id: string; email: string | null; role: Role; expiresAt: string };
 type Seats = { members: number; pending: number; used: number; limit: number };
 
@@ -232,7 +232,14 @@ function Manager({ teamKey, workspaceId, keyResetNeeded, role, meId, initialSeat
           {members.map((m) => (
             <li key={m.userId} className="flex flex-wrap items-center justify-between gap-3 px-6 py-4">
               <div>
-                <p className="font-medium text-slate-900">{m.name}{m.userId === meId && " (you)"}</p>
+                <p className="font-medium text-slate-900">
+                  {m.name}{m.userId === meId && " (you)"}
+                  {m.paused && (
+                    <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800" data-testid="staff-paused-badge" title="Over your plan's staff limit">
+                      Paused
+                    </span>
+                  )}
+                </p>
                 <p className="text-xs text-slate-500">{m.email}</p>
               </div>
               <div className="flex items-center gap-2 text-sm">

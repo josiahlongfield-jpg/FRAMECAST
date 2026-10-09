@@ -18,7 +18,7 @@ export async function emailClientVideo(videoId: string) {
     include: { client: true, workspace: true, owner: { select: { name: true } } },
   });
   const c = video?.client;
-  if (!video || !c || c.removedAt || !c.email || c.remindersOff) return false;
+  if (!video || !c || c.removedAt || c.pausedAt || !c.email || c.remindersOff) return false;
   // At most a handful of these an hour per client, however often a video is re-sent.
   if (!(await rateLimit(`client-mail:${c.id}`, 10, 3600).then(() => true, () => false))) return false;
   const ws = video.workspace;

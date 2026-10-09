@@ -198,6 +198,9 @@ model Membership {
   myReminderMessage     String?
   /// Where those clients' replies to reminder (and new video) emails go.
   myReminderReplyTo     String?
+  /// Paused because the plan no longer covers this many staff (a subscription
+  /// ended or lapsed). Lifted automatically when seats free up. Never the owner.
+  pausedAt              DateTime?
   userId                String
   workspaceId           String
   user                  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -370,6 +373,9 @@ model Client {
   /// First time the business copied the client's personal link (to send it).
   /// From then on new videos are sent with a plain Send, not the link reminder.
   linkSentAt     DateTime?
+  /// Paused because the business's plan no longer covers this many clients
+  /// (a subscription ended or lapsed). Lifted automatically when seats free up.
+  pausedAt       DateTime?
   /// The staff member who looks after this client (Studio and Agency teams).
   assignedToId   String?
   assignedTo     User?         @relation("ClientAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)

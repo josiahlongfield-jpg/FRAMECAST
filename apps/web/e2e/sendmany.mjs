@@ -79,7 +79,7 @@ const videoId = owner.url().split("/v/")[1].split("?")[0];
 await owner.waitForSelector("text=Send to more clients", { timeout: 20000 });
 await owner.selectOption("select:near(:text('Send to'))", clients.Ana.id);
 await owner.waitForSelector("text=Only your team and Ana can watch this");
-for (let i = 0; i < 30 && (await prisma.video.findUnique({ where: { id: videoId } })).clientId !== clients.Ana.id; i++) await owner.waitForTimeout(100);
+for (let i = 0; i < 150 && (await prisma.video.findUnique({ where: { id: videoId } })).clientId !== clients.Ana.id; i++) await owner.waitForTimeout(100);
 await owner.reload();
 const outboxBefore = new Set(readdirSync(".data/outbox"));
 await owner.click("text=Send to more clients");

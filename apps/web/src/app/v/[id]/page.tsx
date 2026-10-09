@@ -73,7 +73,7 @@ export default async function Watch({ params, searchParams }: Props) {
   const [replies, clients, staff, copies] = await Promise.all([
     db.reply.findMany({ where: { videoId: id, ...visibleReplies }, orderBy: { createdAt: "asc" }, include: { media: true } }),
     // Only the clients this person may see (lib/permissions.ts).
-    access ? db.client.findMany({ where: { ...clientScopeWhere(access), removedAt: null }, orderBy: { name: "asc" } }) : Promise.resolve([]),
+    access ? db.client.findMany({ where: { ...clientScopeWhere(access), removedAt: null, pausedAt: null }, orderBy: { name: "asc" } }) : Promise.resolve([]),
     // Quick picks by staff member only help someone who can see everyone's clients.
     access && perms?.seeAllClients ? db.membership.findMany({ where: { workspaceId: video.workspaceId }, include: { user: true }, orderBy: { id: "asc" } }) : Promise.resolve([]),
     // The other clients this recording went to, each with their own conversation.

@@ -81,6 +81,16 @@ export default function Page() {
           Free plan.
         </li>
         <li>
+          Each plan covers a set number of clients and staff logins. To move to a smaller plan or fewer seats, first remove the clients or staff it doesn&rsquo;t
+          cover. If your plan drops for another reason (you cancel, a payment fails and isn&rsquo;t fixed, or a free plan we gave you ends), the clients and staff
+          beyond the new plan&rsquo;s limits are paused: they can&rsquo;t open anything or be sent anything until you upgrade or remove others. The owner and the
+          longest-standing clients and staff keep access, and nothing is deleted because of a pause.
+        </li>
+        <li>
+          We email the workspace owner when anyone is paused. It&rsquo;s your responsibility to tell your staff and clients about any change to your plan that
+          affects them.
+        </li>
+        <li>
           Payments aren&rsquo;t refundable for partial periods, except where the law requires a refund. If you think you&rsquo;ve been charged in error, email {mail}.
         </li>
         <li>We may change our prices. We&rsquo;ll give you at least 30 days&rsquo; notice by email, and the new price applies from your next renewal.</li>

@@ -45,7 +45,7 @@ export const PATCH = handle(async (req: Request, ctx: { params: Promise<{ id: st
     }
   }
   if (body.data.clientId) {
-    const client = await db.client.findFirst({ where: { id: body.data.clientId, workspaceId: workspace.id, removedAt: null } });
+    const client = await db.client.findFirst({ where: { id: body.data.clientId, workspaceId: workspace.id, removedAt: null, pausedAt: null } });
     if (!client || !canSeeClient(access, client)) throw new HttpError(400, "Unknown client");
     if (current.encrypted && !body.data.clientKeyWrap) throw new HttpError(400, "Missing the client's key for this video");
   }

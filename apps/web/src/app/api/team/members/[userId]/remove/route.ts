@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { applyRekey, RekeyBody } from "@/lib/rekey";
 import { handle, HttpError, requireRole, requireUser } from "@/lib/session";
 import { rateLimit } from "@/lib/rateLimit";
+import { enforceSeatLimits } from "@/lib/seatLimits";
 
 /**
  * Remove someone from the team and reset every key they could have held.
@@ -26,5 +27,7 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ userId:
     await tx.membership.delete({ where: { id: m.id } });
     await tx.user.updateMany({ where: { id: userId, activeWorkspaceId: workspace.id }, data: { activeWorkspaceId: null } });
   });
+  // A freed seat restores a paused staff member.
+  await enforceSeatLimits(workspace.id);
   return Response.json(result);
 });

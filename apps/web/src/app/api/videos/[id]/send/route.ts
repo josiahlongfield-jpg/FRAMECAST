@@ -39,7 +39,7 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
 
   const wanted = [...new Map(body.data.recipients.map((r) => [r.clientId, r])).values()];
   const [clients, already] = await Promise.all([
-    db.client.findMany({ where: { ...clientScopeWhere(access), id: { in: wanted.map((r) => r.clientId) }, removedAt: null }, select: { id: true, name: true, email: true, token: true, remindersOff: true } }),
+    db.client.findMany({ where: { ...clientScopeWhere(access), id: { in: wanted.map((r) => r.clientId) }, removedAt: null, pausedAt: null }, select: { id: true, name: true, email: true, token: true, remindersOff: true } }),
     db.video.findMany({ where: { sourceId: id }, select: { clientId: true } }),
   ]);
   if (clients.length !== wanted.length) throw new HttpError(400, "One of those clients isn't in your workspace");

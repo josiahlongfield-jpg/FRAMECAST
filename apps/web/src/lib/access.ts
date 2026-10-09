@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import type { Client, Video } from "@prisma/client";
 import { db } from "@/lib/db";
-import { currentUser, HttpError } from "@/lib/session";
+import { currentUser, HttpError, STAFF_PAUSED } from "@/lib/session";
 import { accessOf, canSeeClient, canSeeVideo, type Access } from "@/lib/permissions";
 
 /** Cookie a client's personal link sets, one per workspace they belong to. */
@@ -22,7 +22,7 @@ export async function viewerFor(video: Video): Promise<Viewer | null> {
   if (!root) return null;
 
   const me = await currentUser();
-  if (me && me.workspace.id === root.workspaceId) {
+  if (me && !me.paused && me.workspace.id === root.workspaceId) {
     const access = accessOf(me);
     if (await canSeeVideo(access, root)) {
       return { kind: "member", userId: me.user.id, name: me.user.name ?? me.user.email.split("@")[0], access };
@@ -32,7 +32,8 @@ export async function viewerFor(video: Video): Promise<Viewer | null> {
   const token = (await cookies()).get(clientCookie(root.workspaceId))?.value;
   if (!token || !root.clientId) return null;
   const client = await db.client.findUnique({ where: { token } });
-  if (!client || client.removedAt || client.id !== root.clientId) return null;
+  // Paused clients (over the plan's limits, lib/seatLimits.ts) can't open anything until restored.
+  if (!client || client.removedAt || client.pausedAt || client.id !== root.clientId) return null;
   return { kind: "client", client, name: client.name };
 }
 
@@ -50,7 +51,7 @@ export async function clientFromCookie(workspaceId: string) {
   const token = (await cookies()).get(clientCookie(workspaceId))?.value;
   if (!token) return null;
   const client = await db.client.findUnique({ where: { token } });
-  return client && !client.removedAt && client.workspaceId === workspaceId ? client : null;
+  return client && !client.removedAt && !client.pausedAt && client.workspaceId === workspaceId ? client : null;
 }
 
 /**
@@ -62,7 +63,7 @@ export async function memberOrClient(clientId: string | null) {
   if (clientId) {
     const client = await db.client.findUnique({ where: { id: clientId } });
     if (!client || client.removedAt) throw new HttpError(404, "Not found");
-    if (me && me.workspace.id === client.workspaceId && canSeeClient(accessOf(me), client)) {
+    if (me && !me.paused && me.workspace.id === client.workspaceId && canSeeClient(accessOf(me), client)) {
       return { kind: "member" as const, me, workspaceId: client.workspaceId };
     }
     const self = await clientFromCookie(client.workspaceId);
@@ -70,5 +71,6 @@ export async function memberOrClient(clientId: string | null) {
     throw new HttpError(404, "Not found");
   }
   if (!me) throw new HttpError(401, "Sign in required");
+  if (me.paused) throw new HttpError(403, STAFF_PAUSED);
   return { kind: "member" as const, me, workspaceId: me.workspace.id };
 }

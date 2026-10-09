@@ -48,6 +48,12 @@ export default async function TeamSettings() {
             <Link href="/pricing" className="mt-3 inline-block font-medium underline">See plans</Link>
           </div>
         )}
+        {members.some((m) => m.pausedAt) && (
+          <p className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" data-testid="paused-staff-note">
+            Your plan covers {seats.limit} staff {seats.limit === 1 ? "login" : "logins"}, so the people marked Paused can&apos;t sign in to your team. Nothing has been
+            deleted. Upgrade or add staff logins, or remove people you no longer need, and they&apos;re restored straight away. Please let them know about the change.
+          </p>
+        )}
         <TeamManager
           workspaceId={workspace.id}
           fingerprint={workspace.keyFingerprint}
@@ -58,7 +64,7 @@ export default async function TeamSettings() {
           extraStaff={workspace.extraStaffSeats}
           canBuyStaff={isTeamPlan && role === "OWNER" && !!workspace.stripeSubscriptionId}
           staffPrice={EXTRA_STAFF_PRICE}
-          initialMembers={members.map((m) => ({ userId: m.userId, name: m.user.name ?? m.user.email.split("@")[0], email: m.user.email, role: m.role, perms: permsOf(m) }))}
+          initialMembers={members.map((m) => ({ userId: m.userId, name: m.user.name ?? m.user.email.split("@")[0], email: m.user.email, role: m.role, perms: permsOf(m), paused: !!m.pausedAt }))}
           initialInvites={invites.map((i) => ({ id: i.id, email: i.email, role: i.role, expiresAt: i.expiresAt.toISOString() }))}
           keyResetNeeded={role === "MEMBER" ? null : workspace.keyResetNeeded}
           workspaces={mine.map((m) => ({ id: m.workspaceId, name: m.workspace.name, active: m.workspaceId === workspace.id }))}

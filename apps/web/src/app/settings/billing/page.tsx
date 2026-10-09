@@ -76,6 +76,12 @@ export default async function Billing({ searchParams }: { searchParams: Promise<
           <ul className="mt-4 space-y-1 text-sm text-slate-700">
             {plan.features.map((f) => <li key={f}>• {f}</li>)}
           </ul>
+          {workspace.stripeSubscriptionId && (
+            <p className="mt-4 text-xs text-slate-500" data-testid="cancel-note">
+              If you cancel, or a payment can&apos;t be taken, you move to the Free plan when the paid period ends. Clients and staff beyond its limits are then
+              paused until you upgrade or remove some. Please tell them about any change.
+            </p>
+          )}
           <div className="mt-6 flex gap-3">
             {workspace.stripeCustomerId && <ManageBillingButton />}
             {(workspace.plan !== "AGENCY" || comp) && (

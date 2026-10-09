@@ -11,6 +11,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ token: string }
   const client = await db.client.findUnique({ where: { token } });
   const url = new URL(req.url);
   if (!client || client.removedAt) return Response.redirect(new URL("/inbox?invalid=1", url), 302);
+  // The business's plan no longer covers this client (lib/seatLimits.ts).
+  if (client.pausedAt) return Response.redirect(new URL("/inbox?paused=1", url), 302);
 
   (await cookies()).set(clientCookie(client.workspaceId), token, {
     httpOnly: true,

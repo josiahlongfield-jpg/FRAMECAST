@@ -6,7 +6,7 @@ import { exportKey, fingerprint, generateKey, unwrapKey, wrapKey } from "@/lib/e
 import TeamKeyGate from "./TeamKeyGate";
 
 type Seats = { used: number; limit: number };
-type Client = { id: string; name: string; email: string | null; link: string; teamKeyWrap: string | null; videoCount: number; assignedToId: string | null };
+type Client = { id: string; name: string; email: string | null; link: string; teamKeyWrap: string | null; videoCount: number; assignedToId: string | null; paused?: boolean };
 type Staff = { id: string; name: string };
 
 /** US$37.50, US$45 */
@@ -229,6 +229,11 @@ function Manager({
               <li key={c.id} className="flex flex-wrap items-center justify-between gap-3 px-6 py-4">
                 <div>
                   <Link href={`/clients/${c.id}`} className="font-medium text-slate-900 hover:text-brand-700 hover:underline">{c.name}</Link>
+                  {c.paused && (
+                    <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800" data-testid="client-paused-badge" title="Over your plan's client limit">
+                      Paused
+                    </span>
+                  )}
                   <p className="text-xs text-slate-500">
                     {c.email ? `${c.email} · ` : ""}{c.videoCount} {c.videoCount === 1 ? "video" : "videos"}
                     {staff.length > 1 && seesAll && !canManage && ` · ${staffName(c.assignedToId) ?? "Shared"}`}

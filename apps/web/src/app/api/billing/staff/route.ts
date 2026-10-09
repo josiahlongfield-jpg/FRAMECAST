@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { enforceSeatLimits } from "@/lib/seatLimits";
 import { ACTIVE_STATUSES, catalogKey, intervalOf, priceId } from "@/lib/billing";
 import { PLANS, TEAM_PLANS } from "@/lib/plans";
 import { handle, HttpError, requireRole, requireUser } from "@/lib/session";
@@ -37,5 +38,6 @@ export const POST = handle(async (req: Request) => {
   if (items.length) await stripe().subscriptions.update(sub.id, { items, proration_behavior: "create_prorations" });
   // The webhook confirms; update now so the page reflects it immediately.
   await db.workspace.update({ where: { id: workspace.id }, data: { extraStaffSeats: body.data.extraStaff } });
+  await enforceSeatLimits(workspace.id);
   return Response.json({ extraStaff: body.data.extraStaff });
 });

@@ -162,7 +162,7 @@ export async function runReminders(now = new Date()) {
     const mails: { to: string; m: ReturnType<typeof reminderEmail>; replyTo?: string | null }[] = [];
     if (r.to === "CLIENT") {
       const c = item.client;
-      if (!c || c.removedAt || c.remindersOff || !c.email || !item.shared) { await skip("client unavailable"); continue; }
+      if (!c || c.removedAt || c.pausedAt || c.remindersOff || !c.email || !item.shared) { await skip("client unavailable"); continue; }
       // The staff member looking after the client speaks for themselves when they've set their own message and reply-to.
       const own = clientMailSettings(ws, ws.members.find((m) => m.userId === c.assignedToId));
       mails.push({

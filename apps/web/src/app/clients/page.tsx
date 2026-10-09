@@ -36,6 +36,13 @@ export default async function ClientsPage() {
         <p className="mt-1 text-sm text-slate-500">
           Clients watch and reply to the videos you send them for free. They don&apos;t need an account, just their personal link.
         </p>
+        {clients.some((c) => c.pausedAt) && (
+          <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" data-testid="paused-clients-note">
+            Your plan covers {seats.limit} {seats.limit === 1 ? "client" : "clients"}, so the clients marked Paused can&apos;t open their videos or be sent new ones.
+            Nothing has been deleted. Upgrade or add seats, or remove clients you no longer need, and they&apos;re restored straight away (longest-standing first).
+            Please let them know about the change.
+          </p>
+        )}
         <ClientsManager
           workspaceId={workspace.id}
           fingerprint={workspace.keyFingerprint}
@@ -47,6 +54,7 @@ export default async function ClientsPage() {
             teamKeyWrap: c.teamKeyWrap,
             videoCount: c._count.videos,
             assignedToId: c.assignedToId,
+            paused: !!c.pausedAt,
           }))}
           initialSeats={seats}
           includedSeats={plan.clientSeats}

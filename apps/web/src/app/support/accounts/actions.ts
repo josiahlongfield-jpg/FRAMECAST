@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import type { Plan } from "@prisma/client";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
+import { enforceSeatLimits } from "@/lib/seatLimits";
 import { PLANS } from "@/lib/plans";
 import { isSupportAgent } from "@/lib/support/tickets";
 
@@ -29,6 +30,7 @@ export async function setComplimentary(_prev: CompResult, form: FormData): Promi
     // Free AI summaries only come with a free plan.
     data: plan === "FREE" ? { plan: "FREE", complimentaryPlan: null, aiAssistComplimentary: false, aiAssist: false } : { plan, complimentaryPlan: plan },
   });
+  await enforceSeatLimits(ws.id);
   revalidatePath("/support/accounts");
   return {
     ok: true,

@@ -46,6 +46,7 @@ ${plan("AGENCY")}
 ## Billing
 - Upgrade or switch plans from the Pricing page. Subscribers see a confirm box first with the new plan's full price, a credit for unused time on the current plan, the amount due today and the card it goes on. Billing then restarts on the switch date. An upgrade only applies once the payment goes through; if the card is declined the plan stays the same and Stripe shows a page to pay.
 - Change card, see invoices or cancel: Settings > Billing > Manage subscription. Cancelling keeps the plan until the end of the period already paid for, then the workspace returns to Free.
+- Moving to a smaller plan or fewer seats: remove the clients or staff it doesn't cover first. If a plan drops on its own (cancelled, unpaid, or a free plan ends), clients and staff beyond the new limits are paused: they can't open or be sent anything until the owner upgrades or removes others (the owner and longest-standing keep access; nothing is deleted). The owner is emailed and should tell anyone affected. Paused clients see a note to contact the business; paused staff see a page asking them to contact the owner.
 - Extra clients, extra staff and cloud backup are added on Settings > Billing (owner only). AI transcripts and summaries is switched on there too, also by the owner only.
 - Only the workspace owner can change billing. Staff see an owner-only notice.
 - Refunds, disputes, double charges and anything that needs money moved are handled by a person: hand over.

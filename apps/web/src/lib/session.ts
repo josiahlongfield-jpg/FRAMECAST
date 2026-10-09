@@ -3,6 +3,9 @@ import { auth } from "@/auth";
 import type { Membership, Role } from "@prisma/client";
 import { db } from "@/lib/db";
 
+/** Shown to staff the plan no longer covers (lib/seatLimits.ts). */
+export const STAFF_PAUSED = "Your access to this team is paused because its plan changed. Ask the owner to restore it.";
+
 export class HttpError extends Error {
   constructor(public status: number, message: string) {
     super(message);
@@ -22,11 +25,13 @@ export async function currentUser() {
     include: { memberships: { include: { workspace: true }, orderBy: { id: "asc" } } },
   });
   if (!user) return null;
-  // The workspace they last joined or switched to, else their first one.
-  const membership = user.memberships.find((m) => m.workspaceId === user.activeWorkspaceId) ?? user.memberships[0];
+  // The workspace they last joined or switched to, else their first one they can still use.
+  const membership =
+    user.memberships.find((m) => m.workspaceId === user.activeWorkspaceId) ?? user.memberships.find((m) => !m.pausedAt) ?? user.memberships[0];
   if (membership) {
     const { workspace, ...m } = membership;
-    return { user, workspace, role: membership.role, membership: m as Membership };
+    // Staff over the plan's limits (lib/seatLimits.ts) can't use the team until restored.
+    return { user, workspace, role: membership.role, membership: m as Membership, paused: !!membership.pausedAt };
   }
   const workspace = await db.workspace.create({
     data: {
@@ -36,7 +41,7 @@ export async function currentUser() {
     include: { members: true },
   });
   const { members, ...ws } = workspace;
-  return { user, workspace: ws, role: "OWNER" as Role, membership: members[0] };
+  return { user, workspace: ws, role: "OWNER" as Role, membership: members[0], paused: false };
 }
 
 /** Throws unless the signed-in member has one of the given roles. */
@@ -47,12 +52,14 @@ export function requireRole(me: { role: Role }, ...roles: Role[]) {
 export async function requireUser() {
   const me = await currentUser();
   if (!me) throw new HttpError(401, "Sign in required");
+  if (me.paused) throw new HttpError(403, STAFF_PAUSED);
   return me;
 }
 
 export async function requirePageUser(next = "/library") {
   const me = await currentUser();
   if (!me) redirect(`/login?next=${encodeURIComponent(next)}`);
+  if (me.paused) redirect("/paused");
   return me;
 }
 

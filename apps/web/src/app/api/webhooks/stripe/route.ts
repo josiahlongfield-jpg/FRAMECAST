@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { ACTIVE_STATUSES, catalogOf, isAiItem, planOf } from "@/lib/billing";
 import { stripe } from "@/lib/stripe";
 import { applyBackupSetting } from "@/lib/retention";
+import { enforceSeatLimits } from "@/lib/seatLimits";
 
 async function syncSubscription(sub: Stripe.Subscription) {
   const workspaceId = sub.metadata.workspaceId;
@@ -39,6 +40,8 @@ async function syncSubscription(sub: Stripe.Subscription) {
   });
   // Only a real change to cloud backup moves deletion dates; renewals and seat changes must not.
   if (workspace.cloudBackup !== cloudBackup) await applyBackupSetting(workspaceId, cloudBackup);
+  // A plan that ended or lapsed pauses whoever it no longer covers; an upgrade restores them.
+  await enforceSeatLimits(workspaceId);
 }
 
 export async function POST(req: Request) {

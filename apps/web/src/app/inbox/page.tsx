@@ -14,15 +14,15 @@ import { unsubscribeUrl } from "@/lib/reminders";
 export const metadata: Metadata = { title: "Your videos" };
 
 /** A client's view: every video their coach (or coaches) sent them. */
-export default async function Inbox({ searchParams }: { searchParams: Promise<{ invalid?: string; c?: string }> }) {
-  const { invalid, c: arrivedAs } = await searchParams;
+export default async function Inbox({ searchParams }: { searchParams: Promise<{ invalid?: string; paused?: string; c?: string }> }) {
+  const { invalid, paused, c: arrivedAs } = await searchParams;
   const tokens = (await cookies())
     .getAll()
     .filter((c) => c.name.startsWith("fc_client_"))
     .map((c) => c.value);
   const clients = tokens.length
     ? await db.client.findMany({
-        where: { token: { in: tokens }, removedAt: null },
+        where: { token: { in: tokens }, removedAt: null, pausedAt: null },
         include: {
           workspace: { select: { id: true, name: true, plan: true, brandColor: true, brandLogoType: true, brandVersion: true, aiAssist: true } },
           videos: { where: { replyToId: null, status: { not: "RECORDING" } }, orderBy: { createdAt: "desc" }, include: { owner: { select: { name: true } } } },
@@ -42,6 +42,11 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
         {invalid && (
           <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
             That link is no longer active. Ask the person who sent it for a new one.
+          </p>
+        )}
+        {paused && (
+          <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800" data-testid="client-paused">
+            Your access is paused because this business changed its SureFrame plan. Nothing has been deleted. Please contact them to have it restored.
           </p>
         )}
         {clients.length === 0 ? (
