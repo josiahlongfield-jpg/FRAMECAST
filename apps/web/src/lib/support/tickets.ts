@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { rateLimit } from "@/lib/rateLimit";
 import type { SupportMessage, SupportTicket } from "@prisma/client";
 import { db } from "@/lib/db";
 import { sendMail } from "@/lib/mail";
@@ -31,6 +32,11 @@ export async function handToHuman(ticketId: string, summary: string | null, urge
   });
   const to = supportInbox();
   if (!to) return;
+  // Keep the inbox usable: one email per conversation per half hour for follow-up messages,
+  // and a daily ceiling overall. Everything still shows at /support.
+  const allowed = (key: string, limit: number, windowSec: number) => rateLimit(key, limit, windowSec).then(() => true, () => false);
+  if (!summary && !(await allowed(`support-mail:${ticketId}`, 1, 1800))) return;
+  if (!(await allowed("support-mail:all", Number(process.env.SUPPORT_MAIL_DAILY_CAP ?? 200), 86400))) return;
   const who = ticket.user?.email ?? ticket.email ?? "a website visitor (no email given)";
   const link = appUrl(`/support/${ticket.id}`);
   const transcript = ticket.messages.map((m) => `${m.author === "CUSTOMER" ? "Customer" : m.author === "ASSISTANT" ? "Assistant" : "You"}: ${m.body}`).join("\n\n");

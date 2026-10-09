@@ -7,6 +7,7 @@
 import { chromium } from "@playwright/test";
 import { readdirSync, readFileSync, rmSync } from "node:fs";
 import { requests, startFakeAnthropic } from "./fake-anthropic.mjs";
+import { PrismaClient } from "@prisma/client";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const AGENT = "owner@test.dev";
@@ -121,6 +122,20 @@ const bad = await fetch(BASE + "/api/support", { method: "POST", headers: { "Con
 ok("empty message refused", bad.status === 400);
 const missing = await fetch(BASE + "/api/support", { headers: { "x-support-token": "x".repeat(32) } });
 ok("unknown conversation is 404", missing.status === 404);
+
+// 10. Daily allowance: a visitor who isn't signed in gets 25 help-chat messages a day.
+const prisma = new PrismaClient();
+const day = 86_400_000;
+await prisma.rateLimit.upsert({
+  where: { key_windowStart: { key: "support-day:ip:127.0.0.1", windowStart: new Date(Math.floor(Date.now() / day) * day) } },
+  create: { key: "support-day:ip:127.0.0.1", windowStart: new Date(Math.floor(Date.now() / day) * day), count: 25 },
+  update: { count: 25 },
+});
+const over = await fetch(BASE + "/api/support", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: "one more" }) });
+ok("over the daily allowance: refused", over.status === 429, String(over.status));
+ok("says to email instead", ((await over.json()).error ?? "").includes("today's limit"));
+await prisma.rateLimit.deleteMany({ where: { key: "support-day:ip:127.0.0.1" } });
+await prisma.$disconnect();
 
 await browser.close();
 fake.close();

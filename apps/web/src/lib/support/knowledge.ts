@@ -50,6 +50,8 @@ ${plan("AGENCY")}
 - Extra clients, extra staff and cloud backup are added on Settings > Billing (owner only). AI transcripts and summaries is switched on there too, also by the owner only.
 - Only the workspace owner can change billing. Staff see an owner-only notice.
 - Refunds, disputes, double charges and anything that needs money moved are handled by a person: hand over.
+- After a hand over, a person replies within 2 business days (Queensland, Australia time), by email and in this chat. Don't promise anything faster.
+- The help chat has a daily limit per person. If someone hits it, they can email support instead.
 
 ## Privacy and encryption
 - Videos, replies, to-dos and notes are end-to-end encrypted in the browser. ${BRAND.name} staff cannot open them, and neither can this assistant. Never claim to have seen a customer's video, reply or to-do.

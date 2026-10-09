@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { handle, HttpError, currentUser } from "@/lib/session";
-import { limitByIp, rateLimit } from "@/lib/rateLimit";
+import { clientIp, limitByIp, rateLimit } from "@/lib/rateLimit";
 import { answer, assistantEnabled } from "@/lib/support/assistant";
 import { handToHuman, newAccessToken, publicTicket } from "@/lib/support/tickets";
 
@@ -37,6 +37,9 @@ export const POST = handle(async (req: Request) => {
   await limitByIp("support", 30, 3600);
   const { token, body, email } = parsed.data;
   const me = await currentUser().catch(() => null);
+  // Daily allowances, so one person (signed in or not) can't run up AI costs or flood the inbox.
+  await dailyAllowance(me ? `support-day:user:${me.user.id}` : `support-day:ip:${await clientIp()}`, me ? 80 : 25);
+  if (!token) await limitByIp("support-new", 15, 86400).catch(() => { throw new HttpError(429, TODAY_LIMIT); });
 
   // A token for a conversation that's since been deleted just starts a new one.
   let ticket = token ? await load(token).catch(() => null) : null;
@@ -81,3 +84,6 @@ export const POST = handle(async (req: Request) => {
 
 /** A ceiling on assistant answers per day across everyone, so a flood of new chats can't run up the AI bill. */
 const underDailyAiCap = () => rateLimit("support-ai:global", Number(process.env.SUPPORT_AI_DAILY_CAP ?? 2000), 86400).then(() => true, () => false);
+
+const TODAY_LIMIT = `You've reached today's limit for the help chat. Please email ${process.env.SUPPORT_EMAIL ?? "us"} and a person will get back to you.`;
+const dailyAllowance = (key: string, limit: number) => rateLimit(key, limit, 86400).catch(() => { throw new HttpError(429, TODAY_LIMIT); });
