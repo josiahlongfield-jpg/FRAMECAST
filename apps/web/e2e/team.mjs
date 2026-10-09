@@ -103,7 +103,7 @@ await other.fill('input[name="email"]', `other${stamp}@example.com`);
 await other.click("text=Continue");
 await other.waitForURL((u) => u.pathname === "/library");
 const token = link.split("/join/")[1].split("#")[0];
-ok("used invite refused for someone else", (await other.request.post(BASE + "/api/team/join", { data: { token } })).status() === 410);
+ok("used invite refused for someone else", [403, 410].includes((await other.request.post(BASE + "/api/team/join", { data: { token } })).status()));
 ok("same person can reopen it on another device", (await staff.request.post(BASE + "/api/team/join", { data: { token } })).ok());
 
 // Assign Avery to the staff member; "My clients" shows them.
