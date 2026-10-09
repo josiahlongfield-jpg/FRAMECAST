@@ -113,7 +113,7 @@ await owner.waitForSelector("aside ul >> text=Have a look when you can");
 const phoneCtx = await browser.newContext({ permissions: ["camera", "microphone"], viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
 const phone = await phoneCtx.newPage();
 await phone.addLocatorHandler(phone.getByTestId("sureframe-promo"), async () => {
-  await phone.click("text=/^Watch your video$/", { timeout: 12000 });
+  await phone.click("text=/^Watch your video$/", { timeout: 15000 });
 });
 await phone.goto(link);
 await phone.waitForURL("**/v/**");

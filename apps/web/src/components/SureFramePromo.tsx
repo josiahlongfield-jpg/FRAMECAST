@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-const WAIT_SECONDS = 8;
+const WAIT_SECONDS = 10;
 
 /**
  * Shown to clients of businesses on the Free plan before a video. It is our
@@ -41,7 +41,7 @@ export default function SureFramePromo({ videoId }: { videoId: string }) {
     <div role="dialog" aria-modal="true" aria-labelledby="promo-title" data-testid="sureframe-promo" className="fixed inset-0 z-50 grid place-items-center bg-slate-900/70 px-4">
       <style>{PROMO_CSS}</style>
       <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white text-center shadow-2xl">
-        {/* An 8-second animated promo, drawn on the page: no video file, nothing loaded from elsewhere. */}
+        {/* A 10-second animated promo, drawn on the page: no video file, nothing loaded from elsewhere. */}
         <div className="sf-promo relative aspect-video overflow-hidden bg-gradient-to-br from-slate-900 via-slate-900 to-brand-900" aria-hidden="true">
           <div className="sf-s1 absolute inset-0 grid place-items-center">
             <div className="flex items-center gap-3 text-2xl font-semibold tracking-tight text-white">
@@ -96,15 +96,15 @@ export default function SureFramePromo({ videoId }: { videoId: string }) {
   );
 }
 
-/** The promo's timeline: logo (0-2.6s), a private video and its reply (2.3-5.6s), the line (from 5.3s). */
+/** The promo's timeline: logo (0-3.3s), a private video and its reply (2.9-7s), the line (from 6.6s). */
 const PROMO_CSS = `
-.sf-promo .sf-s1 { animation: sf-in-out 2.6s ease both; }
-.sf-promo .sf-s2 { opacity: 0; animation: sf-in-out 3.3s ease 2.3s both; }
-.sf-promo .sf-s3 { opacity: 0; animation: sf-in 1s ease 5.3s both; }
-.sf-promo .sf-lock { animation: sf-pop 0.5s ease 2.9s both; }
-.sf-promo .sf-b1 { animation: sf-rise 0.6s ease 3.2s both; }
-.sf-promo .sf-b2 { animation: sf-rise 0.6s ease 3.9s both; }
-.sf-promo .sf-bar { animation: sf-bar 8s linear both; }
+.sf-promo .sf-s1 { animation: sf-in-out 3.3s ease both; }
+.sf-promo .sf-s2 { opacity: 0; animation: sf-in-out 4.1s ease 2.9s both; }
+.sf-promo .sf-s3 { opacity: 0; animation: sf-in 1.2s ease 6.6s both; }
+.sf-promo .sf-lock { animation: sf-pop 0.6s ease 3.6s both; }
+.sf-promo .sf-b1 { animation: sf-rise 0.7s ease 4s both; }
+.sf-promo .sf-b2 { animation: sf-rise 0.7s ease 4.9s both; }
+.sf-promo .sf-bar { animation: sf-bar 10s linear both; }
 @keyframes sf-in-out { 0% { opacity: 0; transform: scale(.94); } 20% { opacity: 1; transform: none; } 85% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes sf-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes sf-pop { from { opacity: 0; transform: scale(.4); } to { opacity: 1; transform: none; } }
