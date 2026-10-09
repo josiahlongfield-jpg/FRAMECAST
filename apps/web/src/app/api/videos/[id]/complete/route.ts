@@ -6,7 +6,8 @@ import { handle, HttpError } from "@/lib/session";
 import { startTranscode } from "@/lib/transcode";
 import { purgeDate } from "@/lib/retention";
 import { notifyClientReply } from "@/lib/teamNotify";
-import { publicVideo, uploadableVideo } from "@/lib/videos";
+import { publicVideo, uploadableVideo, uploadBudget } from "@/lib/videos";
+import { PLANS } from "@/lib/plans";
 import { emailClientVideo } from "@/lib/emailClientVideo";
 
 const Body = z.object({ partCount: z.number().int().min(1).max(10_000), durationMs: z.number().int().min(0).optional() });
@@ -31,6 +32,16 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
   if (missing.length) return Response.json({ error: "Missing parts", missing }, { status: 409 });
 
   const used = parts.filter((p) => p.partNumber <= body.data.partCount);
+  // The browser stops at the plan's limits; this holds for anything that doesn't.
+  const total = used.reduce((sum, p) => sum + Number(p.sizeBytes), 0);
+  if (total > (await uploadBudget(video))) {
+    await driver.abort(video.storageKey, video.uploadId).catch(() => {});
+    await db.video.update({ where: { id }, data: { status: "EXPIRED", uploadId: null, uploadTokenHash: null } });
+    throw new HttpError(413, "This recording is larger than your plan allows.");
+  }
+  const workspace = await db.workspace.findUniqueOrThrow({ where: { id: video.workspaceId } });
+  const maxMinutes = video.replyToId ? 15 : PLANS[workspace.plan].maxDurationMin;
+  if ((body.data.durationMs ?? 0) > (maxMinutes * 60 + 30) * 1000) throw new HttpError(413, "This recording is longer than your plan allows.");
   await driver.complete(video.storageKey, video.uploadId, used);
   const updated = await db.video.update({
     where: { id },
@@ -40,7 +51,7 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
       sizeBytes: used.reduce((sum, p) => sum + BigInt(p.sizeBytes), BigInt(0)),
       uploadId: null,
       uploadTokenHash: null, // a guest's token is single-use
-      purgeAt: purgeDate((await db.workspace.findUniqueOrThrow({ where: { id: video.workspaceId } })).cloudBackup),
+      purgeAt: purgeDate(workspace.cloudBackup),
       emailClientWhenReady: false,
     },
   });

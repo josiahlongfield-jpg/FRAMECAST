@@ -57,6 +57,7 @@ export default function Planner({
   );
   const [items, setItems] = useState<Decrypted[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [kind, setKind] = useState<"TASK" | "NOTE">("TASK");
   const [text, setText] = useState("");
   const [schedule, setSchedule] = useState<Schedule>(fresh);
@@ -85,12 +86,15 @@ export default function Planner({
 
   useEffect(() => {
     const q = clientId ? `?clientId=${clientId}` : "";
+    setLoadError(false);
     fetch(`/api/items${q}`)
-      .then((r) => (r.ok ? r.json() : { items: [] }))
-      .then(async ({ items }: { items: ItemDTO[] }) => {
-        setItems(await Promise.all(items.map(decrypt)));
-        setLoaded(true);
-      });
+      .then((r) => {
+        if (!r.ok) throw new Error(String(r.status));
+        return r.json();
+      })
+      .then(async ({ items }: { items: ItemDTO[] }) => setItems(await Promise.all(items.map(decrypt))))
+      .catch(() => setLoadError(true))
+      .finally(() => setLoaded(true));
   }, [clientId, decrypt]);
 
   const scheduleBody = (s: Schedule, shared: boolean) => ({
@@ -295,6 +299,8 @@ export default function Planner({
 
       {!loaded ? (
         <p className="mt-4 text-sm text-slate-500">Loading…</p>
+      ) : loadError ? (
+        <p role="alert" className="mt-4 text-sm text-red-700">Couldn&apos;t load this list. Refresh the page to try again.</p>
       ) : items.length === 0 ? (
         <p className="mt-4 text-sm text-slate-500">{role === "client" ? "Nothing shared with you yet." : "Nothing here yet."}</p>
       ) : (

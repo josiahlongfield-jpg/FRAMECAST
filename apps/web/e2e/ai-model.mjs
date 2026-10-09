@@ -16,6 +16,12 @@ import { PrismaClient } from "@prisma/client";
 import { startFakeHf, files, MODEL, REVISION, sha256, requests as hfRequests } from "./fake-hf.mjs";
 import { startFakeS3, objects, log as s3Log } from "./fake-s3.mjs";
 
+// The AI section starts collapsed; open it before using its buttons.
+async function openAi(page) {
+  await page.waitForSelector("[data-testid=ai-toggle]", { timeout: 30000 });
+  if ((await page.getAttribute("[data-testid=ai-toggle]", "aria-expanded")) !== "true") await page.click("[data-testid=ai-toggle]");
+}
+
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const S3 = "http://localhost:12114/fc-test/";
 const ok = (label, cond, extra = "") => {
@@ -91,6 +97,7 @@ user.on("console", (m) => m.text().startsWith("Transcript unavailable:") && warn
 const browserUrls = [];
 userCtx.on("request", (r) => browserUrls.push(r.url()));
 await user.reload();
+await openAi(user);
 await user.waitForSelector("text=Make transcript and summary", { timeout: 30000 });
 await user.click("text=Make transcript and summary");
 await user.waitForSelector("[data-testid=ai-failed]", { timeout: 30000 });
@@ -184,6 +191,7 @@ const modelGets = () => s3Log.filter((l) => l.method === "GET" && l.key.startsWi
 async function run() {
   warnings.length = 0;
   await user.goto(`${BASE}/v/${videoId}`);
+  await openAi(user);
   await user.waitForSelector("text=Make transcript and summary", { timeout: 30000 });
   await user.click("text=Make transcript and summary");
   await user.waitForSelector("[data-testid=ai-failed]", { timeout: 120000 });

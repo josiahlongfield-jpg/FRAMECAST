@@ -2,7 +2,19 @@
 
 import { useState } from "react";
 
-export default function CloudBackupToggle({ enabled, canEnable, price, days }: { enabled: boolean; canEnable: boolean; price: number; days: number }) {
+export default function CloudBackupToggle({
+  enabled,
+  canEnable,
+  price,
+  yearlyPrice,
+  days,
+}: {
+  enabled: boolean;
+  canEnable: boolean;
+  price: number;
+  yearlyPrice: number;
+  days: number;
+}) {
   const [on, setOn] = useState(enabled);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
@@ -27,10 +39,12 @@ export default function CloudBackupToggle({ enabled, canEnable, price, days }: {
         <div>
           <p className="font-semibold text-slate-900">Cloud backup</p>
           <p className="mt-1 text-sm text-slate-600">
-            Your videos live on your devices and are end-to-end encrypted. We only relay an encrypted copy so clients can watch it, and delete it after {days} days.
-            Cloud backup keeps those encrypted copies until you delete them. We still can&apos;t open them.
+            Your videos are end-to-end encrypted. We keep an encrypted copy so your clients can watch it, and delete it after {days} days. To keep your own copy,
+            open a video and choose Save to device. Cloud backup keeps our encrypted copies until you delete them. We still can&apos;t open them.
           </p>
-          <p className="mt-2 text-xs text-slate-500">US${price} per month, optional.</p>
+          <p className="mt-2 text-xs text-slate-500">
+            Optional: US${price} a month (US${yearlyPrice} a year on yearly billing).
+          </p>
         </div>
         <button
           role="switch"

@@ -58,7 +58,7 @@ export const POST = handle(async (req: Request) => {
     // A person is talking with them now: pass it on rather than have the assistant cut in.
     await handToHuman(ticket.id, null, ticket.urgent);
     await say("Thanks, I've added that to your conversation with the team. They'll reply here and by email.");
-  } else if (assistantEnabled()) {
+  } else if (assistantEnabled() && (await underDailyAiCap())) {
     // Before a person has replied, the assistant keeps helping, even once the team has been told.
     const waiting = ticket.status === "NEEDS_HUMAN";
     if (ticket.status === "CLOSED") await db.supportTicket.update({ where: { id: ticket.id }, data: { status: "OPEN" } });
@@ -78,3 +78,6 @@ export const POST = handle(async (req: Request) => {
   const fresh = await load(ticket.accessToken);
   return Response.json({ token: fresh.accessToken, ...publicTicket(fresh) });
 });
+
+/** A ceiling on assistant answers per day across everyone, so a flood of new chats can't run up the AI bill. */
+const underDailyAiCap = () => rateLimit("support-ai:global", Number(process.env.SUPPORT_AI_DAILY_CAP ?? 2000), 86400).then(() => true, () => false);

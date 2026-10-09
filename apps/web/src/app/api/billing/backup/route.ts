@@ -26,6 +26,6 @@ export const POST = handle(async (req: Request) => {
   if (!body.data.enabled && item) await stripe().subscriptions.update(sub.id, { items: [{ id: item.id, deleted: true }] });
 
   await db.workspace.update({ where: { id: workspace.id }, data: { cloudBackup: body.data.enabled } });
-  await applyBackupSetting(workspace.id, body.data.enabled);
+  if (workspace.cloudBackup !== body.data.enabled) await applyBackupSetting(workspace.id, body.data.enabled);
   return Response.json({ cloudBackup: body.data.enabled });
 });

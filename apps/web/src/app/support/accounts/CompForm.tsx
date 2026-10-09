@@ -8,8 +8,8 @@ export default function CompForm({ plans }: { plans: { id: string; name: string 
   return (
     <form action={action} className="mt-4 rounded-2xl border border-slate-200 bg-white p-6">
       <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
-        <input name="email" type="email" required placeholder="Their sign-in email" className="rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-        <select name="plan" defaultValue="STUDIO" className="rounded-xl border border-slate-300 px-3 py-2 text-sm">
+        <input name="email" type="email" required placeholder="Their sign-in email" aria-label="Their sign-in email" className="rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+        <select name="plan" defaultValue="STUDIO" aria-label="Complimentary plan" className="rounded-xl border border-slate-300 px-3 py-2 text-sm">
           {plans.map((p) => (
             <option key={p.id} value={p.id}>
               {p.id === "FREE" ? "Back to Free" : p.name}
@@ -34,7 +34,7 @@ export function CompAiForm() {
         AI transcripts and summaries, free. Only for workspaces on a free paid plan above. Tell them first: their clients will see a note that they use AI summaries.
       </p>
       <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto_auto]">
-        <input name="email" type="email" required placeholder="Their sign-in email" className="rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+        <input name="email" type="email" required placeholder="Their sign-in email" aria-label="Their sign-in email" className="rounded-xl border border-slate-300 px-3 py-2 text-sm" />
         <select name="ai" defaultValue="on" className="rounded-xl border border-slate-300 px-3 py-2 text-sm" aria-label="AI summaries">
           <option value="on">AI summaries on</option>
           <option value="off">AI summaries off</option>

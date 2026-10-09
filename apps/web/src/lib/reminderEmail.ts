@@ -35,6 +35,7 @@ export function reminderEmail(o: {
     `\nOpen your list: ${o.link}`,
     "\nFor privacy, the details are only shown in the app.",
     o.unsubscribe ? `\nStop these reminders: ${o.unsubscribe}` : "",
+    "\nSent with SureFrame",
   ].join("\n");
   const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
   const accent = o.color && /^#[0-9a-f]{6}$/i.test(o.color) ? o.color : "#3b55e6";

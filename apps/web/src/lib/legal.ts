@@ -2,8 +2,8 @@ import { BRAND } from "@/lib/brand";
 import { RETENTION_DAYS } from "@/lib/retention";
 
 /**
- * Who runs the service, for the terms and privacy policy. Fill in the ABN and
- * postal address once they exist; the pages show "pending" until then.
+ * Who runs the service, for the terms and privacy policy. Set the postal
+ * address once there is one; the pages leave it out while it's null.
  */
 export const LEGAL = {
   product: BRAND.name,
@@ -16,7 +16,7 @@ export const LEGAL = {
   country: "Australia",
   minimumAge: 18,
   retentionDays: RETENTION_DAYS,
-  updated: "8 October 2026",
+  updated: "9 October 2026",
 };
 
 export const operatorLine = () =>

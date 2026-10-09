@@ -95,7 +95,7 @@ export default async function Library({ searchParams }: { searchParams: Promise<
           <p className="-mt-4 mb-6 max-w-2xl text-sm text-slate-600">
             {workspace.cloudBackup
               ? "Cloud backup is on, so nothing here is due to be deleted."
-              : "These recordings' encrypted copies are deleted from our servers within 7 days. Open one and choose Save to device to keep a copy; the original also stays on the device it was recorded on unless it was cleared."}
+              : "These recordings' encrypted copies are deleted from our servers within 7 days. After that they can't be watched from their links. Open one and choose Save to device to keep your own copy."}
           </p>
         )}
         {videos.length === 0 && soon ? (
@@ -120,13 +120,13 @@ export default async function Library({ searchParams }: { searchParams: Promise<
                       <img src={v.thumbnailUrl} alt="" className="h-full w-full object-cover transition group-hover:scale-105" />
                     ) : v.encrypted ? (
                       <span className="absolute inset-0 grid place-items-center text-slate-400">
-                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-label="Encrypted"><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg>
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" role="img" aria-label="Encrypted"><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg>
                       </span>
                     ) : v.status !== "RECORDING" ? (
                       <video src={`/api/videos/${v.id}/stream#t=0.5`} preload="metadata" muted className="h-full w-full object-cover" />
                     ) : null}
                     {v.status === "EXPIRED" && (
-                      <span className="absolute left-2 top-2 rounded bg-black/70 px-1.5 py-0.5 text-xs text-white">Server copy expired</span>
+                      <span className="absolute left-2 top-2 rounded bg-black/70 px-1.5 py-0.5 text-xs text-white">Deleted from our servers</span>
                     )}
                     {v.status === "RECORDING" && (
                       <span className="absolute inset-0 grid place-items-center text-sm text-slate-300">Incomplete upload</span>

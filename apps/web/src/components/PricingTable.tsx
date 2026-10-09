@@ -38,7 +38,7 @@ export default function PricingTable() {
               <h2 className="text-lg font-semibold text-slate-900">{p.name}</h2>
               <p className="mt-4 flex items-baseline gap-1">
                 <span className="text-4xl font-semibold text-slate-900">{price > 0 && <span className="text-xl align-top">US</span>}${price}</span>
-                <span className="text-sm text-slate-500">{price ? `/ ${interval}` : "forever"}</span>
+                <span className="text-sm text-slate-500">{price ? `/ ${interval}` : "free"}</span>
               </p>
               {interval === "year" && price > 0 && <p className="mt-1 text-xs text-slate-500">US${(price / 12).toFixed(2)} a month, billed yearly</p>}
               <ul className="mt-6 flex-1 space-y-3 text-sm text-slate-700">

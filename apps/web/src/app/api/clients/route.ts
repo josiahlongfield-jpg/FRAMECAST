@@ -37,10 +37,14 @@ export const POST = handle(async (req: Request) => {
   await limitByIp("clients", 30, 3600);
   if (!body.success) throw new HttpError(400, "Enter a name and, optionally, a valid email");
   await requireCurrentKey(workspace, body.data.keyFingerprint);
-  const seats = await seatUsage(workspace);
-  if (seats.used >= seats.limit) {
-    throw new HttpError(402, `All ${seats.limit} client seats are in use. Add more seats or remove a client first.`);
-  }
-  const c = await db.client.create({ data: { name: body.data.name, email: body.data.email, teamKeyWrap: body.data.teamKeyWrap, token: newClientToken(), workspaceId: workspace.id, assignedToId: role === "MEMBER" ? user.id : null } });
+  const c = await db.$transaction(async (tx) => {
+    // One add at a time per team, so two quick adds can't both take the last seat.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"clients:" + workspace.id}))`;
+    const seats = await seatUsage(workspace, tx);
+    if (seats.used >= seats.limit) {
+      throw new HttpError(402, `All ${seats.limit} client seats are in use. Add more seats or remove a client first.`);
+    }
+    return tx.client.create({ data: { name: body.data.name, email: body.data.email, teamKeyWrap: body.data.teamKeyWrap, token: newClientToken(), workspaceId: workspace.id, assignedToId: role === "MEMBER" ? user.id : null } });
+  });
   return Response.json({ client: { id: c.id, name: c.name, email: c.email, link: clientLink(c.token), teamKeyWrap: c.teamKeyWrap, videoCount: 0, assignedToId: c.assignedToId } }, { status: 201 });
 });

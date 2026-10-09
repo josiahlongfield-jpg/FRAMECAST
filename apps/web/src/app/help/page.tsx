@@ -3,7 +3,10 @@ import { auth } from "@/auth";
 import SiteHeader from "@/components/SiteHeader";
 import { ChatBoundary, SupportChat } from "@/components/SupportChat";
 
-export const metadata: Metadata = { title: "Help" };
+export const metadata: Metadata = {
+  title: "Help",
+  description: "Get help with recording, sending videos, clients, billing and your recovery key.",
+};
 
 export default async function Help() {
   const signedIn = !!(await auth())?.user;

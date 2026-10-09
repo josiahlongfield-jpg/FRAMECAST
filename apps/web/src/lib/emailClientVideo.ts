@@ -5,6 +5,7 @@ import { sendMail } from "@/lib/mail";
 import { newVideoEmail } from "@/lib/newVideoEmail";
 import { appUrl } from "@/lib/stripe";
 import { clientMailSettings } from "@/lib/reminders";
+import { rateLimit } from "@/lib/rateLimit";
 
 /**
  * Emails a client that a video is waiting, if they have an address and want
@@ -18,6 +19,8 @@ export async function emailClientVideo(videoId: string) {
   });
   const c = video?.client;
   if (!video || !c || c.removedAt || !c.email || c.remindersOff) return false;
+  // At most a handful of these an hour per client, however often a video is re-sent.
+  if (!(await rateLimit(`client-mail:${c.id}`, 10, 3600).then(() => true, () => false))) return false;
   const ws = video.workspace;
   const brand = brandOf(ws, appUrl(""));
   const assigned = c.assignedToId ? await db.membership.findUnique({ where: { userId_workspaceId: { userId: c.assignedToId, workspaceId: ws.id } } }) : null;

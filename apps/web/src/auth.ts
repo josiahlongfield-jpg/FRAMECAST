@@ -44,7 +44,8 @@ export const previewPassword = process.env.PREVIEW_PASSWORD || null;
 // automatically once real email links are configured.
 // A production deploy only allows it behind PREVIEW_PASSWORD.
 const isProduction = process.env.VERCEL_ENV === "production" || (process.env.NODE_ENV === "production" && !process.env.VERCEL_ENV);
-const devLogin = process.env.AUTH_DEV_LOGIN === "true" && !emailLinks && (!isProduction || !!previewPassword);
+// Never on the live site, whatever else is set.
+const devLogin = process.env.AUTH_DEV_LOGIN === "true" && !emailLinks && process.env.VERCEL_ENV !== "production" && (!isProduction || !!previewPassword);
 if (devLogin) {
   providers.push(
     Credentials({

@@ -598,6 +598,9 @@ function WatchBody({
               <select
                 value={sentTo ?? ""}
                 onChange={(e) => sendTo(e.target.value || null)}
+                // Once there are replies, the conversation belongs to this client.
+                disabled={!!sentTo && replies.length > 0}
+                title={sentTo && replies.length > 0 ? "This client has replied, so the video stays with them. Use Send to more clients to share it." : undefined}
                 className="min-w-48 rounded-lg border border-slate-300 bg-white px-3 py-2"
               >
                 <option value="">Only my team (private)</option>

@@ -38,7 +38,7 @@ const PILLARS = [
 const AUDIENCES = "Coaches, personal trainers, consultants, tutors, agencies, clinics and many more.";
 
 const PRIVACY = [
-  ["Encrypted on your device", "Videos, replies, to-dos and notes are locked before they leave your phone or computer. Our servers only ever hold scrambled data."],
+  ["Encrypted on your device", "Videos, replies, to-dos and notes are locked before they leave your phone or computer. Our servers only hold scrambled copies of them."],
   ["Every client gets their own copy", "Send one video to one client or a hundred. Each opens it from their own private link, and nobody sees anyone else's replies."],
   ["Staff who leave are locked out", "Remove someone from your team and every key and client link is reset, so they can't open anything again."],
 ];
@@ -152,9 +152,9 @@ export default function Home() {
           <div className="mx-auto max-w-3xl px-4 text-center sm:px-6">
             <h2 className="text-3xl font-semibold tracking-tight text-slate-900">Transcripts made on your device. Summaries in seconds.</h2>
             <p className="mt-4 text-slate-600">
-              With the optional AI add-on, any video can get a written transcript and a short summary with key points and action items. The transcript is made on
-              your own computer or phone; only its text is sent to write the summary, and both are stored encrypted. Available on paid plans and works best on a
-              computer. AI summaries can contain mistakes.
+              With the optional AI add-on, videos up to 30 minutes can get a written transcript and a short summary with key points and action items. The
+              transcript is made on your own device (it works best on a computer); only its text is sent to write the summary, and both are stored encrypted.
+              Available on paid plans. AI summaries can contain mistakes.
             </p>
             <Link href="/pricing#add-ons" className="mt-6 inline-block text-sm font-semibold text-brand-700 hover:underline">
               See add-on pricing

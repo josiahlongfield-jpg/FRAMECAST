@@ -5,6 +5,9 @@ import { exportKey, generateKey, wrapKey } from "@/lib/e2e/crypto";
 import { saveKey, teamKeyName } from "@/lib/e2e/keystore";
 import { rekey, type Bundle } from "@/lib/e2e/rekey";
 import TeamKeyGate from "./TeamKeyGate";
+
+/** US$8, US$37.50 */
+const money = (n: number) => `US$${Number.isInteger(n) ? n : n.toFixed(2)}`;
 import { PermChecks, savePerm, type Perms } from "./StaffPerms";
 
 type Role = "OWNER" | "ADMIN" | "MEMBER";
@@ -179,7 +182,7 @@ function Manager({ teamKey, workspaceId, keyResetNeeded, role, meId, initialSeat
             <select value={buyQty} onChange={(e) => setBuyQty(Number(e.target.value))} aria-label="Extra staff logins" className="rounded-lg border border-slate-300 bg-white px-2 py-1.5">
               {[1, 2, 3, 5, 10].map((n) => <option key={n} value={n}>{n} {n === 1 ? "login" : "logins"}</option>)}
             </select>
-            <button onClick={buyStaff} className="rounded-lg bg-slate-900 px-3 py-1.5 font-medium text-white hover:bg-slate-800">Add for ${buyQty * staffPrice}/month</button>
+            <button onClick={buyStaff} className="rounded-lg bg-slate-900 px-3 py-1.5 font-medium text-white hover:bg-slate-800">Add for {money(buyQty * staffPrice)}/month</button>
           </div>
         )}
       </section>

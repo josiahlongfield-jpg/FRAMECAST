@@ -109,9 +109,9 @@ export default async function AccountSettings({ searchParams }: { searchParams: 
               Type <span className="font-semibold">{user.email}</span> to confirm
               <input name="confirm" type="email" autoComplete="off" required className="mt-1 block w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
             </label>
-            {error === "confirm" && <p className="text-sm text-red-700">That doesn&apos;t match your email.</p>}
-            {error === "failed" && <p className="text-sm text-red-700">Something went wrong deleting your account. Please try again, or ask in Help.</p>}
-            {error === "team" && <p className="text-sm text-red-700">You own a team with other staff. Remove them on the Team page first.</p>}
+            {error === "confirm" && <p role="alert" className="text-sm text-red-700">That doesn&apos;t match your email.</p>}
+            {error === "failed" && <p role="alert" className="text-sm text-red-700">Something went wrong deleting your account. Please try again, or ask in Help.</p>}
+            {error === "team" && <p role="alert" className="text-sm text-red-700">You own a team with other staff. Remove them on the Team page first.</p>}
             <DeleteAccountButton />
           </form>
         </section>

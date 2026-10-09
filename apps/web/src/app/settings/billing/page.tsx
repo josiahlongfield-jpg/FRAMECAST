@@ -7,7 +7,7 @@ import AiAssistToggle from "@/components/AiAssistToggle";
 import { summaryUsage } from "@/lib/ai/summary";
 import { readManifest } from "@/lib/ai/speechModel";
 import { RETENTION_DAYS } from "@/lib/retention";
-import { AI_ASSIST_PRICES, aiAssistActive, CLOUD_BACKUP_PRICE, PLANS } from "@/lib/plans";
+import { AI_ASSIST_PRICES, aiAssistActive, CLOUD_BACKUP_PRICE, CLOUD_BACKUP_PRICE_YEARLY, PLANS } from "@/lib/plans";
 import type { Workspace } from "@prisma/client";
 import { requirePageUser } from "@/lib/session";
 import { BRAND } from "@/lib/brand";
@@ -70,7 +70,7 @@ export default async function Billing({ searchParams }: { searchParams: Promise<
           )}
           {plan.showsPromo && (
             <p className="mt-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
-              Your clients see a short SureFrame intro before each video. Any paid plan removes it and shows your own branding instead.
+              Your clients see a short SureFrame intro before each video. Any paid plan removes it and lets you add your own logo and colours (a small Made with {BRAND.name} credit stays).
             </p>
           )}
           <ul className="mt-4 space-y-1 text-sm text-slate-700">
@@ -83,7 +83,7 @@ export default async function Billing({ searchParams }: { searchParams: Promise<
             )}
           </div>
         </div>
-        <CloudBackupToggle enabled={workspace.cloudBackup} canEnable={workspace.plan !== "FREE"} price={CLOUD_BACKUP_PRICE} days={RETENTION_DAYS} />
+        <CloudBackupToggle enabled={workspace.cloudBackup} canEnable={workspace.plan !== "FREE"} price={CLOUD_BACKUP_PRICE} yearlyPrice={CLOUD_BACKUP_PRICE_YEARLY} days={RETENTION_DAYS} />
         <AiAddOn workspace={workspace} />
       </main>
     </>

@@ -5,7 +5,10 @@ import PricingTable from "@/components/PricingTable";
 import { RETENTION_DAYS } from "@/lib/retention";
 import { AI_ASSIST_PRICES, AI_SUMMARIES_PER_MONTH, CLOUD_BACKUP_PRICE, CLOUD_BACKUP_PRICE_YEARLY, PLANS } from "@/lib/plans";
 
-export const metadata: Metadata = { title: "Pricing" };
+export const metadata: Metadata = {
+  title: "Pricing",
+  description: "Simple plans priced by how many clients you work with, in US dollars. Clients always join free. Optional cloud backup and AI add-ons.",
+};
 
 export default function Pricing() {
   return (
@@ -27,7 +30,7 @@ export default function Pricing() {
               <h3 className="font-semibold text-slate-900">AI transcripts and summaries</h3>
               <p className="mt-2 text-sm text-slate-600">
                 A transcript and a short summary with key points and action items under each video, for your team and your client. The transcript is made on your own
-                device and the audio isn&apos;t sent anywhere for it; only the transcript text is sent to Anthropic&apos;s Claude to write the summary. AI summaries can contain mistakes.
+                device and the audio isn&apos;t sent anywhere for it; only the transcript text is sent to Anthropic&apos;s Claude to write the summary. AI summaries can contain mistakes. Videos up to 30 minutes.
               </p>
               <ul className="mt-4 space-y-1 text-sm text-slate-700">
                 {(["SOLO", "STUDIO", "AGENCY"] as const).map((id) => (

@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { catalogKey, MANAGED_PAYMENTS, PLAN_ITEM, priceId } from "@/lib/billing";
+import { ACTIVE_STATUSES, catalogKey, MANAGED_PAYMENTS, PLAN_ITEM, priceId } from "@/lib/billing";
 import { PAID_PLANS } from "@/lib/plans";
-import { planChange } from "@/lib/planChange";
+import { assertFits, planChange } from "@/lib/planChange";
 import { handle, HttpError, requireRole, requireUser } from "@/lib/session";
 import { appUrl, stripe } from "@/lib/stripe";
 import { limitByIp } from "@/lib/rateLimit";
@@ -44,8 +44,20 @@ export const POST = handle(async (req: Request) => {
     return Response.json({ url: appUrl("/settings/billing?upgraded=1") });
   }
 
+  // A new subscription must fit the clients and staff already here (a free plan we gave may have had more).
+  await assertFits(workspace, plan);
+
   let customer = workspace.stripeCustomerId;
-  if (!customer) {
+  if (customer) {
+    // A subscription paid for a moment ago may not have reached us yet: don't start a second one.
+    const subs = await stripe().subscriptions.list({ customer, status: "all", limit: 20 });
+    if (subs.data.some((s) => s.metadata?.workspaceId === workspace.id && ACTIVE_STATUSES.has(s.status))) {
+      throw new HttpError(409, "Your subscription is being set up. Refresh this page in a minute.");
+    }
+    // Only the newest checkout can be paid, so two open tabs can't start two subscriptions.
+    const open = await stripe().checkout.sessions.list({ customer, status: "open", limit: 20 });
+    await Promise.all(open.data.map((s) => stripe().checkout.sessions.expire(s.id).catch(() => null)));
+  } else {
     const c = await stripe().customers.create({ email: user.email, name: workspace.name, metadata: { workspaceId: workspace.id } });
     customer = c.id;
     await db.workspace.update({ where: { id: workspace.id }, data: { stripeCustomerId: customer } });

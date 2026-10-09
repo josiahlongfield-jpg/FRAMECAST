@@ -1,10 +1,24 @@
 import { BRAND } from "@/lib/brand";
-import { AI_ASSIST_PRICES, AI_SUMMARIES_PER_MONTH, CLOUD_BACKUP_PRICE, EXTRA_SEAT_PRICE, EXTRA_STAFF_PRICE, PLANS } from "@/lib/plans";
+import {
+  AI_ASSIST_PRICES,
+  AI_SUMMARIES_PER_MONTH,
+  CLOUD_BACKUP_PRICE,
+  CLOUD_BACKUP_PRICE_YEARLY,
+  EXTRA_SEAT_PRICE,
+  EXTRA_SEAT_PRICE_YEARLY,
+  EXTRA_STAFF_PRICE,
+  EXTRA_STAFF_PRICE_YEARLY,
+  PLANS,
+} from "@/lib/plans";
 import { RETENTION_DAYS } from "@/lib/retention";
+
+/** US dollars, with cents only when there are some: US$15, US$1.50. */
+const usd = (n: number) => `US$${Number.isInteger(n) ? n : n.toFixed(2)}`;
+const perMonthOrYear = (month: number, year: number) => `${usd(month)}/month or ${usd(year)}/year`;
 
 const plan = (id: keyof typeof PLANS) => {
   const p = PLANS[id];
-  const price = p.priceMonthly ? `$${p.priceMonthly}/month or $${p.priceYearly}/year` : "free";
+  const price = p.priceMonthly ? perMonthOrYear(p.priceMonthly, p.priceYearly) : "free";
   return `- ${p.name} (${price}): ${p.features.join("; ")}.`;
 };
 
@@ -18,14 +32,14 @@ export const SUPPORT_GUIDE = `
 
 ${BRAND.name} is private video messaging for businesses and their clients. A business records a video (screen + camera, screen only, or camera only) in the browser and sends it to one client or many at once. Clients watch and reply with video, voice or text from a personal link. Clients never pay and never need an account.
 
-## Plans and prices (USD)
+## Plans and prices (US dollars)
 ${plan("FREE")}
 ${plan("SOLO")}
 ${plan("STUDIO")}
 ${plan("AGENCY")}
-- Extra clients: $${EXTRA_SEAT_PRICE}/month each on any paid plan. Extra staff logins: $${EXTRA_STAFF_PRICE}/month each on Studio and Agency.
-- Cloud backup: $${CLOUD_BACKUP_PRICE}/month. Without it, the encrypted copy on our servers is deleted ${RETENTION_DAYS} days after recording; the original stays on the recording device.
-- AI transcripts and summaries (optional add-on, not on Free): $${AI_ASSIST_PRICES.SOLO.month}/month on Solo, $${AI_ASSIST_PRICES.STUDIO.month}/month on Studio, $${AI_ASSIST_PRICES.AGENCY.month}/month on Agency. Fair use: up to ${AI_SUMMARIES_PER_MONTH.SOLO}, ${AI_SUMMARIES_PER_MONTH.STUDIO} and ${AI_SUMMARIES_PER_MONTH.AGENCY} summaries a month respectively.
+- Extra clients: ${perMonthOrYear(EXTRA_SEAT_PRICE, EXTRA_SEAT_PRICE_YEARLY)} each on any paid plan. Extra staff logins: ${perMonthOrYear(EXTRA_STAFF_PRICE, EXTRA_STAFF_PRICE_YEARLY)} each on Studio and Agency.
+- Cloud backup: ${perMonthOrYear(CLOUD_BACKUP_PRICE, CLOUD_BACKUP_PRICE_YEARLY)}. Without it, the encrypted copy on our servers is deleted ${RETENTION_DAYS} days after recording. A recording stays on the recording device only until its upload finishes, so to keep a copy, open the video and choose Save to device. If cloud backup ends (switched off, plan cancelled or lapsed), our copies are deleted ${RETENTION_DAYS} days later.
+- AI transcripts and summaries (optional add-on, not on Free): ${perMonthOrYear(AI_ASSIST_PRICES.SOLO.month, AI_ASSIST_PRICES.SOLO.year)} on Solo, ${perMonthOrYear(AI_ASSIST_PRICES.STUDIO.month, AI_ASSIST_PRICES.STUDIO.year)} on Studio, ${perMonthOrYear(AI_ASSIST_PRICES.AGENCY.month, AI_ASSIST_PRICES.AGENCY.year)} on Agency. Fair use: up to ${AI_SUMMARIES_PER_MONTH.SOLO}, ${AI_SUMMARIES_PER_MONTH.STUDIO} and ${AI_SUMMARIES_PER_MONTH.AGENCY} summaries a month respectively.
 - Yearly billing costs 10 months' price (two months free).
 - Payments are handled by Stripe. Statements show "LINK.COM* SUREFRAME.APP".
 
@@ -38,14 +52,14 @@ ${plan("AGENCY")}
 
 ## Privacy and encryption
 - Videos, replies, to-dos and notes are end-to-end encrypted in the browser. ${BRAND.name} staff cannot open them, and neither can this assistant. Never claim to have seen a customer's video, reply or to-do.
-- No video is ever public. Only the business's team (staff only for the clients they can see) and the client it was sent to can watch it.
-- Each workspace has a recovery key, shown once when the account is set up. It unlocks videos on a new device or in a different browser on the same device, since each browser keeps its own copy of the key; clearing browser data also removes it ("Unlock your videos in this browser"). Staff who joined from an invite link can open that link again instead.
+- No video is ever public. Only the business's team (staff only for the clients they can see) and the client it was sent to can watch it, but anyone holding a client's personal link can open what was shared with that client.
+- Each workspace has a recovery key, shown when the account is set up and again any time from Settings > Account ("Show recovery key") on a device that's already unlocked. It unlocks videos on a new device or in a different browser on the same device, since each browser keeps its own copy of the key; clearing browser data also removes it ("Unlock your videos in this browser"). Staff who joined from an invite link can open that link again instead.
 - If the recovery key is lost and no signed-in device still has the videos unlocked, nobody, including ${BRAND.name}, can recover the old encrypted videos. Say so kindly and plainly. A device that is still unlocked can keep working.
 - Each web address keeps its own keys, so always use ${BRAND.name}'s main address (sureframe.app).
 - Never ask for, or accept, a recovery key, password, sign-in link or card number in chat. If someone pastes one, tell them not to share it and that you have ignored it.
 
 ## When recordings are deleted from our servers
-- Without cloud backup, the encrypted copy on our servers is deleted ${RETENTION_DAYS} days after recording (the daily clean-up runs shortly after that time). After that the video can no longer be watched from its link. The original stays on the device it was recorded on unless it was cleared.
+- Without cloud backup, the encrypted copy on our servers is deleted ${RETENTION_DAYS} days after recording (the daily clean-up runs shortly after that time). After that the video can no longer be watched from its link. Recordings aren't kept on the recording device once their upload finishes.
 - Each video in the Library shows "Deletes from our servers on <date and time>" in the viewer's own time zone, amber when it's under 48 hours away. "Saved to cloud backup" means it's kept; "Deleted from our servers" means it's gone from the server.
 - The Library's "Deleting soon" filter lists videos deleted within 7 days, soonest first.
 - About 24 hours before, we try to email the person who recorded it (one email covering all their recordings due then, with the recorded date, the client it was sent to and a link; never the title). This is best effort: an email can be delayed or land in spam, so don't promise it arrives.
@@ -68,7 +82,8 @@ ${plan("AGENCY")}
 - Add clients on the Clients page. Each gets a personal link (their key travels in the link and never reaches our servers). Free includes 3 clients.
 - First video to a client: the business sends the client's personal link itself (Copy personal link on the Clients page, or the pop-up that appears when sending). The link holds the client's private key, which only the team's devices have, so ${BRAND.name} can't email it. Once the link has been copied for them (or they've opened it), choosing the client under "Send to" shows a "Send to (name)" button, which emails them that the video is waiting if they have an email address saved; "Send to more clients" emails them when its email box is ticked. Choosing a client alone doesn't email them. The client's device remembers the link once opened; a new phone or browser needs the personal link again.
 - Sending one video to several clients: open the video and use "Send to more clients" (quick picks for all the clients you can see, your own clients, or a staff member's clients). Each client gets a private copy and their own conversation.
-- Removing a client, or removing a staff member, resets the workspace keys automatically. Clients who stay get new links by email if they have an email on file; otherwise copy their new link from the Clients page.
+- Removing a client stops their personal link working at once (the workspace keys aren't reset).
+- Removing a staff member resets the workspace keys automatically. Clients get new links by email if they have an email on file; otherwise copy their new link from the Clients page.
 - Clients can turn reminder emails off themselves.
 
 ## Teams (Studio and Agency)
@@ -112,7 +127,7 @@ ${plan("AGENCY")}
 - The Conversation panel next to the video has an expand button ("Open conversation in a larger view") for long conversations; Escape or the close button returns to normal.
 
 ## Account
-- Export your data from Settings > Account. Deleting the account there cancels billing and removes the workspace. An owner with other staff must remove them (or hand over) first.
+- Export your data from Settings > Account. Deleting the account there cancels billing and removes the workspace. An owner with other staff must remove them first. The workspace owner can't be changed or handed over to someone else.
 - Sign-in problems: make sure you're on sureframe.app and check spam for the sign-in email.
 - Why was I signed out? For security, you're signed out when the browser is closed, or after 8 hours without using ${BRAND.name}. The sign-in page then says so. Just sign in again; the device keeps its encryption keys, so no recovery key is needed on the same browser. Some browsers that restore tabs on restart can keep you signed in. Uploads and replies already under way aren't cut off. This doesn't affect clients, whose personal links keep working.
 `.trim();

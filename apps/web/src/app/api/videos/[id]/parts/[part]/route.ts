@@ -53,10 +53,12 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
   if (!driver.presignPart) return Response.json({ url: null });
   await checkUploadBudget(video, partNumber, body.data.size);
   // Record the planned size so the budget counts parts that go straight to the bucket.
+  // Never lower a recorded size: an earlier link for a bigger part may still be used.
+  const earlier = await db.uploadPart.findUnique({ where: { videoId_partNumber: { videoId: id, partNumber } }, select: { sizeBytes: true } });
   await db.uploadPart.upsert({
     where: { videoId_partNumber: { videoId: id, partNumber } },
     create: { videoId: id, partNumber, etag: null, sizeBytes: body.data.size },
-    update: { sizeBytes: body.data.size },
+    update: { sizeBytes: Math.max(earlier?.sizeBytes ?? 0, body.data.size) },
   });
   return Response.json({ url: await driver.presignPart(video.storageKey, video.uploadId, partNumber, body.data.size) });
 });

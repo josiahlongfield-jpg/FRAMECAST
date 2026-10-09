@@ -161,15 +161,22 @@ function Manager({
               {includedSeats} included with your plan{extraSeats > 0 && ` + ${extraSeats} extra`}
             </p>
           </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100 sm:w-64">
+          <div
+            role="progressbar"
+            aria-label="Client seats used"
+            aria-valuemin={0}
+            aria-valuenow={seats.used}
+            aria-valuemax={seats.limit}
+            className="h-2 w-full overflow-hidden rounded-full bg-slate-100 sm:w-64"
+          >
             <div className={`h-full ${full ? "bg-amber-500" : "bg-brand-600"}`} style={{ width: `${Math.min(100, (seats.used / Math.max(1, seats.limit)) * 100)}%` }} />
           </div>
         </div>
         {!isOwner ? null : canBuySeats ? (
           <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-5 text-sm">
             <span className="text-slate-700">Need more?</span>
-            <select value={buyQty} onChange={(e) => setBuyQty(Number(e.target.value))} className="rounded-lg border border-slate-300 bg-white px-2 py-1.5">
-              {[1, 5, 10, 25, 50].map((n) => <option key={n} value={n}>{n} seats</option>)}
+            <select value={buyQty} onChange={(e) => setBuyQty(Number(e.target.value))} aria-label="Extra clients" className="rounded-lg border border-slate-300 bg-white px-2 py-1.5">
+              {[1, 5, 10, 25, 50].map((n) => <option key={n} value={n}>{n} {n === 1 ? "client" : "clients"}</option>)}
             </select>
             <button onClick={buySeats} className="rounded-lg bg-slate-900 px-3 py-1.5 font-medium text-white hover:bg-slate-800">
               Add for {money(buyQty * seatPrice)}/month
@@ -183,7 +190,7 @@ function Manager({
           </div>
         ) : (
           <p className="mt-5 border-t border-slate-100 pt-5 text-sm text-slate-600">
-            <Link href="/pricing" className="font-medium text-brand-700 hover:underline">Upgrade</Link> for 10 or more client seats, with extra seats at US${seatPrice} each per month.
+            <Link href="/pricing" className="font-medium text-brand-700 hover:underline">Upgrade</Link> for 10 or more clients, with extra clients at {money(seatPrice)} each per month.
           </p>
         )}
       </section>

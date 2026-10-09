@@ -7,9 +7,9 @@ export default function SiteHeader() {
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
         <Logo />
         <nav className="flex items-center gap-1 text-sm sm:gap-4">
-          <Link href="/pricing" className="rounded-lg px-3 py-2 text-slate-600 hover:text-slate-900">Pricing</Link>
-          <Link href="/login" className="hidden rounded-lg px-3 py-2 text-slate-600 hover:text-slate-900 sm:block">Sign in</Link>
-          <Link href="/record" className="rounded-lg bg-brand-600 px-4 py-2 font-medium text-white hover:bg-brand-700">Start recording</Link>
+          <Link href="/pricing" className="whitespace-nowrap rounded-lg px-2 py-2 text-slate-600 hover:text-slate-900 sm:px-3">Pricing</Link>
+          <Link href="/login" className="whitespace-nowrap rounded-lg px-2 py-2 text-slate-600 hover:text-slate-900 sm:px-3">Sign in</Link>
+          <Link href="/record" className="whitespace-nowrap rounded-lg bg-brand-600 px-3 py-2 font-medium text-white hover:bg-brand-700 sm:px-4">Start recording</Link>
         </nav>
       </div>
     </header>

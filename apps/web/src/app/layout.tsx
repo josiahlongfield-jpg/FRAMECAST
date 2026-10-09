@@ -2,11 +2,19 @@ import type { Metadata } from "next";
 import { BRAND } from "@/lib/brand";
 import "./globals.css";
 
+const description =
+  "Private, end-to-end encrypted video messages between your business and your clients. Recordings saved as you make them, and clients who never pay.";
+
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.APP_URL ?? "http://localhost:3000"),
   title: { default: `${BRAND.name}: ${BRAND.tagline}`, template: `%s · ${BRAND.name}` },
-  description:
-    "Private, end-to-end encrypted video messages between your business and your clients. Recordings saved as you make them, and clients who never pay.",
+  description,
+  openGraph: {
+    siteName: BRAND.name,
+    type: "website",
+    title: `${BRAND.name}: ${BRAND.tagline}`,
+    description,
+  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

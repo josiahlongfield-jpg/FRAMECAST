@@ -92,7 +92,7 @@ export async function warnExpiring(now = new Date()) {
       })),
       note:
         `If you or your clients still need ${n === 1 ? "it" : "them"}, open ${n === 1 ? "the recording" : "each recording"} and choose Save to device before then. ` +
-        `After that, ${n === 1 ? "it" : "they"} can no longer be watched from the link. The original stays on the device it was recorded on unless it was cleared.` +
+        `After that, ${n === 1 ? "it" : "they"} can no longer be watched from the link.` +
         backup,
       button: n === 1 ? { label: "Open the recording", link: list[0].link } : { label: "See recordings deleting soon", link: appUrl("/library?filter=soon") },
       footer: `Times are in UTC. Your library shows them in your own time zone.`,

@@ -15,6 +15,18 @@ export type PlanChange = {
   removesItems: boolean;
 };
 
+/** Throws when the workspace has more clients or staff than the plan (plus its extra seats) allows. */
+export async function assertFits(workspace: Workspace, plan: PaidPlan) {
+  const used = await db.client.count({ where: { workspaceId: workspace.id, removedAt: null } });
+  if (PLANS[plan].clientSeats + workspace.extraClientSeats < used) {
+    throw new HttpError(400, `You have ${used} clients, more than ${PLANS[plan].name} allows. Remove some or add seats first.`);
+  }
+  const staff = await db.membership.count({ where: { workspaceId: workspace.id } });
+  if (staffSeatLimit({ plan, extraStaffSeats: workspace.extraStaffSeats }) < staff) {
+    throw new HttpError(400, `You have ${staff} people on your team, more than ${PLANS[plan].name} allows. Remove some first.`);
+  }
+}
+
 /**
  * How an existing subscription changes to another plan or interval, or null
  * when there is no active subscription (a new one goes through Checkout).
@@ -28,14 +40,7 @@ export async function planChange(workspace: Workspace, plan: PaidPlan, interval:
   const item = sub.items.data.find((i) => planOf(i.price));
   if (item?.price.id === price) return { sub, items: [], same: true, removesItems: false };
 
-  const used = await db.client.count({ where: { workspaceId: workspace.id, removedAt: null } });
-  if (PLANS[plan].clientSeats + workspace.extraClientSeats < used) {
-    throw new HttpError(400, `You have ${used} clients, more than ${PLANS[plan].name} allows. Remove some or add seats first.`);
-  }
-  const staff = await db.membership.count({ where: { workspaceId: workspace.id } });
-  if (staffSeatLimit({ plan, extraStaffSeats: workspace.extraStaffSeats }) < staff) {
-    throw new HttpError(400, `You have ${staff} people on your team, more than ${PLANS[plan].name} allows. Remove some first.`);
-  }
+  await assertFits(workspace, plan);
   // Every item on a subscription bills on the same interval, so extras move with the plan.
   const extras = await Promise.all(
     sub.items.data

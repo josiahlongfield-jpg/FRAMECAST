@@ -52,6 +52,14 @@ export const PATCH = handle(async (req: Request, ctx: { params: Promise<{ id: st
   const shared = d.shared ?? item.shared;
   const dueAt = d.dueAt === undefined ? item.dueAt : d.dueAt ? new Date(d.dueAt) : null;
   const scheduled = item.kind === "TASK" && !!dueAt;
+  // Edits often resend the date and rule unchanged; only a real change restarts the series.
+  const dateChanged = d.dueAt !== undefined && (dueAt?.getTime() ?? null) !== (item.dueAt?.getTime() ?? null);
+  const ruleChanged = d.repeat !== undefined && JSON.stringify(d.repeat ?? null) !== JSON.stringify(item.repeat ?? null);
+  const restart = dateChanged || ruleChanged;
+  if (restart && item.spawnedNext && item.dueAt) {
+    // The next occurrence was made from the old date or rule; it is made again from the new one.
+    await db.item.deleteMany({ where: { seriesId: item.seriesId ?? item.id, done: false, dueAt: { gt: item.dueAt }, NOT: { id: item.id } } });
+  }
   const updated = await db.item.update({
     where: { id },
     data: {
@@ -64,7 +72,7 @@ export const PATCH = handle(async (req: Request, ctx: { params: Promise<{ id: st
       remindClient: d.remindClient === undefined && d.shared === undefined ? undefined : shared && (d.remindClient ?? item.remindClient),
       remindTeam: d.remindTeam,
       // A changed date or rule starts the repeat afresh from this occurrence.
-      spawnedNext: d.dueAt !== undefined || d.repeat !== undefined ? false : undefined,
+      spawnedNext: restart ? false : undefined,
     },
   });
   const tz = await ensureTimezone(item.workspaceId, d.tz);

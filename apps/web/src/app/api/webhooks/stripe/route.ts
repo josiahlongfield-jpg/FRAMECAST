@@ -17,14 +17,16 @@ async function syncSubscription(sub: Stripe.Subscription) {
   const seatItem = sub.items.data.find((i) => catalogOf(i.price)?.item === "client_seat");
   const staffItem = sub.items.data.find((i) => catalogOf(i.price)?.item === "staff_seat");
   const cloudBackup = active && sub.items.data.some((i) => catalogOf(i.price)?.item === "cloud_backup");
+  const paying = active && !!planItem;
   // AI summaries: paid for on the subscription, or given free by the founder (and still switched on).
-  const aiAssist = (active && sub.items.data.some((i) => isAiItem(catalogOf(i.price)?.item))) || (workspace.aiAssistComplimentary && workspace.aiAssist);
+  // Free AI ends when they start paying by card; from then on it's the paid add-on.
+  const aiAssist = (active && sub.items.data.some((i) => isAiItem(catalogOf(i.price)?.item))) || (!paying && workspace.aiAssistComplimentary && workspace.aiAssist);
   await db.workspace.update({
     where: { id: workspaceId },
     data: {
       // A free plan we gave stays in place until they pay, and comes back if a subscription ends.
       plan: active && planItem ? planOf(planItem.price)! : (workspace.complimentaryPlan ?? "FREE"),
-      ...(active && planItem ? { complimentaryPlan: null } : {}),
+      ...(paying ? { complimentaryPlan: null, aiAssistComplimentary: false } : {}),
       stripeSubscriptionId: active ? sub.id : null,
       stripeCustomerId: typeof sub.customer === "string" ? sub.customer : sub.customer.id,
       subscriptionStatus: sub.status,
@@ -35,7 +37,8 @@ async function syncSubscription(sub: Stripe.Subscription) {
       currentPeriodEnd: active && planItem?.current_period_end ? new Date(planItem.current_period_end * 1000) : null,
     },
   });
-  await applyBackupSetting(workspaceId, cloudBackup);
+  // Only a real change to cloud backup moves deletion dates; renewals and seat changes must not.
+  if (workspace.cloudBackup !== cloudBackup) await applyBackupSetting(workspaceId, cloudBackup);
 }
 
 export async function POST(req: Request) {

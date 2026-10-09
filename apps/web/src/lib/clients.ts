@@ -10,7 +10,10 @@ export function clientLink(token: string, videoId?: string) {
   return appUrl(`/c/${token}${videoId ? `?v=${videoId}` : ""}`);
 }
 
-export async function seatUsage(workspace: { id: string; plan: Parameters<typeof clientSeatLimit>[0]["plan"]; extraClientSeats: number }) {
-  const used = await db.client.count({ where: { workspaceId: workspace.id, removedAt: null } });
+export async function seatUsage(
+  workspace: { id: string; plan: Parameters<typeof clientSeatLimit>[0]["plan"]; extraClientSeats: number },
+  client: Pick<typeof db, "client"> = db,
+) {
+  const used = await client.client.count({ where: { workspaceId: workspace.id, removedAt: null } });
   return { used, limit: clientSeatLimit(workspace) };
 }

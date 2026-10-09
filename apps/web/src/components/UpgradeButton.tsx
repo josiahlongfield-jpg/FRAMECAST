@@ -82,7 +82,8 @@ export default function UpgradeButton({ plan, interval = "month", featured = fal
               Switch to {name}?
             </h2>
             <p className="mt-3 text-sm text-slate-700">
-              {name} is US${price} a {interval}. Your extra clients, staff logins and backup carry over.
+              {name} is US${price} a {interval}. Your extra clients, cloud backup and AI add-on carry over (the AI add-on moves to {name}&apos;s price). Extra
+              staff logins are only on Studio and Agency.
             </p>
             <dl className="mt-4 space-y-1 rounded-xl bg-slate-50 p-4 text-sm text-slate-700" data-testid="due-today">
               <div className="flex justify-between gap-4">

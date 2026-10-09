@@ -23,6 +23,7 @@ export function teamEmail(o: {
     ...lines.map((l) => `- ${l.text}${l.link ? `: ${l.link}` : ""}`),
     `\n${o.button.label}: ${o.button.link}`,
     o.footer ? `\n${o.footer}` : "",
+    "\nSent with SureFrame",
   ].join("\n");
   const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
   const accent = o.color && /^#[0-9a-f]{6}$/i.test(o.color) ? o.color : "#3b55e6";

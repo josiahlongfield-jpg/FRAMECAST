@@ -33,9 +33,11 @@ export default function Page() {
         </li>
         <li><strong>Client details you add:</strong> the names and email addresses of clients you invite, so we can send them links and reminders.</li>
         <li>
-          <strong>Encrypted content:</strong> videos, replies, to-dos, notes and schedules. These are encrypted on your device before they reach us, and the keys stay with
-          you and your clients, so we only ever hold scrambled data. We do keep basic information about them, such as when they were created, their size and length,
-          and who they were sent to.
+          <strong>Encrypted content:</strong> video and reply recordings, text replies, and the text of to-dos and notes. These are encrypted on your device before
+          they reach us, and the keys stay with you and your clients, so we hold only scrambled copies of them. Some details aren&rsquo;t encrypted, because we need to
+          read them to show your library and send reminders: video titles, client names and email addresses, the names shown on replies, to-do due dates, repeat and
+          reminder settings, and the reminder message a business writes. We also keep basic information about content, such as when it was created, its size and
+          length, and who it was sent to.
         </li>
         <li>
           <strong>Billing:</strong> your plan and subscription status. Card details go straight to our payment provider, Stripe, and we never see or store them.
@@ -122,11 +124,14 @@ export default function Page() {
       <h2>Who we share it with</h2>
       <p>We use trusted service providers to run {LEGAL.product}. They may only use your information to provide their service to us:</p>
       <ul>
-        <li>Vercel (hosting) and our database and file storage providers, which store your account data and encrypted content.</li>
+        <li>Vercel (hosting).</li>
+        <li>Neon (our database, which holds account data).</li>
+        <li>Cloudflare R2 (storage for encrypted videos and replies).</li>
+        <li>Resend (email delivery: sign-in links, client links, reminders and team emails).</li>
         <li>Stripe (payments and subscription management).</li>
-        <li>Our email delivery provider (sign-in links, client links, reminders and team emails).</li>
-        <li>Anthropic (the AI support assistant, and summaries for businesses that use AI transcripts and summaries).</li>
-        <li>Google Workspace (our support inbox).</li>
+        <li>Anthropic (the help chat, and optional AI summaries for businesses that switch them on).</li>
+        <li>Google Workspace (our support email).</li>
+        <li>Google, if you choose Continue with Google to sign in. Google tells us your name and email address.</li>
       </ul>
       <p>
         We may also disclose information if the law requires it, or to protect the rights and safety of our users or others. Because content is end-to-end encrypted,
@@ -144,10 +149,15 @@ export default function Page() {
       <h2>How long we keep it</h2>
       <ul>
         <li>
-          Without cloud backup, the encrypted copy of a video on our servers is deleted {LEGAL.retentionDays} days after it&rsquo;s recorded. The original stays on the
-          device it was recorded on. We try to email the person who recorded it about a day before, but please don&rsquo;t rely on that email alone.
+          Without cloud backup, the encrypted copy of a video on our servers is deleted {LEGAL.retentionDays} days after it&rsquo;s recorded, and after that it
+          can&rsquo;t be watched from its link. A recording stays on the device it was made on only until its upload finishes; to keep your own copy, open the video
+          and choose Save to device. We try to email the person who recorded it about a day before, but please don&rsquo;t rely on that email alone.
         </li>
-        <li>With cloud backup, encrypted content is kept until you delete it or close your account.</li>
+        <li>
+          With cloud backup, encrypted content is kept until you delete it or close your account. If cloud backup ends (you switch it off, cancel, or your paid plan
+          ends), our copies are deleted {LEGAL.retentionDays} days later.
+        </li>
+        <li>Support chats are kept for as long as we need them to help you, and we delete them if you ask.</li>
         <li>
           Records of team emails (who was told about which reply or video) are deleted about 30 days after the email is sent. Reminders sent to staff are kept
           with the account as a history for owners and admins.
@@ -163,6 +173,9 @@ export default function Page() {
           <strong>Sign-in cookie:</strong> keeps you signed in to your account.
         </li>
         <li>
+          <strong>Sign-in security cookies:</strong> short-lived cookies our sign-in system uses to protect the sign-in process, for example against forged requests.
+        </li>
+        <li>
           <strong>sf_active:</strong> records the time of your last activity. It&rsquo;s deleted when you close your browser, and together with the sign-in cookie it
           signs you out when the browser is closed or after 8 hours without use.
         </li>
@@ -170,13 +183,14 @@ export default function Page() {
           <strong>sf_signed_out:</strong> set for 5 minutes after we sign you out this way, so the sign-in page can explain why.
         </li>
         <li>
-          <strong>Client link cookie</strong> (fc_client_&hellip;): remembers a client&rsquo;s personal link on their device for up to a year, so they can get back to
+          <strong>Client link cookie:</strong> remembers a client&rsquo;s personal link on their device for up to a year, so they can get back to
           their videos without an account.
         </li>
       </ul>
       <p>
-        We also use your browser&rsquo;s storage to hold your encryption keys and unsent recordings on your device, and, for businesses using AI transcripts, a copy
-        of the speech model so it doesn&rsquo;t download again. We don&rsquo;t use advertising or tracking cookies.
+        We also use your browser&rsquo;s storage to hold your encryption keys and recordings that haven&rsquo;t finished uploading, a link back to your help chat so
+        you can return to it, a team invite you&rsquo;ve opened but not yet accepted, and, for businesses using AI transcripts, a copy of the speech model so it
+        doesn&rsquo;t download again. We don&rsquo;t use advertising or tracking cookies.
       </p>
 
       <h2>Your choices and rights</h2>
@@ -201,7 +215,10 @@ export default function Page() {
       </p>
 
       <h2>Age</h2>
-      <p>{LEGAL.product} is for people aged {LEGAL.minimumAge} and over. We don&rsquo;t knowingly collect information from children.</p>
+      <p>
+        {LEGAL.product} accounts are for people aged {LEGAL.minimumAge} and over. Businesses may have clients who are children, such as a tutor&rsquo;s students.
+        Clients under 18 may use a client link only with a parent&rsquo;s or guardian&rsquo;s permission, which the business is responsible for getting.
+      </p>
 
       <h2>Changes</h2>
       <p>We&rsquo;ll update this page when our practices change, and tell you by email about significant changes.</p>

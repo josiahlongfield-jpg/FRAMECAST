@@ -4,7 +4,8 @@ import { db } from "@/lib/db";
 import { storage } from "@/lib/storage";
 import { handle, HttpError, requireUser } from "@/lib/session";
 import { publicVideo } from "@/lib/videos";
-import { accessOf, canDeleteVideo, canSeeClient, visibleVideo } from "@/lib/permissions";
+import { accessOf, canDeleteVideo, canSeeClient, seesAllClients, visibleVideo } from "@/lib/permissions";
+import { limitByIp } from "@/lib/rateLimit";
 import { viewableVideo } from "@/lib/access";
 import { KeyFingerprint, requireCurrentKey } from "@/lib/keys";
 import { notifyVideosSent } from "@/lib/teamNotify";
@@ -36,6 +37,13 @@ export const PATCH = handle(async (req: Request, ctx: { params: Promise<{ id: st
   const body = Patch.safeParse(await req.json());
   if (!body.success) throw new HttpError(400, "Invalid update");
   if (body.data.clientKeyWrap) await requireCurrentKey(workspace, body.data.keyFingerprint);
+  if (body.data.notify) await limitByIp("notify", 60, 600);
+  // Replies belong to the client they came from; moving the video would show them to someone else.
+  if (body.data.clientId !== undefined && current.clientId && body.data.clientId !== current.clientId) {
+    if (await db.reply.count({ where: { videoId: id } })) {
+      throw new HttpError(409, "This client has already replied, so the video stays with them. Use Send to more clients to share it with someone else.");
+    }
+  }
   if (body.data.clientId) {
     const client = await db.client.findFirst({ where: { id: body.data.clientId, workspaceId: workspace.id, removedAt: null } });
     if (!client || !canSeeClient(access, client)) throw new HttpError(400, "Unknown client");
@@ -75,7 +83,11 @@ export const DELETE = handle(async (_req: Request, ctx: { params: Promise<{ id: 
   const video = await visibleVideo(access, id);
   if (!canDeleteVideo(access, video)) throw new HttpError(403, "You can only delete videos you recorded. Ask the owner or an admin.");
   // Deleting an original also deletes the copies sent to other clients.
-  const copies = video.sourceId ? [] : await db.video.findMany({ where: { sourceId: id } });
+  const copies = video.sourceId ? [] : await db.video.findMany({ where: { sourceId: id }, include: { client: true } });
+  // Staff who look after only some clients can't delete conversations with clients they can't see.
+  if (!seesAllClients(access) && copies.some((c) => c.client && !canSeeClient(access, c.client))) {
+    throw new HttpError(403, "This video was also sent to clients you don't look after. Ask the owner or an admin to delete it.");
+  }
   const conversations = [id, ...copies.map((c) => c.id)];
   // Remove each conversation's reply media along with the video itself.
   const media = await db.video.findMany({ where: { replyToId: { in: conversations } } });

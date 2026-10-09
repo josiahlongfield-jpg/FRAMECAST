@@ -86,7 +86,8 @@ const GB = 1024 ** 3;
 export async function uploadBudget(video: { replyToId: string | null; workspaceId: string }) {
   if (video.replyToId) return 2 * GB; // replies are capped at 15 minutes
   const w = await db.workspace.findUnique({ where: { id: video.workspaceId }, select: { plan: true } });
-  return w?.plan === "FREE" ? 2 * GB : 40 * GB;
+  // Free records 5 minutes at 720p (about 100 MB), so 300 MB leaves plenty of room.
+  return w?.plan === "FREE" ? 0.3 * GB : 40 * GB;
 }
 
 /** Refuse a part that would take the upload past its budget. Parts are recorded as they're accepted. */

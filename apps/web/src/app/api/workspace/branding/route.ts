@@ -10,6 +10,8 @@ export const POST = handle(async (req: Request) => {
   const { workspace } = me;
   if (workspace.plan === "FREE") throw new HttpError(402, "Custom branding is part of every paid plan.");
 
+  // Refuse an oversized upload before reading it.
+  if (Number(req.headers.get("content-length") ?? 0) > MAX_LOGO_BYTES + 64 * 1024) throw new HttpError(413, "That image is too big. Use one under 300 KB.");
   const form = await req.formData();
   await limitByIp("branding", 30, 600);
   const data: { brandColor?: string | null; brandLogo?: Uint8Array<ArrayBuffer> | null; brandLogoType?: string | null } = {};

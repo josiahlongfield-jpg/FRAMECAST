@@ -56,6 +56,9 @@ export default function Page() {
         </li>
         <li>Keep client links private. Anyone with a client&rsquo;s link can see what was shared with that client.</li>
         <li>
+          Clients under 18 may use a client link only with a parent&rsquo;s or guardian&rsquo;s permission, which the business is responsible for getting.
+        </li>
+        <li>
           You&rsquo;re responsible for following the privacy, spam and recording laws that apply to you, including getting any consent needed before recording people
           and taking extra care with sensitive information such as health details.
         </li>
@@ -92,8 +95,10 @@ export default function Page() {
 
       <h2>7. Storage and lost recordings</h2>
       <p>
-        Without cloud backup, the encrypted copy of a video on our servers is deleted {LEGAL.retentionDays} days after it&rsquo;s recorded, and the original stays on the
-        recording device. With cloud backup, content is kept until you delete it or close your account. Please keep your own copies of anything important.
+        Without cloud backup, the encrypted copy of a video on our servers is deleted {LEGAL.retentionDays} days after it&rsquo;s recorded, and after that it can&rsquo;t
+        be watched from its link. A recording stays on the device it was made on only until its upload finishes. To keep your own copy, open the video and choose Save
+        to device. With cloud backup, content is kept until you delete it or close your account. If cloud backup ends (you switch it off, cancel, or your paid plan
+        ends), our copies are deleted {LEGAL.retentionDays} days later. Please keep your own copies of anything important.
       </p>
       <p>
         {LEGAL.product} is built to protect recordings from crashes and dropped connections, but no system can rule out every loss. A recording or other content can

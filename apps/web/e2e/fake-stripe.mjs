@@ -111,8 +111,19 @@ export function start(port = Number(process.env.FAKE_STRIPE_PORT ?? 12111)) {
       for (const s of state.subs) if (s.customer === m[1]) s.status = "canceled";
       return send(200, { id: m[1], object: "customer", deleted: true });
     }
+    if (p === "/v1/subscriptions" && req.method === "GET") {
+      return send(200, list(state.subs.filter((s) => s.customer === form.customer)));
+    }
+    if (p === "/v1/checkout/sessions" && req.method === "GET") {
+      return send(200, list(state.sessions.filter((s) => s.params.customer === form.customer && s.status === (form.status ?? s.status))));
+    }
+    if ((m = p.match(/^\/v1\/checkout\/sessions\/([^/]+)\/expire$/)) && req.method === "POST") {
+      const s = state.sessions.find((x) => x.id === m[1]);
+      if (s) s.status = "expired";
+      return send(200, s ?? {});
+    }
     if (p === "/v1/checkout/sessions" && req.method === "POST") {
-      const s = { id: id("cs"), object: "checkout.session", url: `https://checkout.stripe.test/${n}`, params: form };
+      const s = { id: id("cs"), object: "checkout.session", status: "open", url: `https://checkout.stripe.test/${n}`, params: form };
       state.sessions.push(s);
       return send(200, s);
     }
