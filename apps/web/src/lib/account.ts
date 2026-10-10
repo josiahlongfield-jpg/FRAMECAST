@@ -169,7 +169,7 @@ export async function exportAccount(userId: string) {
         workspace: {
           id: w.id, name: w.name, plan: w.plan, subscriptionStatus: w.subscriptionStatus, extraClientSeats: w.extraClientSeats,
           cloudBackup: w.cloudBackup, aiAssist: w.aiAssist, timezone: w.timezone, reminderMessage: w.reminderMessage, reminderReplyTo: w.reminderReplyTo,
-          createdAt: w.createdAt,
+          videosRecorded: w.videosRecorded, createdAt: w.createdAt,
         },
         clients,
         videos: videos.map((v) => ({ ...v, sizeBytes: Number(v.sizeBytes) })),

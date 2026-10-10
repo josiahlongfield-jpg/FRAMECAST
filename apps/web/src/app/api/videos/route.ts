@@ -8,6 +8,7 @@ import { limitByIp } from "@/lib/rateLimit";
 import { KeyFingerprint, requireCurrentKey } from "@/lib/keys";
 import { accessOf, libraryWhere } from "@/lib/permissions";
 import { ensureTimezone } from "@/lib/reminders";
+import { videoLimitMessage, videosUsed } from "@/lib/videoAllowance";
 
 const CreateBody = z.object({
   mimeType: z.string().max(120).regex(ALLOWED_MIME),
@@ -37,8 +38,8 @@ export const POST = handle(async (req: Request) => {
     if (limit !== null) {
       // Counted under a lock so two recordings started at once can't both take the last place.
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"videos:" + workspace.id}))`;
-      const count = await tx.video.count({ where: { workspaceId: workspace.id, replyToId: null, sourceId: null } });
-      if (count >= limit) throw new HttpError(402, `The ${PLANS[workspace.plan].name} plan allows ${limit} videos. Upgrade to record more.`);
+      const { used, uploading } = await videosUsed(workspace.id, tx);
+      if (used >= limit) throw new HttpError(402, videoLimitMessage(PLANS[workspace.plan].name, limit, uploading));
     }
     const uploadId = await storage().begin(storageKey, body.data.mimeType);
     return tx.video.create({

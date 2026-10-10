@@ -1,5 +1,6 @@
 import { promises as fs, createReadStream } from "node:fs";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import {
   S3Client,
   CreateMultipartUploadCommand,
@@ -72,7 +73,9 @@ class LocalDriver implements StorageDriver {
 
   async complete(key: string, _uploadId: string | null, parts: { partNumber: number }[]) {
     const out = this.file(key);
-    const handle = await fs.open(out, "w");
+    // Built beside the file and moved into place, so a second finish racing this one can't cut it short.
+    const tmp = `${out}.${randomUUID()}.tmp`;
+    const handle = await fs.open(tmp, "w");
     let size = 0;
     try {
       for (const { partNumber } of [...parts].sort((a, b) => a.partNumber - b.partNumber)) {
@@ -80,9 +83,16 @@ class LocalDriver implements StorageDriver {
         await handle.write(buf);
         size += buf.length;
       }
-    } finally {
+    } catch (err) {
       await handle.close();
+      await fs.rm(tmp, { force: true });
+      // The other finish got there first and tidied the parts away.
+      const done = (err as NodeJS.ErrnoException).code === "ENOENT" ? await fs.stat(out).catch(() => null) : null;
+      if (done) return done.size;
+      throw err;
     }
+    await handle.close();
+    await fs.rename(tmp, out);
     await fs.rm(this.partsDir(key), { recursive: true, force: true });
     return size;
   }

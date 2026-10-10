@@ -12,6 +12,7 @@ import type { Workspace } from "@/lib/db";
 import { followTeamLink, requirePageUser } from "@/lib/session";
 import { BRAND } from "@/lib/brand";
 import { zoned } from "@/lib/dates";
+import { videosUsed } from "@/lib/videoAllowance";
 
 export const metadata: Metadata = { title: "Billing" };
 
@@ -30,6 +31,16 @@ async function AiAddOn({ workspace }: { workspace: Workspace }) {
   );
 }
 
+/** Free: how many of the plan's videos in total are used, deleted ones included. */
+async function FreeVideosUsed({ workspaceId, limit }: { workspaceId: string; limit: number }) {
+  const { used } = await videosUsed(workspaceId);
+  return (
+    <p className="mt-3 text-sm text-slate-700" data-testid="free-videos-used">
+      {Math.min(used, limit)} of {limit} free videos used. Deleting a video doesn&apos;t give its place back.
+    </p>
+  );
+}
+
 /** A date as the workspace's owner would read it, in their own time zone. */
 const day = (d: Date, timeZone: string | null) => zoned(timeZone).longDay(d);
 
@@ -39,6 +50,7 @@ export default async function Billing({ searchParams }: { searchParams: Promise<
   const { user, workspace, role } = await requirePageUser(upgraded ? "/settings/billing?upgraded=1" : "/settings/billing");
   const plan = PLANS[workspace.plan];
   const comp = !!workspace.complimentaryPlan && !workspace.stripeSubscriptionId;
+  const freeLimit = PLANS.FREE.maxVideos;
   if (role !== "OWNER") {
     return (
       <>
@@ -100,10 +112,14 @@ export default async function Billing({ searchParams }: { searchParams: Promise<
           <ul className="mt-4 space-y-1 text-sm text-slate-700">
             {plan.features.map((f) => <li key={f}>• {f}</li>)}
           </ul>
+          {plan.maxVideos !== null && (
+            <FreeVideosUsed workspaceId={workspace.id} limit={plan.maxVideos} />
+          )}
           {workspace.stripeSubscriptionId && (
             <p className="mt-4 text-xs text-slate-500" data-testid="cancel-note">
               If you cancel, or a payment can&apos;t be taken, you move to the Free plan when the paid period ends. Clients and staff beyond its limits are then
               paused until you upgrade or remove some. Please tell them about any change.
+              {freeLimit !== null && ` Free includes ${freeLimit} videos in total, counting the ones you've already recorded, so you may need a paid plan to record new ones.`}
               {workspace.cloudBackup && ` Cloud backup ends too, and our copies of your recordings are deleted ${RETENTION_DAYS} days later unless you subscribe again or save them.`}
             </p>
           )}

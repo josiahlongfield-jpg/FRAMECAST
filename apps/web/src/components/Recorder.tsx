@@ -38,10 +38,13 @@ const fmt = (ms: number) => {
 export default function Recorder({
   maxResolution,
   maxDurationMin,
+  freeVideos,
   teamKey,
 }: {
   maxResolution: Quality;
   maxDurationMin: number;
+  /** Free: how many of the plan's videos in total are left. */
+  freeVideos: { left: number; limit: number } | null;
   teamKey: CryptoKey;
 }) {
   const router = useRouter();
@@ -56,6 +59,11 @@ export default function Recorder({
   const [elapsed, setElapsed] = useState(0);
   const [upload, setUpload] = useState<UploadState>({ uploadedBytes: 0, bufferedBytes: 0, retrying: false });
   const [error, setError] = useState<string>();
+  // The plan's videos are used up: the error links to the plans.
+  const [upgrade, setUpgrade] = useState(false);
+  // A recording holds a place from the moment it starts; one deleted before it finished gives it back.
+  const [freeLeft, setFreeLeft] = useState(freeVideos?.left ?? null);
+  const placeBack = () => setFreeLeft((n) => (n === null ? n : n + 1));
   const [notice, setNotice] = useState<string>();
   // Set once we know there's no camera: camera options then flash the notice instead of retrying.
   const [noCamera, setNoCamera] = useState(false);
@@ -193,6 +201,7 @@ export default function Recorder({
 
   async function start() {
     setError(undefined);
+    setUpgrade(false);
     failure.current = undefined;
     cancelled.current = false;
     const streams: MediaStream[] = [];
@@ -235,8 +244,13 @@ export default function Recorder({
         }),
       });
       const data = await res.json();
+      if (res.status === 402) {
+        setUpgrade(true);
+        setFreeLeft((n) => (n === null ? n : 0));
+      }
       if (!res.ok) throw new Error(data.error ?? "Could not start recording");
       const videoId: string = data.video.id;
+      setFreeLeft((n) => (n === null ? n : Math.max(0, n - 1)));
 
       made = { videoId, releaseLock: () => {} };
       await store.putSession({ videoId, title: data.video.title, mimeType, startedAt: Date.now(), nextPart: 1, durationMs: 0, stopped: false });
@@ -293,7 +307,8 @@ export default function Recorder({
       // Nothing was recorded: don't leave an empty "Incomplete upload" behind.
       if (made) {
         await store.removeSession(made.videoId).catch(() => {});
-        await fetch(`/api/videos/${made.videoId}`, { method: "DELETE" }).catch(() => {});
+        const removed = await fetch(`/api/videos/${made.videoId}`, { method: "DELETE" }).catch(() => null);
+        if (removed?.ok) placeBack();
         made.releaseLock();
       }
       setPhase("setup");
@@ -355,7 +370,8 @@ export default function Recorder({
     if (l.recorder.state !== "inactive") l.recorder.stop();
     cleanup();
     await store.removeSession(l.videoId);
-    await fetch(`/api/videos/${l.videoId}`, { method: "DELETE" }).catch(() => {});
+    const removed = await fetch(`/api/videos/${l.videoId}`, { method: "DELETE" }).catch(() => null);
+    if (removed?.ok) placeBack();
     l.releaseLock();
     live.current = null;
     setElapsed(0);
@@ -415,7 +431,17 @@ export default function Recorder({
             <a className="font-medium underline" href={recovered.length === 1 ? `/v/${recovered[0]}` : "/library"}>{recovered.length === 1 ? "View it" : "See your library"}</a>
           </div>
         )}
-        {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div>}
+        {error && (
+          <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+            {error}
+            {upgrade && (
+              <>
+                {" "}
+                <a href="/pricing" className="font-medium underline">See plans</a>
+              </>
+            )}
+          </div>
+        )}
         {notice && !error && phase === "setup" && (
           <div key={flash} className={`rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 ${flash ? "notice-flash" : ""}`}>{notice}</div>
         )}
@@ -463,6 +489,12 @@ export default function Recorder({
             <button onClick={start} className="rounded-xl bg-brand-600 px-4 py-3 font-semibold text-white shadow-sm hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600">
               Start recording
             </button>
+            {freeVideos && freeLeft !== null && (
+              <p className="text-sm text-slate-600" data-testid="free-videos-left">
+                {freeLeft} of {freeVideos.limit} free videos left.{" "}
+                {freeLeft <= 5 && <a href="/pricing" className="font-medium text-brand-700 hover:underline">See plans</a>}
+              </p>
+            )}
             <p className="text-xs text-slate-500">
               Your recording uploads while you talk. Until it&rsquo;s safely up, a copy is kept in this browser, so after a crash or dropped connection it picks up where it left off.
             </p>

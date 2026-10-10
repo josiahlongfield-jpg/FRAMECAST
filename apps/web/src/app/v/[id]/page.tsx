@@ -120,6 +120,8 @@ export default async function Watch({ params, searchParams }: Props) {
               isMember ? (video.owner.name ?? video.owner.email.split("@")[0]) : video.owner.name ? `${video.owner.name} from ${workspace.name}` : workspace.name
             }
             canDelete={!!access && canDeleteVideo(access, video)}
+            // Only a finished original counts (a refused upload never got a duration).
+            freeVideoLimit={isMember && !video.sourceId && !video.replyToId && video.status !== "RECORDING" && video.durationMs !== null ? PLANS[workspace.plan].maxVideos : null}
             viewer={
               viewer.kind === "member"
                 ? { kind: "member", workspaceId: video.workspaceId, fingerprint: workspace.keyFingerprint }

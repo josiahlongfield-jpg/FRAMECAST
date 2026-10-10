@@ -84,6 +84,7 @@ export function publicVideo(v: {
 
 const GB = 1024 ** 3;
 const REPLY_BUDGET = 0.7 * GB;
+const FREE_BUDGET = 0.3 * GB;
 
 /**
  * Most bytes of video and voice replies one conversation may take in a day.
@@ -104,12 +105,18 @@ export const REPLY_DAILY_BYTES = 3 * GB;
  * Most bytes one upload may hold: generous for real recordings at the plan's
  * longest length and best quality, but a ceiling against filling storage.
  */
-export async function uploadBudget(video: { replyToId: string | null; workspaceId: string }) {
-  // Replies are capped at 15 minutes: about 560 MB at the reply recorder's 1080p rate.
-  if (video.replyToId) return REPLY_BUDGET;
+export async function uploadBudget(video: { id: string; replyToId: string | null; workspaceId: string }) {
   const w = await db.workspace.findUnique({ where: { id: video.workspaceId }, select: { plan: true } });
+  const free = w?.plan === "FREE";
+  if (video.replyToId) {
+    // Replies are capped at 15 minutes: about 560 MB at the reply recorder's 1080p rate.
+    if (!free) return REPLY_BUDGET;
+    // The team's own replies on Free keep to 5 minutes (about 190 MB), like its videos.
+    const reply = await db.reply.findUnique({ where: { mediaId: video.id }, select: { authorUserId: true } });
+    return reply?.authorUserId ? FREE_BUDGET : REPLY_BUDGET;
+  }
   // Free records 5 minutes at 720p (about 100 MB), so 300 MB leaves plenty of room.
-  return w?.plan === "FREE" ? 0.3 * GB : 40 * GB;
+  return free ? FREE_BUDGET : 40 * GB;
 }
 
 /** Refuse a part that would take the upload past its budget. Parts are recorded as they're accepted. */

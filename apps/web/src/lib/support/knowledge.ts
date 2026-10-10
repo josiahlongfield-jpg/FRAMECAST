@@ -8,7 +8,9 @@ import {
   EXTRA_SEAT_PRICE_YEARLY,
   EXTRA_STAFF_PRICE,
   EXTRA_STAFF_PRICE_YEARLY,
+  MAX_REPLY_MINUTES,
   PLANS,
+  replyMaxMinutes,
 } from "@/lib/plans";
 import { RETENTION_DAYS } from "@/lib/retention";
 
@@ -37,6 +39,7 @@ ${plan("FREE")}
 ${plan("SOLO")}
 ${plan("STUDIO")}
 ${plan("AGENCY")}
+- Free plan videos: ${PLANS.FREE.maxVideos} in total for the life of the workspace, not per month. Every original recording that finished uploading counts, including ones made on a paid or complimentary plan and ones since deleted or expired; deleting never gives a place back. A recording still uploading holds a place until it finishes or is deleted. Recordings cancelled or discarded before they finished uploading, and uploads refused for being too long or too large, don't count. Replies (video, voice or text, from clients or the team) and sending a video to more clients don't count. With all ${PLANS.FREE.maxVideos} used, the team can still watch, send existing videos to more clients and reply, but needs a paid plan to record new ones. This also applies when a workspace moves to Free (cancelled, unpaid or a complimentary plan ending) after recording ${PLANS.FREE.maxVideos} or more. The Library, the New recording page and Settings > Billing show how many are used or left. Requests for more free videos or a correction to the count: hand over.
 - Extra clients: ${perMonthOrYear(EXTRA_SEAT_PRICE, EXTRA_SEAT_PRICE_YEARLY)} each on any paid plan. Extra staff logins: ${perMonthOrYear(EXTRA_STAFF_PRICE, EXTRA_STAFF_PRICE_YEARLY)} each on Studio and Agency.
 - Cloud backup: ${perMonthOrYear(CLOUD_BACKUP_PRICE, CLOUD_BACKUP_PRICE_YEARLY)}. Without it, the encrypted copy on our servers is deleted ${RETENTION_DAYS} days after recording. A recording stays on the recording device only until its upload finishes, so to keep a copy, open the video and choose Save to device. If cloud backup ends (switched off, plan cancelled or lapsed), our copies are deleted ${RETENTION_DAYS} days later.
 - AI transcripts and summaries (optional add-on, not on Free): ${perMonthOrYear(AI_ASSIST_PRICES.SOLO.month, AI_ASSIST_PRICES.SOLO.year)} on Solo, ${perMonthOrYear(AI_ASSIST_PRICES.STUDIO.month, AI_ASSIST_PRICES.STUDIO.year)} on Studio, ${perMonthOrYear(AI_ASSIST_PRICES.AGENCY.month, AI_ASSIST_PRICES.AGENCY.year)} on Agency. Fair use: up to ${AI_SUMMARIES_PER_MONTH.SOLO}, ${AI_SUMMARIES_PER_MONTH.STUDIO} and ${AI_SUMMARIES_PER_MONTH.AGENCY} summaries a month respectively.
@@ -124,7 +127,7 @@ ${plan("AGENCY")}
 - Recordings save to the device as they are made. If the browser crashes or the connection drops, reopen ${BRAND.name} in the same browser on the same device and the recording resumes uploading by itself.
 - Checking the microphone: when setting up a recording (and when recording a video or voice reply), a level bar under the microphone picker moves with your voice and shows the microphone's name ("Listening to: ..."). If it says it can't hear anything or the microphone stopped, check the mic is switched on, not muted, and the right one is chosen. The bar is measured on the device only; nothing is recorded or sent for it.
 - Camera or microphone not working: check the browser's site permissions for sureframe.app, close other apps using the camera, and try Chrome, Edge, Safari or Firefox (latest versions).
-- Free videos are limited to 5 minutes and 720p; paid plans allow up to 4 hours and 4K.
+- Free videos are limited to ${PLANS.FREE.maxDurationMin} minutes and 720p; paid plans allow up to 4 hours and 4K. On Free, the team's own video and voice replies are limited to ${replyMaxMinutes("FREE", true)} minutes too. Clients' replies can be up to ${MAX_REPLY_MINUTES} minutes on every plan, and so can the team's on paid plans. At the limit, recording stops by itself and what was recorded is kept (a reply is sent).
 - There are no mobile apps yet; the website works on phones and computers with nothing to install.
 
 ## Replies and the conversation

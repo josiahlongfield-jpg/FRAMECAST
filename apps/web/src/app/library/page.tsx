@@ -10,6 +10,7 @@ import { reminderDefaultsFor } from "@/lib/reminders";
 import { accessOf, isManager, libraryWhere, seesAllClients } from "@/lib/permissions";
 import type { Prisma } from "@prisma/client";
 import { zoned } from "@/lib/dates";
+import { videosUsed } from "@/lib/videoAllowance";
 
 export const metadata: Metadata = { title: "Library" };
 
@@ -36,11 +37,14 @@ export default async function Library({ searchParams }: { searchParams: Promise<
   // "Deleting soon": server copies deleted within a week (no cloud backup), soonest first.
   const soonWhere: Prisma.VideoWhereInput = { ...scope, AND: [{ purgeAt: { not: null, lte: new Date(Date.now() + 7 * 86_400_000) } }, { status: { notIn: ["EXPIRED", "RECORDING"] } }] };
   const soon = filter === "soon";
-  const [videos, soonCount] = await Promise.all([
+  const [videos, soonCount, allowance] = await Promise.all([
     // Copies sent to other clients count their views towards the original.
     db.video.findMany({ where: soon ? soonWhere : scope, orderBy: soon ? { purgeAt: "asc" } : { createdAt: "desc" }, include: { copies: { select: { viewCount: true } } } }),
     db.video.count({ where: soonWhere }),
+    plan.maxVideos !== null ? videosUsed(workspace.id) : null,
   ]);
+  // Free: videos in total for the life of the workspace, deleted ones included.
+  const freeLeft = allowance && plan.maxVideos !== null ? Math.max(0, plan.maxVideos - allowance.used) : null;
   const withParams = (p: Record<string, string | undefined>) => {
     const q = new URLSearchParams(Object.entries(p).filter((e): e is [string, string] => !!e[1])).toString();
     return q ? `/library?${q}` : "/library";
@@ -69,10 +73,23 @@ export default async function Library({ searchParams }: { searchParams: Promise<
               {soon ? `${videos.length} deleting from our servers within 7 days` : (
                 <>
                   {videos.length} {videos.length === 1 ? "video" : "videos"}
-                  {plan.maxVideos !== null && ` of ${plan.maxVideos} on the ${plan.name} plan`}
+                  {allowance && plan.maxVideos !== null && (
+                    <span data-testid="free-videos-used">{` · ${Math.min(allowance.used, plan.maxVideos)} of ${plan.maxVideos} free videos used`}</span>
+                  )}
                 </>
               )}
             </p>
+            {freeLeft !== null && freeLeft === 0 ? (
+              <p className="mt-2 max-w-xl rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" data-testid="free-videos-note">
+                You&apos;ve used all {plan.maxVideos} free videos. Upgrade to record more. Your existing videos, replies and clients carry on as normal.{" "}
+                <Link href="/pricing" className="font-medium text-amber-950 underline">See plans</Link>
+              </p>
+            ) : freeLeft !== null && freeLeft <= 5 ? (
+              <p className="mt-2 text-sm text-amber-700" data-testid="free-videos-note">
+                {freeLeft} free {freeLeft === 1 ? "video" : "videos"} left. Deleting a video doesn&apos;t give its place back.{" "}
+                <Link href="/pricing" className="font-medium text-brand-700 hover:underline">See plans</Link>
+              </p>
+            ) : null}
             {plan.showsPromo && (
               <p className="mt-2 text-sm text-slate-500" data-testid="promo-note">
                 Your clients see a short SureFrame intro before each video. Paid plans remove it.{" "}

@@ -126,6 +126,9 @@ model Workspace {
   brandColor            String?
   /// Bumped on every branding change so logo URLs bust caches.
   brandVersion          Int                @default(0)
+  /// Original recordings that finished uploading, on any plan. Deleting or expiring a video doesn't lower
+  /// it. The Free plan's lifetime limit is checked against it (lib/videoAllowance.ts).
+  videosRecorded        Int                @default(0)
   createdAt             DateTime           @default(now())
   members               Membership[]
   videos                Video[]

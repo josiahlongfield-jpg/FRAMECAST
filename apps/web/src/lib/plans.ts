@@ -5,6 +5,11 @@ export type PlanLimits = {
   priceMonthly: number;
   /** Paying yearly gets two months free. */
   priceYearly: number;
+  /**
+   * Videos in total for the life of the workspace (not per month), or null for unlimited.
+   * Every original that finished uploading counts, on any plan, and deleting one doesn't
+   * give its place back. Replies and copies sent to more clients don't count.
+   */
   maxVideos: number | null;
   maxDurationMin: number;
   maxResolution: 720 | 1080 | 2160;
@@ -67,7 +72,7 @@ export const PLANS: Record<Plan, PlanLimits> = {
     clientSeats: 3,
     staffSeats: 1,
     showsPromo: true,
-    features: ["3 clients included", "25 videos", "Up to 5 minutes per video", "720p recording", "Video, voice and text replies", "End-to-end encrypted", "Clients see a short SureFrame intro before each video"],
+    features: ["3 clients included", "25 videos in total", "Up to 5 minutes per video", "720p recording", "Video, voice and text replies", "End-to-end encrypted", "Clients see a short SureFrame intro before each video"],
   },
   SOLO: {
     name: "Solo",
@@ -106,6 +111,14 @@ export const PLANS: Record<Plan, PlanLimits> = {
     features: ["100 clients included", "10 staff logins (yours included)", "Assign clients to staff", "Choose what each staff member can see and do", "Team overview: replies waiting, videos sent, staff reminders", "Extra staff US$8/month each", "Everything in Solo"],
   },
 };
+
+/** Longest video or voice reply a client can send. */
+export const MAX_REPLY_MINUTES = 15;
+
+/** Longest video or voice reply. The team's own replies keep to the plan's video length (5 minutes on Free). */
+export function replyMaxMinutes(plan: Plan, byTeam: boolean) {
+  return byTeam ? Math.min(MAX_REPLY_MINUTES, PLANS[plan].maxDurationMin) : MAX_REPLY_MINUTES;
+}
 
 export const PAID_PLANS = ["SOLO", "STUDIO", "AGENCY"] as const;
 export type PaidPlan = (typeof PAID_PLANS)[number];

@@ -66,6 +66,8 @@ type Props = {
   ownerName: string;
   /** Members only: may delete this video (staff can be limited to their own recordings). */
   canDelete?: boolean;
+  /** Free: a finished original uses one of the plan's videos in total, and deleting it doesn't give that back. */
+  freeVideoLimit?: number | null;
   /** Members only: clients this video can be sent to. */
   clients: ClientOption[];
   sentToId: string | null;
@@ -250,6 +252,7 @@ function WatchBody({
   ownerName,
   canEdit,
   canDelete,
+  freeVideoLimit,
   clients: initialClients,
   sentToId,
   initialReplies,
@@ -485,7 +488,8 @@ function WatchBody({
 
   async function remove() {
     const others = sendMany && !sendMany.sourceId && sendMany.copies.length ? " The copies sent to other clients are deleted too." : "";
-    if (!confirm(`Delete this video?${others} This can't be undone.`)) return;
+    const counts = freeVideoLimit ? ` It still counts towards your ${freeVideoLimit} free videos.` : "";
+    if (!confirm(`Delete this video?${others}${counts} This can't be undone.`)) return;
     const res = await fetch(`/api/videos/${video.id}`, { method: "DELETE" }).catch(() => null);
     if (!res?.ok) return alert((await res?.json().catch(() => ({})))?.error ?? "Couldn't delete the video. Check your connection and try again.");
     router.push("/library");

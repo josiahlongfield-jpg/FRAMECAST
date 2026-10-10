@@ -7,13 +7,14 @@ import { recoverInterrupted } from "@/lib/recorder/uploader";
 
 /**
  * Finishes recordings a crash or closed tab left in this browser, from any
- * signed-in page. The recorder and the video page run their own recovery.
+ * signed-in page. The recorder and the video page run their own recovery,
+ * unless `always` is set (the record page when it shows no recorder).
  */
-export default function RecoverUploads() {
+export default function RecoverUploads({ always = false }: { always?: boolean }) {
   const path = usePathname() ?? "";
   const router = useRouter();
   const [done, setDone] = useState<string[]>([]);
-  const own = path.startsWith("/record") || path.startsWith("/v/");
+  const own = !always && (path.startsWith("/record") || path.startsWith("/v/"));
 
   useEffect(() => {
     if (own) return;

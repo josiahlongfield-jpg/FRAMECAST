@@ -21,6 +21,10 @@ export default function Pricing() {
         </div>
         <PricingTable />
         <p className="mt-10 text-center text-sm text-slate-500">More than 100 clients? Add extra clients for US$1.50 a month each.</p>
+        <p className="mt-2 text-center text-sm text-slate-500" data-testid="free-videos-note">
+          Free includes {PLANS.FREE.maxVideos} videos in total, not per month, counting videos recorded on any plan. Deleting a video doesn&rsquo;t give its place
+          back. Replies and sending a video to more clients don&rsquo;t count.
+        </p>
         <p className="mt-2 text-center text-sm text-slate-500" data-testid="currency-note">All prices are in US dollars (USD), plus any sales tax, VAT or GST that applies where you are. Checkout may offer to charge you in your own currency at Stripe&rsquo;s exchange rate; otherwise your bank converts it.</p>
 
         <section className="mx-auto mt-16 max-w-3xl" aria-labelledby="add-ons">

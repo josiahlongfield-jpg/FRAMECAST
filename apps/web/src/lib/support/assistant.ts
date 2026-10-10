@@ -4,7 +4,8 @@ import { db } from "@/lib/db";
 import { BRAND } from "@/lib/brand";
 import { summaryUsage } from "@/lib/ai/summary";
 import { zoned } from "@/lib/dates";
-import { PLANS, staffSeatLimit } from "@/lib/plans";
+import { PLANS, replyMaxMinutes, staffSeatLimit } from "@/lib/plans";
+import { videosUsed } from "@/lib/videoAllowance";
 import { SUPPORT_GUIDE } from "@/lib/support/knowledge";
 import { handToHuman } from "@/lib/support/tickets";
 
@@ -39,7 +40,7 @@ ${SUPPORT_GUIDE}
 const ACCOUNT_TOOL: Anthropic.Beta.BetaTool = {
   name: "account_overview",
   description:
-    "The signed-in customer's own workspace: plan, billing status and renewal date, clients and staff used against the plan's limits, video count, cloud backup, AI transcripts and summaries, and their role. Use it for questions about their plan, limits, billing state or why something is blocked. Contains no video, reply or to-do content.",
+    "The signed-in customer's own workspace: plan, billing status and renewal date, clients and staff used against the plan's limits, free videos used (a lifetime total, not per month), cloud backup, AI transcripts and summaries, and their role. Use it for questions about their plan, limits, billing state or why something is blocked. Contains no video, reply or to-do content.",
   input_schema: { type: "object", properties: {}, additionalProperties: false },
   strict: true,
 };
@@ -79,7 +80,7 @@ async function accountOverview(ticket: SupportTicket) {
     db.client.count({ where: { workspaceId: ticket.workspaceId, removedAt: null, pausedAt: { not: null } } }),
     db.membership.count({ where: { workspaceId: ticket.workspaceId } }),
     db.membership.count({ where: { workspaceId: ticket.workspaceId, pausedAt: { not: null } } }),
-    db.video.count({ where: { workspaceId: ticket.workspaceId, replyToId: null, sourceId: null } }),
+    videosUsed(ticket.workspaceId),
   ]);
   if (!workspace || !membership) return { signedIn: true, note: "No workspace found for this customer." };
   if (membership.pausedAt) {
@@ -95,8 +96,13 @@ async function accountOverview(ticket: SupportTicket) {
     plan: p.name,
     clients: { used: clients, limit: p.clientSeats + workspace.extraClientSeats, paused: pausedClients },
     staffLogins: { used: staff, limit: staffSeatLimit(workspace), paused: pausedStaff },
-    videos: { recorded: videos, limit: p.maxVideos },
+    // Free's limit is for the life of the workspace: every finished recording counts, on any plan, deleted ones too.
+    videos:
+      p.maxVideos === null
+        ? { limit: "unlimited", usedTowardsFreePlan: videos.used, freePlanLimit: PLANS.FREE.maxVideos }
+        : { freeVideosUsed: videos.used, limit: p.maxVideos, left: Math.max(0, p.maxVideos - videos.used), lifetimeTotal: true, stillUploading: videos.uploading },
     maxMinutesPerVideo: p.maxDurationMin,
+    maxMinutesPerTeamReply: replyMaxMinutes(workspace.plan, true),
     cloudBackup: workspace.cloudBackup,
     aiTranscriptsAndSummaries: ai ? { on: true, summariesThisMonth: await summaryUsage(workspace) } : { on: false },
     customBranding: workspace.plan !== "FREE",

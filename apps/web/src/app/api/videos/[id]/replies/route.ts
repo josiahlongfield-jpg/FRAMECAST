@@ -8,8 +8,7 @@ import { viewableVideo } from "@/lib/access";
 import { ALLOWED_MIME, extensionFor, newUploadToken, newVideoId, REPLY_DAILY_BYTES, replyBytesToday } from "@/lib/videos";
 import { limitByIp } from "@/lib/rateLimit";
 import { notifyClientReply } from "@/lib/teamNotify";
-
-const MAX_REPLY_MINUTES = 15;
+import { replyMaxMinutes } from "@/lib/plans";
 
 const Body = z.discriminatedUnion("kind", [
   // Text arrives already sealed with the conversation's video key.
@@ -64,6 +63,10 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
     throw new HttpError(429, "This conversation has reached today's limit for video and voice replies. Send a text reply, or try again tomorrow.");
   }
 
+  // The team's own replies keep to the plan's video length, so they can't stand in for videos on Free.
+  const { plan } = await db.workspace.findUniqueOrThrow({ where: { id: root.workspaceId }, select: { plan: true } });
+  const maxDurationMin = replyMaxMinutes(plan, !!me);
+
   const mediaId = newVideoId();
   const storageKey = `videos/${root.workspaceId}/${root.id}/replies/${mediaId}.${extensionFor(body.mimeType)}`;
   const uploadId = await storage().begin(storageKey, body.mimeType);
@@ -93,7 +96,7 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
     include: { media: true },
   });
   return Response.json(
-    { reply: replyDTO(reply, root.ownerId), mediaId, uploadToken: upload.token, maxDurationMin: MAX_REPLY_MINUTES },
+    { reply: replyDTO(reply, root.ownerId), mediaId, uploadToken: upload.token, maxDurationMin },
     { status: 201 },
   );
 });
