@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { signOut } from "@/auth";
+import Link from "next/link";
 import Logo from "@/components/Logo";
 import { db } from "@/lib/db";
 import { currentUser } from "@/lib/session";
@@ -30,7 +31,7 @@ export default async function Paused() {
       <Logo />
       <h1 className="mt-10 text-2xl font-semibold tracking-tight text-slate-900">Your access is paused</h1>
       <p className="mt-3 text-slate-600" data-testid="paused-message">
-        {me.workspace.name}&apos;s SureFrame plan changed and no longer covers your staff login. Nothing has been deleted. Ask the owner to restore your access.
+        {me.workspace.name}&apos;s SureFrame plan changed and no longer covers your staff login. The pause doesn&apos;t delete anything. Ask the owner to restore your access.
       </p>
       {others.length > 0 && (
         <div className="mt-6 grid gap-2">
@@ -44,6 +45,9 @@ export default async function Paused() {
           ))}
         </div>
       )}
+      <p className="mt-6 text-sm text-slate-600">
+        You can still <Link href="/settings/account" className="font-medium text-brand-700 hover:underline">download your data or delete your account</Link>.
+      </p>
       <form
         className="mt-6"
         action={async () => {

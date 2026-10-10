@@ -8,19 +8,23 @@ export default function CloudBackupToggle({
   price,
   yearlyPrice,
   days,
+  needsSubscription = false,
 }: {
   enabled: boolean;
   canEnable: boolean;
   price: number;
   yearlyPrice: number;
   days: number;
+  /** On a free plan we gave: backup can be added once they start paying. */
+  needsSubscription?: boolean;
 }) {
   const [on, setOn] = useState(enabled);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
 
   async function toggle() {
-    if (!on && !confirm(`Add cloud backup for US$${price} a month (US$${yearlyPrice} a year on yearly billing)? You're charged today for the rest of this billing period, then it renews with your plan.`)) return;
+    if (!on && !confirm(`Add cloud backup for US$${price} a month (US$${yearlyPrice} a year on yearly billing), plus any tax? You're charged today for the rest of this billing period, then it renews with your plan.`)) return;
+    if (on && !confirm(`Turn off cloud backup? Our encrypted copies of your videos will be deleted ${days} days from today, unless you save them to a device first. Unused time is credited to your next bill.`)) return;
     setBusy(true);
     setError(undefined);
     const res = await fetch("/api/billing/backup", {
@@ -46,6 +50,7 @@ export default function CloudBackupToggle({
           </p>
           <p className="mt-2 text-xs text-slate-500">
             Optional: US${price} a month (US${yearlyPrice} a year on yearly billing).
+            {needsSubscription && " Available once you start a paid subscription."}
           </p>
         </div>
         <button

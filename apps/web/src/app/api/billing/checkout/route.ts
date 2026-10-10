@@ -1,11 +1,12 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { ACTIVE_STATUSES, catalogKey, MANAGED_PAYMENTS, PLAN_ITEM, priceId } from "@/lib/billing";
+import { ACTIVE_STATUSES, catalogKey, chargeChange, MANAGED_PAYMENTS, PLAN_ITEM, priceId, unpaid } from "@/lib/billing";
 import { PAID_PLANS } from "@/lib/plans";
 import { assertFits, planChange } from "@/lib/planChange";
 import { handle, HttpError, requireRole, requireUser } from "@/lib/session";
 import { appUrl, stripe } from "@/lib/stripe";
 import { limitByIp } from "@/lib/rateLimit";
+import { currentCustomer } from "@/lib/subscription";
 
 const Body = z.object({ plan: z.enum(PAID_PLANS), interval: z.enum(["month", "year"]).default("month") });
 
@@ -20,59 +21,63 @@ export const POST = handle(async (req: Request) => {
   const price = await priceId(catalogKey(PLAN_ITEM[plan], interval));
 
   // Already subscribed: switch plans on the existing subscription instead of starting a second one.
-  // It's paid for now, and an upgrade only applies once that payment succeeds.
+  // It's paid for now, and the switch only applies once that payment succeeds.
   const change = await planChange(workspace, plan, interval);
   if (change) {
     if (change.same) return Response.json({ url: appUrl("/settings/billing") });
-    const updated = await stripe().subscriptions.update(change.sub.id, {
-      items: change.items,
-      // The new plan starts today at its full price, less a credit for the unused part of the old one.
-      billing_cycle_anchor: { type: "now" },
-      proration_behavior: "always_invoice",
-      // Pending updates can't remove items; those changes are downgrades with nothing to pay.
-      ...(change.removesItems ? {} : { payment_behavior: "pending_if_incomplete" as const }),
-      expand: ["latest_invoice"],
-    });
-    if (updated.pending_update) {
-      // The card was declined or needs confirming: pay on Stripe's invoice page, then the change applies.
-      const invoice = updated.latest_invoice;
-      const pay = invoice && typeof invoice !== "string" ? invoice.hosted_invoice_url : null;
-      if (pay) return Response.json({ url: pay });
-      throw new HttpError(402, "Your payment didn't go through. Update your card and try again.");
+    // The new plan starts today at its full price, less a credit for the unused part of the old one.
+    const charge = await chargeChange(change.sub, { items: change.items, billing_cycle_anchor: { type: "now" } });
+    if (!charge.paid) {
+      // Declined or needs confirming: pay on Stripe's invoice page (the change then applies), or fix the card.
+      if (charge.payUrl) return Response.json({ url: charge.payUrl });
+      return unpaid(charge);
     }
-    await db.workspace.update({ where: { id: workspace.id }, data: { plan } });
+    await db.workspace.update({ where: { id: workspace.id }, data: { plan, billingInterval: interval } });
     return Response.json({ url: appUrl("/settings/billing?upgraded=1") });
   }
 
+  // planChange may have just forgotten a subscription Stripe doesn't have, so read the workspace again.
+  const fresh = await db.workspace.findUniqueOrThrow({ where: { id: workspace.id } });
   // A new subscription must fit the clients and staff already here (a free plan we gave may have had more).
-  await assertFits(workspace, plan);
+  await assertFits(fresh, plan);
 
-  let customer = workspace.stripeCustomerId;
-  if (customer) {
-    // A subscription paid for a moment ago may not have reached us yet: don't start a second one.
-    const subs = await stripe().subscriptions.list({ customer, status: "all", limit: 20 });
-    if (subs.data.some((s) => s.metadata?.workspaceId === workspace.id && ACTIVE_STATUSES.has(s.status))) {
-      throw new HttpError(409, "Your subscription is being set up. Refresh this page in a minute.");
-    }
-    // Only the newest checkout can be paid, so two open tabs can't start two subscriptions.
-    const open = await stripe().checkout.sessions.list({ customer, status: "open", limit: 20 });
-    await Promise.all(open.data.map((s) => stripe().checkout.sessions.expire(s.id).catch(() => null)));
-  } else {
-    const c = await stripe().customers.create({ email: user.email, name: workspace.name, metadata: { workspaceId: workspace.id } });
-    customer = c.id;
-    await db.workspace.update({ where: { id: workspace.id }, data: { stripeCustomerId: customer } });
-  }
+  // One checkout at a time per workspace, so two tabs can't start two subscriptions.
+  return db.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"checkout:" + workspace.id}))`;
+      // A customer deleted in Stripe, or left over from test mode, is replaced with a new one.
+      let customer = await currentCustomer(fresh);
+      if (customer) {
+        const subs = await stripe().subscriptions.list({ customer, status: "all", limit: 20 });
+        const ours = subs.data.filter((s) => s.metadata?.workspaceId === workspace.id);
+        // A subscription paid for a moment ago may not have reached us yet: don't start a second one.
+        if (ours.some((s) => ACTIVE_STATUSES.has(s.status))) {
+          throw new HttpError(409, "Your subscription is being set up. Refresh this page in a minute.");
+        }
+        // An earlier one left unpaid could still be paid from its invoice email and run alongside the new one.
+        await Promise.all(ours.filter((s) => s.status === "incomplete" || s.status === "unpaid").map((s) => stripe().subscriptions.cancel(s.id).catch(() => null)));
+        // Only the newest checkout can be paid.
+        const open = await stripe().checkout.sessions.list({ customer, status: "open", limit: 20 });
+        await Promise.all(open.data.map((s) => stripe().checkout.sessions.expire(s.id).catch(() => null)));
+      } else {
+        const c = await stripe().customers.create({ email: user.email, name: fresh.name, metadata: { workspaceId: workspace.id } });
+        customer = c.id;
+        await tx.workspace.update({ where: { id: workspace.id }, data: { stripeCustomerId: customer } });
+      }
 
-  const session = await stripe().checkout.sessions.create({
-    mode: "subscription",
-    customer,
-    line_items: [{ price, quantity: 1 }],
-    allow_promotion_codes: true,
-    ...(MANAGED_PAYMENTS ? { managed_payments: { enabled: true } } : { automatic_tax: { enabled: true }, customer_update: { address: "auto", name: "auto" } }),
-    client_reference_id: workspace.id,
-    subscription_data: { metadata: { workspaceId: workspace.id } },
-    success_url: appUrl("/settings/billing?upgraded=1"),
-    cancel_url: appUrl("/pricing"),
-  });
-  return Response.json({ url: session.url });
+      const session = await stripe().checkout.sessions.create({
+        mode: "subscription",
+        customer,
+        line_items: [{ price, quantity: 1 }],
+        allow_promotion_codes: true,
+        ...(MANAGED_PAYMENTS ? { managed_payments: { enabled: true } } : { automatic_tax: { enabled: true }, customer_update: { address: "auto", name: "auto" } }),
+        client_reference_id: workspace.id,
+        subscription_data: { metadata: { workspaceId: workspace.id } },
+        success_url: appUrl("/settings/billing?upgraded=1"),
+        cancel_url: appUrl("/pricing"),
+      });
+      return Response.json({ url: session.url });
+    },
+    { timeout: 30_000, maxWait: 30_000 },
+  );
 });

@@ -3,6 +3,9 @@ import { applyRekey, RekeyBody } from "@/lib/rekey";
 import { handle, HttpError, requireRole, requireUser } from "@/lib/session";
 import { rateLimit } from "@/lib/rateLimit";
 
+// A new key for every client, and an email to each team member.
+export const maxDuration = 120;
+
 /**
  * Everything sealed with the team key or a client key, so an owner's or
  * admin's browser can re-seal it under new keys when someone leaves. All of

@@ -7,7 +7,8 @@ import { db } from "@/lib/db";
 import { duration, PERIODS, teamStats, type StaffStats } from "@/lib/monitoring";
 import { permsOf } from "@/lib/permissions";
 import { PLANS } from "@/lib/plans";
-import { requirePageUser } from "@/lib/session";
+import { followTeamLink, requirePageUser } from "@/lib/session";
+import { zoned } from "@/lib/dates";
 
 export const metadata: Metadata = { title: "Team overview" };
 
@@ -16,8 +17,10 @@ export const metadata: Metadata = { title: "Team overview" };
  * reminders to staff, and how the whole business is keeping up with clients.
  * Staff never see this page or anyone else's numbers.
  */
-export default async function TeamOverviewPage({ searchParams }: { searchParams: Promise<{ days?: string; stale?: string }> }) {
+export default async function TeamOverviewPage({ searchParams }: { searchParams: Promise<{ days?: string; stale?: string; ws?: string }> }) {
+  await followTeamLink((await searchParams).ws, "/team");
   const { user, workspace, role, membership } = await requirePageUser("/team");
+  const dates = zoned(workspace.timezone);
   if (role === "MEMBER") notFound();
   const q = await searchParams;
   const days = PERIODS.find((p) => String(p) === q.days) ?? 30;
@@ -139,7 +142,7 @@ export default async function TeamOverviewPage({ searchParams }: { searchParams:
                     <li key={t.itemId}>
                       <Link href={`/clients/${t.clientId}`} className="flex items-center justify-between gap-3 py-2 hover:text-brand-700">
                         <span><span className="font-medium">{t.clientName}</span> · to-do overdue</span>
-                        <span className="shrink-0 text-xs text-slate-500">{nameOf(t.staffId)} · due {t.dueAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                        <span className="shrink-0 text-xs text-slate-500">{nameOf(t.staffId)} · due {dates.shortDay(t.dueAt)}</span>
                       </Link>
                     </li>
                   ))}
@@ -188,7 +191,7 @@ export default async function TeamOverviewPage({ searchParams }: { searchParams:
                   <li key={n.id} className="py-2">
                     <p className="text-slate-800">{n.message}</p>
                     <p className="text-xs text-slate-500">
-                      {display(n.from)} to {display(n.to)} · {n.createdAt.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                      {display(n.from)} to {display(n.to)} · {dates.shortDayTime(n.createdAt)}
                       {n.linkLabel && ` · ${n.linkLabel}`} · {n.dismissedAt ? "Seen and dismissed" : "Not dismissed yet"}
                     </p>
                   </li>

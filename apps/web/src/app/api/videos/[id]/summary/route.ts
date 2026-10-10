@@ -5,6 +5,8 @@ import { handle, HttpError, requireUser } from "@/lib/session";
 import { accessOf, visibleVideo } from "@/lib/permissions";
 import { rateLimit } from "@/lib/rateLimit";
 
+export const maxDuration = 120;
+
 const Body = z.object({ transcript: z.string().trim().min(1).max(MAX_TRANSCRIPT_CHARS) });
 
 /**

@@ -6,13 +6,17 @@ import Logo from "@/components/Logo";
 import { AuthError } from "next-auth";
 import { auth, authProviders, previewPassword, signIn } from "@/auth";
 import { safeNext } from "@/lib/secrets";
+import { db } from "@/lib/db";
+import { plainEmail } from "@/lib/emailAddress";
 
 export const metadata: Metadata = { title: "Sign in" };
 
-export default async function Login({ searchParams }: { searchParams: Promise<{ next?: string; error?: string }> }) {
-  const { next, error } = await searchParams;
+export default async function Login({ searchParams }: { searchParams: Promise<{ next?: string; error?: string; deleted?: string }> }) {
+  const { next, error, deleted } = await searchParams;
   const redirectTo = safeNext(next);
-  if ((await auth())?.user) redirect(redirectTo);
+  // Checked against the database: a sign-in left over from a deleted account must not bounce back and forth.
+  const userId = (await auth())?.user?.id;
+  if (userId && (await db.user.findUnique({ where: { id: userId }, select: { id: true } }))) redirect(redirectTo);
   // Set by src/middleware.ts when a sign-in ends because the browser was closed or left idle.
   const signedOut = !error && (await cookies()).get("sf_signed_out")?.value === "1";
   const hasGoogle = authProviders.some((p) => p.id === "google");
@@ -24,6 +28,11 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
       <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
         <Logo />
         <h1 className="mt-6 text-xl font-semibold text-slate-900">Sign in to start recording</h1>
+        {deleted && (
+          <p role="status" className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800" data-testid="deleted-note">
+            Your account has been deleted.
+          </p>
+        )}
         {signedOut && (
           <p className="mt-3 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700" data-testid="signed-out-note">
             For your security you were signed out because the browser was closed or the page was left unused. Please sign in again.
@@ -47,8 +56,13 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
               className="grid gap-3"
               action={async (fd: FormData) => {
                 "use server";
-                const email = String(fd.get("email") ?? "").trim().toLowerCase();
-                // Sending is rate limited inside the provider (src/auth.ts), so direct API calls are limited too.
+                const email = plainEmail(String(fd.get("email") ?? ""));
+                const back = (code: string) => redirect(`/login?error=${code}&next=${encodeURIComponent(redirectTo)}`);
+                if (!email) back("email");
+                // Sending is counted inside the provider (src/auth.ts), so direct API calls are limited too;
+                // this only tells the two kinds of failure apart.
+                const { signInEmailLimited } = await import("@/lib/signInGuard");
+                if (await signInEmailLimited(email!)) back("rate");
                 let failed = false;
                 try {
                   // With redirect off, Auth.js reports a failed send as an error URL instead of throwing.
@@ -57,7 +71,10 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
                 } catch {
                   failed = true;
                 }
-                if (failed) redirect(`/login?error=rate&next=${encodeURIComponent(redirectTo)}`);
+                if (failed) {
+                  console.error("[signin] sign-in email not sent", JSON.stringify({ domain: email!.split("@")[1] }));
+                  back("send");
+                }
                 redirect("/login/check");
               }}
             >
@@ -110,7 +127,9 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
 }
 
 function errorText(code: string) {
-  if (code === "rate") return "Too many sign-in emails were requested. Wait a few minutes, then try again.";
+  if (code === "rate") return "Too many sign-in emails were requested for this address. Please wait up to an hour, then try again.";
+  if (code === "email") return "That email address doesn't look right. Check it and try again.";
+  if (code === "send") return "We couldn't send the sign-in email just now. Please try again in a few minutes, or email support@sureframe.app.";
   if (code === "password") return "That password isn't right. Check it and try again.";
   if (code === "Verification") return "That sign-in link has expired or was already used. Enter your email to get a new one.";
   if (code === "OAuthAccountNotLinked") return "That email is already used with another sign-in method. Use the email link instead.";

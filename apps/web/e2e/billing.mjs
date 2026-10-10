@@ -4,6 +4,7 @@
 import { chromium } from "@playwright/test";
 import Stripe from "stripe";
 import { PrismaClient } from "@prisma/client";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { start, state, control, createSubscription } from "./fake-stripe.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
@@ -14,7 +15,6 @@ const ok = (label, cond) => {
 // Earlier runs share this machine's IP; start with fresh rate-limit windows.
 const prisma = new PrismaClient();
 await prisma.rateLimit.deleteMany();
-await prisma.$disconnect();
 const server = await start();
 const sig = new Stripe("sk_test_fake");
 
@@ -32,6 +32,12 @@ async function webhook(type, sub, secret = "whsec_test") {
   const header = sig.webhooks.generateTestHeaderString({ payload, secret });
   return page.request.post(BASE + "/api/webhooks/stripe", { headers: { "stripe-signature": header, "content-type": "application/json" }, data: payload });
 }
+const started = Date.now();
+const outbox = () =>
+  existsSync(".data/outbox")
+    ? readdirSync(".data/outbox").filter((f) => Number(f.split("-")[0]) >= started).sort().map((f) => JSON.parse(readFileSync(`.data/outbox/${f}`, "utf8")))
+    : [];
+const alerts = (subject) => outbox().filter((m) => m.to === "owner@test.dev" && m.subject.startsWith("[Action needed]") && m.subject.includes(subject));
 const planText = async () => {
   await page.goto(BASE + "/settings/billing");
   return page.textContent("main");
@@ -93,6 +99,12 @@ const confirmText = await dialog.textContent();
 ok("nothing changes before confirming", sub.items.data.some((i) => i.price.lookup_key === "sureframe_solo_monthly") && sub.lastUpdate === updateBefore);
 ok("confirm shows the card on file", /Visa ending 4242/.test(confirmText));
 ok("confirm shows full price, credit and amount due", /Studio, from today/.test(confirmText) && /Unused time on your current plan/.test(confirmText) && /Due today/.test(confirmText), confirmText);
+ok("confirm lists add-ons and tax on their own rows", /Studio, from today\s*\$49\.00/.test(confirmText) && /Extra clients and add-ons, from today/.test(confirmText) && /Tax/.test(confirmText));
+{
+  const amounts = [...confirmText.matchAll(/(−?)\$([\d,]+\.\d\d)/g)].map((m) => (m[1] ? -1 : 1) * Number(m[2].replace(/,/g, "")));
+  const due = amounts.at(-2) ?? amounts.at(-1); // the Pay button repeats the amount
+  ok("the confirm's rows add up to the amount due", Math.abs(amounts.slice(0, amounts.length - 2).reduce((t, a) => t + a, 0) - due) < 0.011, amounts.join(" "));
+}
 ok("confirm says billing restarts today", /renews on this date each month/.test(confirmText));
 await page.click("text=Use a different card");
 await page.waitForURL("https://billing.stripe.test/**");
@@ -131,6 +143,23 @@ res = await api("/api/billing/seats", { extraSeats: 4 });
 ok("seats added later bill yearly too", res.ok() && sub.items.data.find((i) => i.price.lookup_key === "sureframe_client_seat_yearly")?.quantity === 4);
 await webhook("customer.subscription.updated", sub);
 ok("yearly Studio still shows as Studio", /Studio plan/.test(await planText()));
+ok("billing says it's billed yearly", (await page.textContent("[data-testid=billing-interval]"))?.includes("yearly"));
+await page.goto(BASE + "/clients");
+ok("yearly plans see yearly prices for extra clients", !!(await page.waitForSelector("button:has-text('Add for US$75/year')", { timeout: 15000 }).catch(() => null)));
+await page.goto(BASE + "/settings/team");
+ok("and for extra staff", !!(await page.waitForSelector("button:has-text('/year')", { timeout: 15000 }).catch(() => null)));
+
+// 4c) A switch that also drops something (extra staff, leaving Studio) still only happens once paid.
+res = await api("/api/billing/staff", { extraStaff: 1 });
+ok("extra staff added (yearly)", res.ok() && sub.items.data.find((i) => i.price.lookup_key === "sureframe_staff_seat_yearly")?.quantity === 1);
+await webhook("customer.subscription.updated", sub);
+control.declineNext = true;
+res = await api("/api/billing/checkout", { plan: "SOLO", interval: "year" });
+ok("declined downgrade is refused, nothing changes", res.status() === 402 && sub.items.data.some((i) => i.price.lookup_key === "sureframe_studio_yearly") && sub.items.data.some((i) => i.price.lookup_key === "sureframe_staff_seat_yearly"));
+ok("still Studio after the declined downgrade", /Studio plan/.test(await planText()));
+res = await api("/api/billing/staff", { extraStaff: 0 });
+ok("extra staff removed", res.ok() && !sub.items.data.some((i) => i.price.lookup_key === "sureframe_staff_seat_yearly"));
+await webhook("customer.subscription.updated", sub);
 
 // 5) Customer portal.
 res = await api("/api/billing/portal");
@@ -146,6 +175,35 @@ await webhook("customer.subscription.created", sub2);
 await webhook("customer.subscription.deleted", sub);
 ok("old subscription's events don't override the new one", /Solo plan/.test(await planText()));
 
+// 6a) A second paid subscription for the same workspace: keep the first, and tell a person.
+const sub3 = createSubscription(session.customer, workspaceId, "sureframe_studio_monthly");
+await webhook("customer.subscription.created", sub3);
+ok("a second subscription doesn't take over", /Solo plan/.test(await planText()));
+ok("the founder is told about the double subscription", alerts("two subscriptions").length === 1);
+sub3.status = "canceled";
+
+// 6b) Refunds and disputes reach a person; a dispute stops renewal.
+const refund = { id: `ch_r${Date.now()}`, object: "charge", customer: session.customer, amount: 1650, amount_refunded: 1650, refunded: true, currency: "usd" };
+await webhook("charge.refunded", refund);
+await webhook("charge.refunded", refund);
+ok("a refund emails the founder once", alerts("Refund for").length === 1);
+const chargeId = `ch_d${Date.now()}`;
+state.charges = { ...(state.charges ?? {}), [chargeId]: { id: chargeId, object: "charge", customer: session.customer } };
+await webhook("charge.dispute.created", { id: `dp_${Date.now()}`, object: "dispute", charge: chargeId, amount: 1650, currency: "usd", reason: "fraudulent" });
+ok("a dispute stops renewal without ending the paid period", sub2.status !== "canceled" && sub2.lastUpdate?.cancel_at_period_end === "true", JSON.stringify(sub2.lastUpdate));
+ok("and emails the founder", alerts("Payment disputed").length === 1);
+sub2.status = "active";
+
+// 6c) A subscription Stripe doesn't have (an id from test mode, before the switch to live keys):
+// forgotten, not a 500, and the paid features it was giving end.
+await prisma.workspace.update({ where: { id: workspaceId }, data: { stripeSubscriptionId: "sub_from_test_mode", plan: "STUDIO", cloudBackup: true, extraClientSeats: 5 } });
+res = await api("/api/billing/preview", { plan: "AGENCY" });
+ok("a missing subscription goes to checkout instead of failing", res.ok() && (await res.json()).mode === "checkout");
+const forgotten = await prisma.workspace.findUnique({ where: { id: workspaceId } });
+ok("and its paid features end", forgotten.plan === "FREE" && !forgotten.stripeSubscriptionId && !forgotten.cloudBackup && forgotten.extraClientSeats === 0 && forgotten.stripeCustomerId === session.customer);
+await webhook("customer.subscription.updated", sub2);
+ok("the real subscription is picked up again", /Solo plan/.test(await planText()));
+
 // 7) Data export.
 res = await page.request.get(BASE + "/api/account/export");
 const exp = await res.json();
@@ -160,8 +218,9 @@ await page.waitForURL("**error=confirm**");
 ok("wrong confirmation refused", !!(await page.waitForSelector("text=doesn't match your email", { timeout: 5000 }).catch(() => null)));
 await page.fill('input[name="confirm"]', email);
 await page.click("text=Delete my account");
-await page.waitForURL((u) => u.pathname === "/");
-ok("deleting cancels billing in Stripe", state.deletedCustomers.includes(session.customer));
+await page.waitForURL((u) => u.pathname === "/login");
+ok("after deleting: told the account is gone", await page.isVisible("[data-testid=deleted-note]"));
+ok("deleting cancels billing in Stripe", state.deletedCustomers.includes(session.customer) && state.subs.filter((s) => s.customer === session.customer).every((s) => s.status === "canceled"));
 await page.goto(BASE + "/settings/billing");
 // Pages stream behind a loading state, so the sign-in redirect can land just after the load.
 ok("signed out after deletion", !!(await page.waitForURL("**/login**", { timeout: 10000 }).then(() => true).catch(() => null)));
@@ -172,4 +231,5 @@ for (let i = 0; i < 25 && !limited; i++) limited = (await page.request.post(BASE
 ok("billing endpoints are rate limited", limited);
 
 await browser.close();
+await prisma.$disconnect();
 server.close();

@@ -1,6 +1,6 @@
 // Founder gives a tester a free Studio plan from /support/accounts.
 // Needs the app running with AUTH_DEV_LOGIN=true and SUPPORT_EMAIL=owner@test.dev.
-import { chromium } from "playwright";
+import { chromium } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";

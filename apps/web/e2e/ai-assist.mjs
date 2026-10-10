@@ -10,6 +10,9 @@
 // Needs the app running with the fake Stripe env (see billing.mjs),
 // SUPPORT_EMAIL=owner@test.dev, ANTHROPIC_API_KEY=test and
 // ANTHROPIC_BASE_URL=http://localhost:12112.
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
 import Stripe from "stripe";
 import { PrismaClient } from "@prisma/client";
@@ -32,6 +35,16 @@ const browser = await chromium.launch({ executablePath: process.env.CHROMIUM, ar
 const stamp = Date.now();
 const perms = { permissions: ["camera", "microphone", "clipboard-read", "clipboard-write"] };
 const SPOKEN = "Hello Ana, here is the plan for next week";
+
+/** A speech model "installed" in the app's local storage (the dev server runs without a bucket here). */
+const manifestFile = fileURLToPath(new URL("../.data/uploads/models/manifest.json", import.meta.url));
+const hadManifest = existsSync(manifestFile);
+async function installModel() {
+  if (hadManifest) return;
+  mkdirSync(dirname(manifestFile), { recursive: true });
+  const file = { sha256: "0".repeat(64), bytes: 1 };
+  writeFileSync(manifestFile, JSON.stringify({ model: "onnx-community/whisper-base", revision: "0".repeat(40), files: { "config.json": file }, installedAt: new Date().toISOString() }));
+}
 
 /** Stands in for the on-device model. `mode` picks what it does; calls are counted. */
 function stubTranscriber({ gpu = true, memory = 8 } = {}) {
@@ -126,6 +139,11 @@ await webhook(owner, sub);
 const ownerVideoApi = await fakeVideo(ownerEmail);
 res = await owner.request.post(`${BASE}/api/videos/${ownerVideoApi}/summary`, { data: { transcript: "[0:00] hi" } });
 ok("Solo without the add-on: summary API refuses", res.status() === 403);
+
+// Before the speech model is installed, nobody can pay for the add-on.
+res = await owner.request.post(BASE + "/api/billing/ai", { data: { enabled: true } });
+ok("Solo: can't buy it before the speech model is installed", res.status() === 503 && !sub.items.data.some((i) => /ai_assist/.test(i.price.lookup_key)));
+await installModel();
 
 await owner.goto(BASE + "/settings/billing");
 await owner.waitForSelector("[data-testid=ai-assist]");
@@ -346,6 +364,7 @@ await visitor.goto(BASE + "/pricing");
 const addOn = await visitor.textContent("[data-testid=addon-ai]");
 ok("pricing lists the add-on by plan", addOn.includes("$8/month") && addOn.includes("$15/month") && addOn.includes("$29/month") && addOn.includes("Not available on Free"));
 
+if (!hadManifest) rmSync(manifestFile, { force: true });
 await browser.close();
 stripeServer.close();
 anthropic.close();

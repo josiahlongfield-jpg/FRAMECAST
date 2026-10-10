@@ -7,16 +7,18 @@ import MemberPlanner from "@/components/MemberPlanner";
 import { db } from "@/lib/db";
 import { clientLink } from "@/lib/clients";
 import { PLANS } from "@/lib/plans";
-import { requirePageUser } from "@/lib/session";
+import { followTeamLink, requirePageUser } from "@/lib/session";
 import { reminderDefaultsFor } from "@/lib/reminders";
 import ClientEmail from "@/components/ClientEmail";
 import { accessOf, canSeeClient } from "@/lib/permissions";
+import { zoned } from "@/lib/dates";
 
 export const metadata: Metadata = { title: "Client" };
 
 /** One client's space: what was sent to them, plus their to-dos and notes. */
-export default async function ClientPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ClientPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ws?: string }> }) {
   const { id } = await params;
+  await followTeamLink((await searchParams).ws, `/clients/${id}`);
   const me = await requirePageUser(`/clients/${id}`);
   const { user, workspace } = me;
   const client = await db.client.findUnique({
@@ -25,6 +27,14 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
   });
   // Staff only open the clients they can see (lib/permissions.ts); others look like they don't exist.
   if (!client || client.removedAt || !canSeeClient(accessOf(me), client)) notFound();
+  // Team reminders for a client's to-do go to whoever looks after the client (lib/reminders.ts).
+  const team = await db.membership.findMany({ where: { workspaceId: workspace.id, pausedAt: null }, include: { user: { select: { name: true, email: true } } } });
+  const assigned = client.assignedToId ? team.find((m) => m.userId === client.assignedToId) : undefined;
+  const assignedName = assigned ? (assigned.user.name ?? assigned.user.email.split("@")[0]) : null;
+  const teamWho =
+    team.length <= 1 || assigned?.userId === user.id ? undefined
+    : assignedName ? { label: `Email ${assignedName}`, tag: assignedName }
+    : { label: "Email the team", tag: "the team" };
 
   return (
     <>
@@ -54,7 +64,7 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
                       <span className="truncate font-medium">{v.title}</span>
                       <span className="shrink-0 text-xs text-slate-500">
                         {v.status === "EXPIRED" ? "Server copy expired · " : ""}
-                        {v.createdAt.toLocaleDateString("en-US", { dateStyle: "medium" })}
+                        {zoned(workspace.timezone).day(v.createdAt)}
                       </span>
                     </Link>
                   </li>
@@ -71,6 +81,7 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
             client={{ email: client.email, remindersOff: client.remindersOff }}
             defaults={reminderDefaultsFor(workspace, me.membership)}
             title="To-dos & notes"
+            teamWho={teamWho}
           />
         </div>
       </main>

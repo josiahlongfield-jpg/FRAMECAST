@@ -57,25 +57,38 @@ export const isAiItem = (item: CatalogItem | undefined) => !!item && item.starts
 
 const cache = new Map<CatalogKey, string>();
 const products = new Map<CatalogItem, string>();
+/** Which catalog item each of our Stripe products is, for prices that have lost their lookup key. */
+const productItems = new Map<string, CatalogItem>();
+
+/** Reads our prices from Stripe once per server, and warns if any no longer match plans.ts. */
+export async function loadCatalog() {
+  if (cache.size) return;
+  // Stripe accepts at most 10 lookup keys per list call.
+  const keys = Object.keys(CATALOG);
+  for (let i = 0; i < keys.length; i += 10) {
+    const found = await stripe().prices.list({ lookup_keys: keys.slice(i, i + 10), active: true, limit: 100 });
+    for (const p of found.data) {
+      if (!p.lookup_key || !(p.lookup_key in CATALOG)) continue;
+      const entry = CATALOG[p.lookup_key as CatalogKey];
+      const product = typeof p.product === "string" ? p.product : p.product.id;
+      cache.set(p.lookup_key as CatalogKey, p.id);
+      products.set(entry.item, product);
+      productItems.set(product, entry.item);
+      // Stripe keeps charging what the price says, whatever the site shows.
+      if (p.unit_amount !== Math.round(entry.amount * 100) || p.currency !== "usd" || p.recurring?.interval !== entry.interval) {
+        console.error("[billing] Stripe price doesn't match plans.ts", JSON.stringify({ key: p.lookup_key, price: p.id, stripe: [p.unit_amount, p.currency, p.recurring?.interval], site: [entry.amount, "usd", entry.interval] }));
+      }
+    }
+  }
+}
 
 /** The Stripe price id for a catalog item, creating the product and price if missing. */
 export async function priceId(key: CatalogKey): Promise<string> {
   const hit = cache.get(key);
   if (hit) return hit;
-  if (!cache.size) {
-    // Stripe accepts at most 10 lookup keys per list call.
-    const keys = Object.keys(CATALOG);
-    for (let i = 0; i < keys.length; i += 10) {
-      const found = await stripe().prices.list({ lookup_keys: keys.slice(i, i + 10), active: true, limit: 100 });
-      for (const p of found.data) {
-        if (!p.lookup_key || !(p.lookup_key in CATALOG)) continue;
-        cache.set(p.lookup_key as CatalogKey, p.id);
-        products.set(CATALOG[p.lookup_key as CatalogKey].item, typeof p.product === "string" ? p.product : p.product.id);
-      }
-    }
-    const again = cache.get(key);
-    if (again) return again;
-  }
+  await loadCatalog();
+  const again = cache.get(key);
+  if (again) return again;
   const entry = CATALOG[key];
   // Idempotency keys stop two cold servers from creating duplicates at the same moment.
   let product = products.get(entry.item);
@@ -88,28 +101,41 @@ export async function priceId(key: CatalogKey): Promise<string> {
     ).id;
     products.set(entry.item, product);
   }
+  productItems.set(product, entry.item);
   const price = await stripe().prices.create(
     {
       product,
       currency: "usd",
       unit_amount: Math.round(entry.amount * 100),
       recurring: { interval: entry.interval },
+      // Prices are before tax; any tax is added on top, as the pricing page says.
+      tax_behavior: "exclusive",
       lookup_key: key,
       transfer_lookup_key: true,
     },
-    { idempotencyKey: `${key}-price-v2` },
+    { idempotencyKey: `${key}-price-v3` },
   );
   cache.set(key, price.id);
   return price.id;
 }
 
-/** Which catalog entry a subscription item's price is, if any. */
-export function catalogOf(price: Pick<Stripe.Price, "lookup_key">) {
+type PriceRef = Pick<Stripe.Price, "lookup_key"> & Partial<Pick<Stripe.Price, "product" | "recurring">>;
+
+/**
+ * Which catalog entry a subscription item's price is, if any. A price whose
+ * lookup key moved to a newer price (say one archived in the Dashboard) is
+ * still known by its product, so its subscribers keep what they pay for.
+ */
+export function catalogOf(price: PriceRef) {
   const key = price.lookup_key;
-  return key && key in CATALOG ? CATALOG[key as CatalogKey] : null;
+  if (key && key in CATALOG) return CATALOG[key as CatalogKey];
+  const product = typeof price.product === "string" ? price.product : price.product?.id;
+  const item = product ? productItems.get(product) : undefined;
+  const interval = price.recurring?.interval as string | undefined;
+  return item && (interval === "month" || interval === "year") ? CATALOG[catalogKey(item, interval)] : null;
 }
 
-export function planOf(price: Pick<Stripe.Price, "lookup_key">): Plan | null {
+export function planOf(price: PriceRef): Plan | null {
   const item = catalogOf(price)?.item;
   const plan = (Object.keys(PLAN_ITEM) as PaidPlan[]).find((p) => PLAN_ITEM[p] === item);
   return plan ?? null;
@@ -152,26 +178,71 @@ export async function portalConfiguration(): Promise<string> {
 type ItemChange = Stripe.SubscriptionUpdateParams.Item;
 
 /**
+ * The item changes that leave `quantity` of a catalog add-on on a
+ * subscription, at `price`. Items are matched by what they are, not by price
+ * id, so someone on an older price of the same add-on is moved to the current
+ * one instead of being billed for both, and removing it removes every copy.
+ */
+export function addOnChanges(sub: Stripe.Subscription, item: CatalogItem, price: string, quantity: number): ItemChange[] {
+  const [keep, ...extra] = sub.items.data.filter((i) => catalogOf(i.price)?.item === item);
+  const drop = extra.map((i) => ({ id: i.id, deleted: true }));
+  if (quantity === 0) return keep ? [{ id: keep.id, deleted: true }, ...drop] : drop;
+  if (!keep) return [{ price, quantity }, ...drop];
+  if (keep.price.id === price && keep.quantity === quantity) return drop;
+  return [{ id: keep.id, price, quantity }, ...drop];
+}
+
+export type Charge = { paid: true } | { paid: false; payUrl: string | null };
+
+/** Stripe couldn't take the payment (declined, or the bank wants the owner to confirm it). */
+export const paymentFailed = (err: unknown) => {
+  const e = err as { statusCode?: number; type?: string } | null;
+  return e?.statusCode === 402 || e?.type === "StripeCardError" || e?.type === "card_error";
+};
+
+/**
+ * Applies a subscription change that's charged today, only once it's paid.
+ * Pending updates (which keep a link to pay) can't remove items, so a change
+ * that also removes something is refused outright when the payment fails.
+ */
+export async function chargeChange(sub: Stripe.Subscription, params: Stripe.SubscriptionUpdateParams): Promise<Charge> {
+  const removes = (params.items ?? []).some((i) => i.deleted);
+  let updated: Stripe.Subscription;
+  try {
+    updated = await stripe().subscriptions.update(sub.id, {
+      ...params,
+      proration_behavior: "always_invoice",
+      payment_behavior: removes ? "error_if_incomplete" : "pending_if_incomplete",
+      expand: ["latest_invoice"],
+    });
+  } catch (err) {
+    if (paymentFailed(err)) return { paid: false, payUrl: null };
+    throw err;
+  }
+  if (!updated.pending_update) return { paid: true };
+  const invoice = updated.latest_invoice;
+  return { paid: false, payUrl: (invoice && typeof invoice !== "string" && invoice.hosted_invoice_url) || null };
+}
+
+/** The reply when a charge didn't go through: nothing changed, and how to fix it. */
+export function unpaid({ payUrl }: { payUrl: string | null }) {
+  return payUrl
+    ? Response.json({ error: "Your card couldn't be charged. Pay the invoice to finish.", url: payUrl }, { status: 402 })
+    : Response.json({ error: "Your card couldn't be charged, so nothing changed. Update your card under Manage subscription, then try again." }, { status: 402 });
+}
+
+/**
  * Changes add-ons or extra seats on a subscription. Anything added is charged
  * today for the rest of the current billing period (then renews with the plan),
  * so nothing is used before it's paid for, even on a cancelled plan that won't
  * renew. Removals are credited against the next bill. If the card can't be
- * charged nothing changes, and the returned link lets the owner pay.
+ * charged nothing changes.
  */
-export async function changeAddOns(sub: Stripe.Subscription, items: ItemChange[], { adds }: { adds: boolean }) {
-  if (!items.length) return { payUrl: null };
+export async function changeAddOns(sub: Stripe.Subscription, items: ItemChange[], { adds }: { adds: boolean }): Promise<Charge> {
+  if (!items.length) return { paid: true };
   if (!adds) {
     await stripe().subscriptions.update(sub.id, { items, proration_behavior: "create_prorations" });
-    return { payUrl: null };
+    return { paid: true };
   }
-  const updated = await stripe().subscriptions.update(sub.id, {
-    items,
-    proration_behavior: "always_invoice",
-    // Pending updates can't remove items, so a swap (AI add-on moving price) charges without waiting.
-    ...(items.some((i) => i.deleted) ? {} : { payment_behavior: "pending_if_incomplete" as const }),
-    expand: ["latest_invoice"],
-  });
-  if (!updated.pending_update) return { payUrl: null };
-  const invoice = updated.latest_invoice;
-  return { payUrl: (invoice && typeof invoice !== "string" && invoice.hosted_invoice_url) || null };
+  return chargeChange(sub, { items });
 }

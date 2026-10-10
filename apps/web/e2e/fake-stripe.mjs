@@ -99,12 +99,17 @@ export function start(port = Number(process.env.FAKE_STRIPE_PORT ?? 12111)) {
           const change = (form.subscription_details.items ?? []).find((x) => x.id === i.id);
           return change?.price ? { price: state.prices.find((x) => x.id === change.price), quantity: i.quantity } : i;
         });
-      // The new items in full from today, less half the current ones as unused time.
+      // The new items in full from today, less half the current ones as unused time, plus 10% tax.
       const full = cost(after);
       const credit = -Math.round(cost(sub.items.data) / 2);
+      const tax = Math.max(0, Math.round((full + credit) / 10));
       state.previews = [...(state.previews ?? []), form];
-      const lines = list([{ amount: full }, { amount: credit }]);
-      return send(200, { object: "invoice", amount_due: Math.max(0, full + credit), total: full + credit, currency: "usd", lines });
+      const lines = list([
+        ...after.map((i) => ({ amount: (i.price?.unit_amount ?? 0) * (i.quantity ?? 1), pricing: { type: "price_details", price_details: { price: i.price?.id } } })),
+        { amount: credit, pricing: null },
+      ]);
+      const total = full + credit + tax;
+      return send(200, { object: "invoice", amount_due: Math.max(0, total), total, starting_balance: 0, currency: "usd", lines, total_taxes: tax ? [{ amount: tax }] : [], total_discount_amounts: [] });
     }
     if ((m = p.match(/^\/v1\/customers\/([^/]+)$/)) && req.method === "DELETE") {
       state.deletedCustomers.push(m[1]);
@@ -130,11 +135,20 @@ export function start(port = Number(process.env.FAKE_STRIPE_PORT ?? 12111)) {
     if ((m = p.match(/^\/v1\/subscriptions\/([^/]+)$/))) {
       const sub = state.subs.find((s) => s.id === m[1]);
       if (!sub) return send(404, { error: { type: "invalid_request_error", code: "resource_missing", message: "No such subscription" } });
+      if (req.method === "DELETE") {
+        sub.status = "canceled";
+        return send(200, sub);
+      }
       if (req.method === "POST") {
         sub.lastUpdate = form;
         if (control.declineNext && form.payment_behavior === "pending_if_incomplete") {
           control.declineNext = false;
           return send(200, { ...sub, pending_update: { expires_at: 0 }, latest_invoice: { id: id("in"), hosted_invoice_url: "https://invoice.stripe.test/pay" } });
+        }
+        // error_if_incomplete: a declined payment refuses the whole update.
+        if (control.declineNext && form.payment_behavior === "error_if_incomplete") {
+          control.declineNext = false;
+          return send(402, { error: { type: "card_error", code: "card_declined", message: "Your card was declined." } });
         }
         for (const it of [].concat(form.items ?? [])) {
           const existing = sub.items.data.find((i) => i.id === it.id);
@@ -145,6 +159,9 @@ export function start(port = Number(process.env.FAKE_STRIPE_PORT ?? 12111)) {
         }
       }
       return send(200, req.method === "POST" ? { ...sub, pending_update: null, latest_invoice: { id: id("in"), hosted_invoice_url: null } } : sub);
+    }
+    if ((m = p.match(/^\/v1\/charges\/([^/]+)$/)) && req.method === "GET") {
+      return send(200, (state.charges ?? {})[m[1]] ?? { id: m[1], object: "charge", customer: null });
     }
     if (p === "/v1/billing_portal/configurations" && req.method === "GET") return send(200, list(state.portalConfigs));
     if (p === "/v1/billing_portal/configurations" && req.method === "POST") {

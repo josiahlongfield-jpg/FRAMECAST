@@ -8,9 +8,10 @@ import { summaryUsage } from "@/lib/ai/summary";
 import { readManifest } from "@/lib/ai/speechModel";
 import { RETENTION_DAYS } from "@/lib/retention";
 import { AI_ASSIST_PRICES, aiAssistActive, CLOUD_BACKUP_PRICE, CLOUD_BACKUP_PRICE_YEARLY, PLANS } from "@/lib/plans";
-import type { Workspace } from "@prisma/client";
-import { requirePageUser } from "@/lib/session";
+import type { Workspace } from "@/lib/db";
+import { followTeamLink, requirePageUser } from "@/lib/session";
 import { BRAND } from "@/lib/brand";
+import { zoned } from "@/lib/dates";
 
 export const metadata: Metadata = { title: "Billing" };
 
@@ -29,8 +30,12 @@ async function AiAddOn({ workspace }: { workspace: Workspace }) {
   );
 }
 
-export default async function Billing({ searchParams }: { searchParams: Promise<{ upgraded?: string }> }) {
-  const { upgraded } = await searchParams;
+/** A date as the workspace's owner would read it, in their own time zone. */
+const day = (d: Date, timeZone: string | null) => zoned(timeZone).longDay(d);
+
+export default async function Billing({ searchParams }: { searchParams: Promise<{ upgraded?: string; ws?: string }> }) {
+  const { upgraded, ws } = await searchParams;
+  await followTeamLink(ws, "/settings/billing");
   const { user, workspace, role } = await requirePageUser(upgraded ? "/settings/billing?upgraded=1" : "/settings/billing");
   const plan = PLANS[workspace.plan];
   const comp = !!workspace.complimentaryPlan && !workspace.stripeSubscriptionId;
@@ -59,18 +64,31 @@ export default async function Billing({ searchParams }: { searchParams: Promise<
         )}
         <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
           <p className="text-sm text-slate-500">{workspace.name}</p>
-          <p className="mt-1 text-xl font-semibold text-slate-900">{plan.name} plan</p>
+          <p className="mt-1 text-xl font-semibold text-slate-900">
+            {plan.name} plan
+            {workspace.stripeSubscriptionId && workspace.billingInterval && (
+              <span className="ml-2 text-sm font-normal text-slate-500" data-testid="billing-interval">billed {workspace.billingInterval === "year" ? "yearly" : "monthly"}</span>
+            )}
+          </p>
           {comp && (
-            <p className="mt-1 text-sm text-emerald-700">Complimentary from {BRAND.name}. No card needed. Upgrading starts a paid subscription and keeps everything as it is.</p>
+            <p className="mt-1 text-sm text-emerald-700">
+              Complimentary from {BRAND.name}. No card needed. Choosing a paid plan replaces it with your own subscription; your clients and videos stay as they are.
+              {workspace.aiAssistComplimentary && " Free AI summaries end then, and can be added as a paid add-on."}
+            </p>
+          )}
+          {(workspace.subscriptionStatus === "past_due" || workspace.subscriptionStatus === "unpaid") && workspace.stripeSubscriptionId && (
+            <p role="alert" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" data-testid="payment-failed">
+              Your last payment didn&apos;t go through. Update your card under Manage subscription so your plan carries on.
+            </p>
           )}
           {workspace.cancelsAt ? (
             <p className="mt-1 text-sm font-medium text-amber-700" data-testid="cancels-on">
-              Cancels {workspace.cancelsAt.toLocaleDateString("en-US", { dateStyle: "long" })}
+              Cancels {day(workspace.cancelsAt, workspace.timezone)}
             </p>
           ) : (
             workspace.currentPeriodEnd && (
               <p className="mt-1 text-sm text-slate-500" data-testid="renews-on">
-                Renews {workspace.currentPeriodEnd.toLocaleDateString("en-US", { dateStyle: "long" })}
+                Renews {day(workspace.currentPeriodEnd, workspace.timezone)}
               </p>
             )
           )}
@@ -86,6 +104,7 @@ export default async function Billing({ searchParams }: { searchParams: Promise<
             <p className="mt-4 text-xs text-slate-500" data-testid="cancel-note">
               If you cancel, or a payment can&apos;t be taken, you move to the Free plan when the paid period ends. Clients and staff beyond its limits are then
               paused until you upgrade or remove some. Please tell them about any change.
+              {workspace.cloudBackup && ` Cloud backup ends too, and our copies of your recordings are deleted ${RETENTION_DAYS} days later unless you subscribe again or save them.`}
             </p>
           )}
           <div className="mt-6 flex gap-3">
@@ -95,7 +114,14 @@ export default async function Billing({ searchParams }: { searchParams: Promise<
             )}
           </div>
         </div>
-        <CloudBackupToggle enabled={workspace.cloudBackup} canEnable={workspace.plan !== "FREE"} price={CLOUD_BACKUP_PRICE} yearlyPrice={CLOUD_BACKUP_PRICE_YEARLY} days={RETENTION_DAYS} />
+        <CloudBackupToggle
+          enabled={workspace.cloudBackup}
+          canEnable={workspace.plan !== "FREE" && !!workspace.stripeSubscriptionId}
+          needsSubscription={comp}
+          price={CLOUD_BACKUP_PRICE}
+          yearlyPrice={CLOUD_BACKUP_PRICE_YEARLY}
+          days={RETENTION_DAYS}
+        />
         <AiAddOn workspace={workspace} />
       </main>
     </>

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { exportKey, fingerprint, generateKey, unwrapKey, wrapKey } from "@/lib/e2e/crypto";
 import TeamKeyGate from "./TeamKeyGate";
+import RemoveExtras from "./RemoveExtras";
 
 type Seats = { used: number; limit: number };
 type Client = { id: string; name: string; email: string | null; link: string; teamKeyWrap: string | null; videoCount: number; assignedToId: string | null; paused?: boolean };
@@ -32,7 +33,11 @@ type Props = {
   includedSeats: number;
   extraSeats: number;
   seatPrice: number;
+  /** How often the subscription bills, so the seat price is shown per month or per year. */
+  per?: "month" | "year";
   canBuySeats: boolean;
+  /** On a free plan we gave: seats are bought once they start paying. */
+  complimentary?: boolean;
   /** Owners and admins assign and remove clients; members record and reply. */
   canManage: boolean;
   /** May add new clients (staff can be stopped by the owner or an admin). */
@@ -63,7 +68,9 @@ function Manager({
   includedSeats,
   extraSeats,
   seatPrice,
+  per = "month",
   canBuySeats,
+  complimentary = false,
   canManage,
   canAdd,
   seesAll,
@@ -137,7 +144,7 @@ function Manager({
   }
 
   async function buySeats() {
-    if (!confirm(`Add ${buyQty} extra client ${buyQty === 1 ? "seat" : "seats"} for ${money(buyQty * seatPrice)} a month? You're charged today for the rest of this billing period, then it renews with your plan.`)) return;
+    if (!confirm(`Add ${buyQty} extra client ${buyQty === 1 ? "seat" : "seats"} for ${money(buyQty * seatPrice)} a ${per}, plus any tax? You're charged today for the rest of this billing period, then it renews with your plan.`)) return;
     setError(undefined);
     const res = await fetch("/api/billing/seats", {
       method: "POST",
@@ -181,15 +188,23 @@ function Manager({
               {[1, 5, 10, 25, 50].map((n) => <option key={n} value={n}>{n} {n === 1 ? "client" : "clients"}</option>)}
             </select>
             <button onClick={buySeats} className="rounded-lg bg-slate-900 px-3 py-1.5 font-medium text-white hover:bg-slate-800">
-              Add for {money(buyQty * seatPrice)}/month
+              Add for {money(buyQty * seatPrice)}/{per}
             </button>
+            <span className="w-full sm:hidden" />
+            <span className="sm:ml-auto">
+              <RemoveExtras extra={extraSeats} spare={seats.limit - seats.used} noun={{ one: "client seat", many: "client seats", holder: "clients" }} endpoint="/api/billing/seats" field="extraSeats" onError={setError} />
+            </span>
             {suggestStudio && (
               <p data-testid="studio-hint" className="mt-3 w-full rounded-lg bg-brand-50 px-3 py-2 text-brand-900">
-                That would bring Solo to {money(soloAfter)}/month. Studio is {money(studioHint.studioPrice)}/month with {studioHint.studioClients} clients and 3 staff logins included.{" "}
+                That would bring Solo to {money(soloAfter)}/month. Studio is {money(studioHint.studioPrice)}/month with {studioHint.studioClients} clients and 3 staff logins (yours included).{" "}
                 <Link href="/pricing" className="font-medium underline">Compare plans</Link>
               </p>
             )}
           </div>
+        ) : complimentary ? (
+          <p className="mt-5 border-t border-slate-100 pt-5 text-sm text-slate-600" data-testid="comp-seats-note">
+            Extra clients can be added once you start a paid subscription. <Link href="/pricing" className="font-medium text-brand-700 hover:underline">Choose a paid plan</Link>
+          </p>
         ) : (
           <p className="mt-5 border-t border-slate-100 pt-5 text-sm text-slate-600">
             <Link href="/pricing" className="font-medium text-brand-700 hover:underline">Upgrade</Link> for 10 or more clients, with extra clients at {money(seatPrice)} each per month.
@@ -207,7 +222,16 @@ function Manager({
             Add client
           </button>
         </form>
-        {full && <p className="mt-2 text-sm text-amber-700">All seats are in use. Add seats or remove a client to add someone new.</p>}
+        {full && (
+          <p className="mt-2 text-sm text-amber-700" data-testid="seats-full">
+            All {seats.limit} client seats are in use.{" "}
+            {!isOwner
+              ? "Ask the owner to add seats, or remove a client to add someone new."
+              : canBuySeats
+                ? "Add seats above, or remove a client to add someone new."
+                : "Upgrade your plan, or remove a client to add someone new."}
+          </p>
+        )}
         {error && <p role="alert" className="mt-2 text-sm text-red-700">{error}</p>}
       </section>
       )}

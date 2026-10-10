@@ -4,13 +4,24 @@ import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 import Resend from "next-auth/providers/resend";
 import { PrismaAdapter } from "@auth/prisma-adapter";
+import type { PrismaClient } from "@prisma/client";
 import { db } from "@/lib/db";
+import { plainEmail } from "@/lib/emailAddress";
 
 const providers: Provider[] = [];
 
 // Google verifies email addresses, so it may sign into an account first
-// created with an email link (and vice versa).
-if (process.env.AUTH_GOOGLE_ID) providers.push(Google({ allowDangerousEmailAccountLinking: true }));
+// created with an email link (and vice versa); the signIn callback below
+// refuses any Google address Google hasn't verified.
+if (process.env.AUTH_GOOGLE_ID) {
+  providers.push(
+    Google({
+      allowDangerousEmailAccountLinking: true,
+      // Same lower-case address as an email-link account, so the two link up.
+      profile: (p) => ({ id: p.sub, name: p.name, email: String(p.email ?? "").toLowerCase(), image: p.picture }),
+    }),
+  );
+}
 
 /**
  * One-time sign-in links by email. Live when RESEND_API_KEY is set; locally
@@ -24,10 +35,15 @@ if (emailLinks) {
       name: "Email",
       apiKey: process.env.RESEND_API_KEY ?? "unused",
       from: process.env.MAIL_FROM,
+      // Only plain addresses: no quotes, commas, spaces or look-alike characters.
+      normalizeIdentifier(identifier) {
+        const email = plainEmail(identifier);
+        if (!email) throw new Error("Invalid email address");
+        return email;
+      },
       async sendVerificationRequest({ identifier, url }) {
-        const { limitByIp, rateLimit } = await import("@/lib/rateLimit");
-        await limitByIp("signin-email", 10, 3600);
-        await rateLimit(`signin-email:to:${identifier.toLowerCase()}`, 5, 3600);
+        const { countSignInEmail } = await import("@/lib/signInGuard");
+        await countSignInEmail(identifier);
         const { sendMail } = await import("@/lib/mail");
         const { signInEmail } = await import("@/lib/signInEmail");
         const { confirmLink } = await import("@/lib/signInLink");
@@ -71,7 +87,8 @@ if (devLogin) {
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  adapter: PrismaAdapter(db),
+  // The adapter only touches the auth tables, so the client's workspace settings don't matter to it.
+  adapter: PrismaAdapter(db as unknown as PrismaClient),
   session: { strategy: "jwt" },
   providers,
   pages: { signIn: "/login", verifyRequest: "/login/check", error: "/login" },
@@ -90,6 +107,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
   },
   callbacks: {
+    signIn({ account, profile }) {
+      return account?.provider !== "google" || profile?.email_verified === true;
+    },
     jwt({ token, user }) {
       if (user?.id) token.sub = user.id;
       return token;

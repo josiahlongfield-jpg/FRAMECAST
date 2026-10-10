@@ -32,7 +32,7 @@ export const POST = handle(async (req: Request) => {
       402,
       seats.limit === 1
         ? "Team logins come with Studio and Agency. Upgrade to invite staff."
-        : `All ${seats.limit} staff logins are in use. Add more on the billing page or remove someone first.`,
+        : `All ${seats.limit} staff logins are in use. The owner can add more on this page, or remove someone first.`,
     );
   }
   const token = newInviteToken();

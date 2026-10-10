@@ -6,6 +6,7 @@
 // Nothing here is loaded unless the workspace has the add-on switched on.
 
 import { isManifest, type ModelManifest } from "./modelManifest";
+import { MAX_TRANSCRIBE_MINUTES } from "./limits";
 
 export type TranscriptSegment = { start: number; end: number; text: string };
 export type Transcript = { v: 1; segments: TranscriptSegment[] };
@@ -30,8 +31,8 @@ declare global {
   }
 }
 
-/** Longest recording transcribed on a device (decoded audio is held in memory). */
-export const MAX_TRANSCRIBE_MINUTES = 30;
+/** Longest recording transcribed on a device (see limits.ts). */
+export { MAX_TRANSCRIBE_MINUTES };
 const SAMPLE_RATE = 16_000;
 /** Give up when the worker goes quiet this long (a crashed or out-of-memory worker sends nothing). */
 const STALL_MS = 10 * 60_000;
@@ -45,7 +46,7 @@ export type DeviceSupport = {
   /** Run on the graphics chip, on the processor only, or not at all. */
   device: "webgpu" | "wasm" | null;
   mobile: boolean;
-  /** Under 4 GB of memory (where the browser says): never start by itself, only from the button. */
+  /** Under 4 GB of memory (where the browser says): shown as a warning before the button. */
   lowMemory: boolean;
 };
 

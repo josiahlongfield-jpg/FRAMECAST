@@ -32,7 +32,10 @@ export const POST = handle(async (req: Request) => {
   const existing = await db.membership.findUnique({ where: { userId_workspaceId: { userId, workspaceId: invite.workspaceId } } });
   // The same person opening their link again (say, on a second device) gets the key again.
   const again = invite.acceptedAt && invite.acceptedById === userId;
-  if (!again) {
+  // Someone already on the team opening a link made out to nobody in particular (say, to try it)
+  // gets the team key, but the invite stays free for the person it was meant for.
+  const alreadyHere = !!existing && !invite.email;
+  if (!again && !alreadyHere) {
     if (invite.acceptedAt) throw new HttpError(410, "This invite has already been used. Ask for a new one.");
     if (invite.expiresAt < new Date()) throw new HttpError(410, "This invite has expired. Ask for a new one.");
     await db.$transaction(async (tx) => {

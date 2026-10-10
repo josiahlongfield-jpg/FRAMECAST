@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { decryptText, encryptText } from "@/lib/e2e/crypto";
 import type { DeviceSupport, Progress, Summary, Transcript } from "@/lib/ai/transcribe";
+import { MAX_TRANSCRIBE_MINUTES } from "@/lib/ai/limits";
 
 export type SealedInsight = { transcript: string; summary: string | null } | null;
 
@@ -60,14 +61,15 @@ function logFailure(message: string) {
  * own device (transcript) plus Claude (summary from the transcript text);
  * everyone who can watch the video reads them, decrypted here.
  */
-export default function AiInsight({ videoId, rootKey, initial, canMake, mediaUrl, canRemove, onSeek }: Props) {
+export default function AiInsight({ videoId, rootKey, initial, canMake, mediaUrl, canRemove, onSeek, durationMs }: Props) {
+  // Too long to transcribe on a device: say so up front rather than after decoding the audio.
+  const tooLong = (durationMs ?? 0) > MAX_TRANSCRIBE_MINUTES * 60_000;
   const [sealed, setSealed] = useState<SealedInsight>(initial);
   const [transcript, setTranscript] = useState<Transcript | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [unreadable, setUnreadable] = useState(false);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [support, setSupport] = useState<DeviceSupport | null>(null);
-  const started = useRef(false);
   // Collapsed to one labelled bar until the viewer opens it, so it doesn't push the page down.
   const [open, setOpen] = useState(false);
   const bodyId = useId();
@@ -125,7 +127,6 @@ export default function AiInsight({ videoId, rootKey, initial, canMake, mediaUrl
 
   const make = useCallback(async () => {
     if (!mediaUrl) return;
-    started.current = true;
     setStatus({ kind: "working", progress: { stage: "audio", fraction: 0 } });
     try {
       const { transcribe, ModelUnavailable, UnsupportedDevice } = await import("@/lib/ai/transcribe");
@@ -155,7 +156,6 @@ export default function AiInsight({ videoId, rootKey, initial, canMake, mediaUrl
     if (!confirm("Remove this video's transcript and summary? Your team and client won't see them any more.")) return;
     const res = await fetch(`/api/videos/${videoId}/insight`, { method: "DELETE" });
     if (!res.ok) return;
-    started.current = true;
     setSealed(null);
     setTranscript(null);
     setSummary(null);
@@ -250,7 +250,9 @@ export default function AiInsight({ videoId, rootKey, initial, canMake, mediaUrl
             <div className="mt-2 text-sm text-slate-600">
               <p>Make a transcript on this device and a short AI summary of this video. The audio stays on this device; only the transcript text is sent to write the summary.</p>
               {(support?.mobile || support?.lowMemory) && <p className="mt-1 text-amber-800">This device may struggle with this. It works best on a computer.</p>}
-              {support && !support.device ? (
+              {tooLong ? (
+                <p className="mt-2 text-amber-800" data-testid="ai-too-long">Transcripts are available for videos up to {MAX_TRANSCRIBE_MINUTES} minutes.</p>
+              ) : support && !support.device ? (
                 <p className="mt-2 text-amber-800">This browser can&apos;t make transcripts. Try again on a computer with Chrome or Edge.</p>
               ) : (
                 <button

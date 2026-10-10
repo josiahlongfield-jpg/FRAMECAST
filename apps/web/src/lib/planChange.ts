@@ -1,10 +1,10 @@
 import type Stripe from "stripe";
-import type { Workspace } from "@prisma/client";
-import { db } from "@/lib/db";
+import { db, type Workspace } from "@/lib/db";
 import { ACTIVE_STATUSES, AI_ITEM, catalogKey, catalogOf, isAiItem, PLAN_ITEM, planOf, priceId } from "@/lib/billing";
 import { PLANS, staffSeatLimit, TEAM_PLANS, type Interval, type PaidPlan } from "@/lib/plans";
 import { HttpError } from "@/lib/session";
 import { stripe } from "@/lib/stripe";
+import { currentSubscription } from "@/lib/subscription";
 
 export type PlanChange = {
   sub: Stripe.Subscription;
@@ -33,9 +33,8 @@ export async function assertFits(workspace: Workspace, plan: PaidPlan) {
  * Throws when the workspace has more clients or staff than the plan allows.
  */
 export async function planChange(workspace: Workspace, plan: PaidPlan, interval: Interval): Promise<PlanChange | null> {
-  if (!workspace.stripeSubscriptionId) return null;
-  const sub = await stripe().subscriptions.retrieve(workspace.stripeSubscriptionId, { expand: ["default_payment_method"] });
-  if (!ACTIVE_STATUSES.has(sub.status)) return null;
+  const sub = await currentSubscription(workspace, { expand: ["default_payment_method"] });
+  if (!sub || !ACTIVE_STATUSES.has(sub.status)) return null;
   const price = await priceId(catalogKey(PLAN_ITEM[plan], interval));
   const item = sub.items.data.find((i) => planOf(i.price));
   if (item?.price.id === price) return { sub, items: [], same: true, removesItems: false };

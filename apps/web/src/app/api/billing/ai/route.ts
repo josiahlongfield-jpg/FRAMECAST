@@ -1,8 +1,10 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { ACTIVE_STATUSES, AI_ITEM, catalogKey, catalogOf, changeAddOns, intervalOf, isAiItem, planOf, priceId } from "@/lib/billing";
+import { ACTIVE_STATUSES, AI_ITEM, catalogKey, catalogOf, changeAddOns, intervalOf, isAiItem, planOf, priceId, unpaid } from "@/lib/billing";
+import { aiConfigured } from "@/lib/ai/summary";
+import { readManifest } from "@/lib/ai/speechModel";
 import { handle, HttpError, requireRole, requireUser } from "@/lib/session";
-import { stripe } from "@/lib/stripe";
+import { currentSubscription } from "@/lib/subscription";
 import { limitByIp } from "@/lib/rateLimit";
 import type { PaidPlan } from "@/lib/plans";
 
@@ -23,9 +25,13 @@ export const POST = handle(async (req: Request) => {
   const enabled = body.data.enabled;
 
   if (enabled && workspace.plan === "FREE") throw new HttpError(400, "AI summaries are available on paid plans");
+  // Nobody pays for transcripts before devices can make them.
+  if (enabled && !workspace.aiAssist && !workspace.aiAssistComplimentary && (!aiConfigured() || !(await readManifest().catch(() => null)))) {
+    throw new HttpError(503, "AI transcripts and summaries aren't ready yet. We're setting them up; please try again soon.");
+  }
 
-  if (workspace.stripeSubscriptionId) {
-    const sub = await stripe().subscriptions.retrieve(workspace.stripeSubscriptionId);
+  const sub = await currentSubscription(workspace);
+  if (sub) {
     const active = ACTIVE_STATUSES.has(sub.status);
     const existing = sub.items.data.filter((i) => isAiItem(catalogOf(i.price)?.item));
     if (enabled && !workspace.aiAssistComplimentary) {
@@ -34,11 +40,14 @@ export const POST = handle(async (req: Request) => {
       if (!plan) throw new HttpError(400, "AI summaries are available on paid plans");
       const price = await priceId(catalogKey(AI_ITEM[plan], intervalOf(sub)));
       if (!existing.some((i) => i.price.id === price)) {
-        const { payUrl } = await changeAddOns(sub, [{ price, quantity: 1 }, ...existing.map((i) => ({ id: i.id, deleted: true }))], { adds: true });
-        if (payUrl) return Response.json({ error: "Your card couldn't be charged. Pay the invoice to finish.", url: payUrl }, { status: 402 });
+        const charge = await changeAddOns(sub, [{ price, quantity: 1 }, ...existing.map((i) => ({ id: i.id, deleted: true }))], { adds: true });
+        if (!charge.paid) return unpaid(charge);
       }
     }
-    if (!enabled && existing.length && active) {
+    // Switched off, it comes off the subscription whatever its state (an unpaid one included),
+    // so it isn't billed again or switched back on by the next update from Stripe.
+    if (!enabled && existing.length) {
+      if (!active && sub.status.startsWith("incomplete")) throw new HttpError(409, "Finish or cancel the pending payment first, under Manage subscription.");
       await changeAddOns(sub, existing.map((i) => ({ id: i.id, deleted: true })), { adds: false });
     }
   } else if (enabled && !workspace.aiAssistComplimentary) {

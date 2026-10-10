@@ -9,6 +9,7 @@ import TeamKeyGate from "./TeamKeyGate";
 /** US$8, US$37.50 */
 const money = (n: number) => `US$${Number.isInteger(n) ? n : n.toFixed(2)}`;
 import { PermChecks, savePerm, type Perms } from "./StaffPerms";
+import RemoveExtras from "./RemoveExtras";
 
 type Role = "OWNER" | "ADMIN" | "MEMBER";
 type Member = { userId: string; name: string; email: string; role: Role; perms: Perms; paused?: boolean };
@@ -25,6 +26,8 @@ type Props = {
   extraStaff: number;
   canBuyStaff: boolean;
   staffPrice: number;
+  /** How often the subscription bills, so the price is shown per month or per year. */
+  per?: "month" | "year";
   initialMembers: Member[];
   initialInvites: Invite[];
   workspaces: { id: string; name: string; active: boolean }[];
@@ -50,7 +53,7 @@ export default function TeamManager(props: Props) {
   );
 }
 
-function Manager({ teamKey, workspaceId, keyResetNeeded, role, meId, initialSeats, includedStaff, extraStaff, canBuyStaff, staffPrice, initialMembers, initialInvites }: Props & { teamKey?: CryptoKey }) {
+function Manager({ teamKey, workspaceId, keyResetNeeded, role, meId, initialSeats, includedStaff, extraStaff, canBuyStaff, staffPrice, per = "month", initialMembers, initialInvites }: Props & { teamKey?: CryptoKey }) {
   const [members, setMembers] = useState(initialMembers);
   const [invites, setInvites] = useState(initialInvites);
   const [seats, setSeats] = useState(initialSeats);
@@ -159,7 +162,7 @@ function Manager({ teamKey, workspaceId, keyResetNeeded, role, meId, initialSeat
   }
 
   async function buyStaff() {
-    if (!confirm(`Add ${buyQty} extra staff ${buyQty === 1 ? "login" : "logins"} for ${money(buyQty * staffPrice)} a month? You're charged today for the rest of this billing period, then it renews with your plan.`)) return;
+    if (!confirm(`Add ${buyQty} extra staff ${buyQty === 1 ? "login" : "logins"} for ${money(buyQty * staffPrice)} a ${per}, plus any tax? You're charged today for the rest of this billing period, then it renews with your plan.`)) return;
     setError(undefined);
     const res = await fetch("/api/billing/staff", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ extraStaff: extraStaff + buyQty }) });
     const data = await res.json().catch(() => ({}));
@@ -185,7 +188,11 @@ function Manager({ teamKey, workspaceId, keyResetNeeded, role, meId, initialSeat
             <select value={buyQty} onChange={(e) => setBuyQty(Number(e.target.value))} aria-label="Extra staff logins" className="rounded-lg border border-slate-300 bg-white px-2 py-1.5">
               {[1, 2, 3, 5, 10].map((n) => <option key={n} value={n}>{n} {n === 1 ? "login" : "logins"}</option>)}
             </select>
-            <button onClick={buyStaff} className="rounded-lg bg-slate-900 px-3 py-1.5 font-medium text-white hover:bg-slate-800">Add for {money(buyQty * staffPrice)}/month</button>
+            <button onClick={buyStaff} className="rounded-lg bg-slate-900 px-3 py-1.5 font-medium text-white hover:bg-slate-800">Add for {money(buyQty * staffPrice)}/{per}</button>
+            <span className="w-full sm:hidden" />
+            <span className="sm:ml-auto">
+              <RemoveExtras extra={extraStaff} spare={seats.limit - seats.used} noun={{ one: "staff login", many: "staff logins", holder: "staff or cancel invites" }} endpoint="/api/billing/staff" field="extraStaff" onError={setError} />
+            </span>
           </div>
         )}
       </section>
@@ -194,7 +201,7 @@ function Manager({ teamKey, workspaceId, keyResetNeeded, role, meId, initialSeat
         <section className="rounded-2xl border border-slate-200 bg-white p-6">
           <h2 className="font-semibold text-slate-900">Invite someone</h2>
           <form onSubmit={invite} className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto_auto]">
-            <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="Their email (optional, for your records)" aria-label="Staff email" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+            <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="Their email (optional: then only they can join)" aria-label="Staff email" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
             <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value as Role)} aria-label="Role" className="rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm">
               <option value="MEMBER">Member</option>
               <option value="ADMIN">Admin</option>

@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { enforceSeatLimits } from "@/lib/seatLimits";
 import { PLANS } from "@/lib/plans";
 import { isSupportAgent } from "@/lib/support/tickets";
+import { currentSubscription } from "@/lib/subscription";
 
 export type CompResult = { ok: boolean; message: string } | null;
 
@@ -20,9 +21,10 @@ export async function setComplimentary(_prev: CompResult, form: FormData): Promi
   if (!email.includes("@") || !(choice in PLANS)) return { ok: false, message: "Enter an email address and pick a plan." };
   const plan = choice as Plan;
 
-  const owner = await db.membership.findFirst({ where: { role: "OWNER", user: { email } }, include: { workspace: true } });
+  const owner = await db.membership.findFirst({ where: { role: "OWNER", user: { email } }, include: { workspace: true }, orderBy: { workspace: { createdAt: "asc" } } });
   if (!owner) return { ok: false, message: `${email} hasn't signed up yet, or doesn't own a workspace. Ask them to sign in once first.` };
-  const ws = owner.workspace;
+  // A subscription Stripe no longer has (say one from test mode) is cleared here, not counted as paying.
+  const ws = (await currentSubscription(owner.workspace)) ? owner.workspace : await db.workspace.findUniqueOrThrow({ where: { id: owner.workspaceId } });
   if (ws.stripeSubscriptionId) return { ok: false, message: `${ws.name} already pays for ${PLANS[ws.plan].name}, so nothing was changed.` };
 
   await db.workspace.update({
@@ -46,9 +48,9 @@ export async function setComplimentaryAi(_prev: CompResult, form: FormData): Pro
   const on = form.get("ai") === "on";
   if (!email.includes("@")) return { ok: false, message: "Enter an email address." };
 
-  const owner = await db.membership.findFirst({ where: { role: "OWNER", user: { email } }, include: { workspace: true } });
+  const owner = await db.membership.findFirst({ where: { role: "OWNER", user: { email } }, include: { workspace: true }, orderBy: { workspace: { createdAt: "asc" } } });
   if (!owner) return { ok: false, message: `${email} hasn't signed up yet, or doesn't own a workspace. Ask them to sign in once first.` };
-  const ws = owner.workspace;
+  const ws = (await currentSubscription(owner.workspace)) ? owner.workspace : await db.workspace.findUniqueOrThrow({ where: { id: owner.workspaceId } });
   if (ws.stripeSubscriptionId) return { ok: false, message: `${ws.name} pays by card, so they can add AI summaries in Settings > Billing. Nothing was changed.` };
   if (on && !ws.complimentaryPlan) return { ok: false, message: `Give ${ws.name} a free paid plan first. AI summaries aren't available on Free.` };
 
@@ -57,7 +59,7 @@ export async function setComplimentaryAi(_prev: CompResult, form: FormData): Pro
   return {
     ok: true,
     message: on
-      ? `${ws.name} now has AI summaries free of charge, switched on. Their owner or an admin can switch it off in Settings > Billing.`
+      ? `${ws.name} now has AI summaries free of charge, switched on. Their owner can switch it off in Settings > Billing.`
       : `AI summaries are off for ${ws.name}.`,
   };
 }

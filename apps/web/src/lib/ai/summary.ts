@@ -33,7 +33,8 @@ const SCHEMA = {
 export type Summary = { overview: string; keyPoints: string[]; actionItems: string[] };
 
 let client: Anthropic | undefined;
-const anthropic = () => (client ??= new Anthropic());
+// Two tries at most, inside the summary route's time limit.
+const anthropic = () => (client ??= new Anthropic({ timeout: 55_000, maxRetries: 1 }));
 
 export const aiConfigured = () => !!process.env.ANTHROPIC_API_KEY;
 

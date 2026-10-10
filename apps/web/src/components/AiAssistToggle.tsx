@@ -6,7 +6,7 @@ type Props = {
   enabled: boolean;
   /** On a paid plan (or given free), so it can be switched on. */
   canEnable: boolean;
-  /** Price for this workspace's plan, e.g. "$15 per month"; null when given free. */
+  /** Price for this workspace's plan, e.g. "US$8 per month on Solo"; null when given free. */
   priceLabel: string | null;
   usage: { used: number; limit: number } | null;
   /** The speech model is installed on the server, so transcripts can be made. */
@@ -20,7 +20,7 @@ export default function AiAssistToggle({ enabled, canEnable, priceLabel, usage, 
   const [error, setError] = useState<string>();
 
   async function toggle() {
-    if (!on && priceLabel && !confirm(`Add AI transcripts and summaries for ${priceLabel}? You're charged today for the rest of this billing period, then it renews with your plan.`)) return;
+    if (!on && priceLabel && !confirm(`Add AI transcripts and summaries for ${priceLabel}, plus any tax? You're charged today for the rest of this billing period, then it renews with your plan.`)) return;
     setBusy(true);
     setError(undefined);
     const res = await fetch("/api/billing/ai", {
@@ -56,7 +56,8 @@ export default function AiAssistToggle({ enabled, canEnable, priceLabel, usage, 
           </p>
           {!modelReady && (on || canEnable) && (
             <p className="mt-2 text-xs text-amber-800" data-testid="ai-model-missing">
-              The speech model isn&apos;t installed yet, so new transcripts can&apos;t be made for now. We&apos;re setting it up.
+              The speech model isn&apos;t installed yet, so new transcripts can&apos;t be made for now. We&apos;re setting it up
+              {!on && priceLabel ? ", and you can add this once it&apos;s ready" : ""}.
             </p>
           )}
         </div>
@@ -65,7 +66,7 @@ export default function AiAssistToggle({ enabled, canEnable, priceLabel, usage, 
           aria-checked={on}
           aria-label="AI transcripts and summaries"
           onClick={toggle}
-          disabled={busy || (!on && !canEnable)}
+          disabled={busy || (!on && (!canEnable || (!modelReady && !!priceLabel)))}
           className={`relative h-7 w-12 shrink-0 rounded-full transition disabled:opacity-50 ${on ? "bg-brand-600" : "bg-slate-300"}`}
         >
           <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${on ? "left-6" : "left-1"}`} />

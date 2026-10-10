@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import crypto from "node:crypto";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import Logo from "@/components/Logo";
 import { db } from "@/lib/db";
+import { mobileSignInEnabled } from "@/lib/mobileSignIn";
 import { requirePageUser } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Sign in to the app", robots: { index: false } };
@@ -18,12 +19,14 @@ const CHALLENGE = /^[A-Za-z0-9_-]{43}$/;
  * same scheme can't turn it into a session (POST /api/mobile/exchange).
  */
 export default async function Handoff({ searchParams }: { searchParams: Promise<{ challenge?: string }> }) {
+  if (!mobileSignInEnabled()) notFound();
   const { challenge } = await searchParams;
   const valid = !!challenge && CHALLENGE.test(challenge);
   const { user } = await requirePageUser(`/mobile/handoff${valid ? `?challenge=${challenge}` : ""}`);
 
   async function approve() {
     "use server";
+    if (!mobileSignInEnabled()) notFound();
     const { user } = await requirePageUser("/library");
     if (!valid) redirect("/library");
     const code = crypto.randomBytes(32).toString("base64url");

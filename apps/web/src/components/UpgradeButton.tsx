@@ -3,7 +3,20 @@
 import { useState } from "react";
 import { PLANS, type Interval, type PaidPlan } from "@/lib/plans";
 
-type Preview = { mode: "change"; dueToday: number; full: number; credit: number; leftover: number; currency: string; paymentMethod: string | null; cancelling?: boolean };
+type Preview = {
+  mode: "change";
+  dueToday: number;
+  plan: number;
+  addOns: number;
+  credit: number;
+  tax: number;
+  discount: number;
+  balance: number;
+  leftover: number;
+  currency: string;
+  paymentMethod: string | null;
+  cancelling?: boolean;
+};
 
 const money = (cents: number, currency: string) => new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase() }).format(cents / 100);
 
@@ -82,18 +95,42 @@ export default function UpgradeButton({ plan, interval = "month", featured = fal
               Switch to {name}?
             </h2>
             <p className="mt-3 text-sm text-slate-700">
-              {name} is US${price} a {interval}. Your extra clients, cloud backup and AI add-on carry over (the AI add-on moves to {name}&apos;s price). Extra
+              {name} is US${price} a {interval}, plus any tax. Your extra clients, cloud backup and AI add-on carry over (the AI add-on moves to {name}&apos;s price). Extra
               staff logins are only on Studio and Agency.
             </p>
             <dl className="mt-4 space-y-1 rounded-xl bg-slate-50 p-4 text-sm text-slate-700" data-testid="due-today">
               <div className="flex justify-between gap-4">
                 <dt>{name}, from today</dt>
-                <dd>{money(confirm.full, confirm.currency)}</dd>
+                <dd>{money(confirm.plan, confirm.currency)}</dd>
               </div>
+              {confirm.addOns > 0 && (
+                <div className="flex justify-between gap-4">
+                  <dt>Extra clients and add-ons, from today</dt>
+                  <dd>{money(confirm.addOns, confirm.currency)}</dd>
+                </div>
+              )}
               {confirm.credit > 0 && (
                 <div className="flex justify-between gap-4">
                   <dt>Unused time on your current plan</dt>
                   <dd>−{money(confirm.credit, confirm.currency)}</dd>
+                </div>
+              )}
+              {confirm.discount > 0 && (
+                <div className="flex justify-between gap-4">
+                  <dt>Discount</dt>
+                  <dd>−{money(confirm.discount, confirm.currency)}</dd>
+                </div>
+              )}
+              {confirm.tax > 0 && (
+                <div className="flex justify-between gap-4">
+                  <dt>Tax</dt>
+                  <dd>{money(confirm.tax, confirm.currency)}</dd>
+                </div>
+              )}
+              {confirm.balance > 0 && (
+                <div className="flex justify-between gap-4">
+                  <dt>Credit already on your account</dt>
+                  <dd>−{money(confirm.balance, confirm.currency)}</dd>
                 </div>
               )}
               <div className="flex justify-between gap-4 border-t border-slate-200 pt-2 font-semibold text-slate-900">

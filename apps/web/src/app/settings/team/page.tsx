@@ -3,14 +3,15 @@ import Link from "next/link";
 import AppHeader from "@/components/AppHeader";
 import TeamManager from "@/components/TeamManager";
 import { db } from "@/lib/db";
-import { EXTRA_STAFF_PRICE, PLANS, TEAM_PLANS } from "@/lib/plans";
-import { requirePageUser } from "@/lib/session";
+import { EXTRA_STAFF_PRICE, EXTRA_STAFF_PRICE_YEARLY, PLANS, TEAM_PLANS } from "@/lib/plans";
+import { followTeamLink, requirePageUser } from "@/lib/session";
 import { staffUsage } from "@/lib/team";
 import { permsOf } from "@/lib/permissions";
 
 export const metadata: Metadata = { title: "Team" };
 
-export default async function TeamSettings() {
+export default async function TeamSettings({ searchParams }: { searchParams: Promise<{ ws?: string }> }) {
+  await followTeamLink((await searchParams).ws, "/settings/team");
   const { user, workspace, role } = await requirePageUser("/settings/team");
   const plan = PLANS[workspace.plan];
   const [members, invites, mine, seats] = await Promise.all([
@@ -43,7 +44,7 @@ export default async function TeamSettings() {
           <div className="mt-6 rounded-2xl border border-brand-100 bg-brand-50 p-5 text-sm text-brand-900">
             <p className="font-medium">Working with others?</p>
             <p className="mt-1">
-              Studio includes 3 staff logins and Agency includes 10, with more at US${EXTRA_STAFF_PRICE}/month each. Everyone records, replies and keeps track of their own clients.
+              Studio includes 3 staff logins and Agency includes 10 (yours counts as one), with more at US${EXTRA_STAFF_PRICE}/month each. Everyone records, replies and keeps track of their own clients.
             </p>
             <Link href="/pricing" className="mt-3 inline-block font-medium underline">See plans</Link>
           </div>
@@ -63,7 +64,8 @@ export default async function TeamSettings() {
           includedStaff={plan.staffSeats}
           extraStaff={workspace.extraStaffSeats}
           canBuyStaff={isTeamPlan && role === "OWNER" && !!workspace.stripeSubscriptionId}
-          staffPrice={EXTRA_STAFF_PRICE}
+          staffPrice={workspace.billingInterval === "year" ? EXTRA_STAFF_PRICE_YEARLY : EXTRA_STAFF_PRICE}
+          per={workspace.billingInterval === "year" ? "year" : "month"}
           initialMembers={members.map((m) => ({ userId: m.userId, name: m.user.name ?? m.user.email.split("@")[0], email: m.user.email, role: m.role, perms: permsOf(m), paused: !!m.pausedAt }))}
           initialInvites={invites.map((i) => ({ id: i.id, email: i.email, role: i.role, expiresAt: i.expiresAt.toISOString() }))}
           keyResetNeeded={role === "MEMBER" ? null : workspace.keyResetNeeded}

@@ -59,23 +59,6 @@ export function canSeeClient(a: Access, client: { workspaceId: string; assignedT
   return client.workspaceId === a.workspaceId && (seesAllClients(a) || client.assignedToId === a.userId);
 }
 
-/** Load a client this person may see, or 404 (so ids of other staff's clients don't leak). */
-export async function visibleClient(a: Access, id: string) {
-  const client = await db.client.findUnique({ where: { id } });
-  if (!client || client.removedAt || !canSeeClient(a, client)) throw new HttpError(404, "Client not found");
-  return client;
-}
-
-/**
- * Prisma filter for the conversations (videos, not reply media) this person
- * may see: everything for full access; otherwise what they recorded and what
- * was sent to their clients.
- */
-export function videoScopeWhere(a: Access): Prisma.VideoWhereInput {
-  if (seesAllClients(a)) return { workspaceId: a.workspaceId };
-  return { workspaceId: a.workspaceId, OR: [{ ownerId: a.userId }, { client: { assignedToId: a.userId } }] };
-}
-
 /**
  * The library list: originals, plus (for restricted staff) the copies sent to
  * their clients when they can't open the original itself.

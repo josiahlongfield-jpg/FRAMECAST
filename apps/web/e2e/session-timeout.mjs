@@ -46,16 +46,21 @@ await p2.waitForURL("**/login**", { timeout: 15000 }).catch(() => {});
 ok("stays signed out", new URL(p2.url()).pathname === "/login");
 await reopened.close();
 
-// Idle for longer than the limit: an API call still works (an upload under way
-// isn't cut off), the next page load signs out.
+// Browser closed, then an API address typed in directly: signed out there too.
+const closedApi = await browser.newContext();
+await closedApi.addCookies((await ctx.cookies()).filter((c) => c.name !== "sf_active"));
+const exp = await closedApi.request.get(BASE + "/api/account/export");
+ok("after closing the browser: API calls are signed out", exp.status() === 401, String(exp.status()));
+ok("and that clears the old session", !(await closedApi.cookies()).some((c) => c.name.includes("session-token")));
+await closedApi.close();
+
+// Idle for longer than the limit: an API call doesn't bring the session back,
+// and the next page load is signed out.
 const idle = await browser.newContext();
 await idle.addCookies((await ctx.cookies()).map((c) => (c.name === "sf_active" ? { ...c, value: String(Date.now() - 9 * 3_600_000) } : c)));
 const p3 = await idle.newPage();
-// An API call with no page load first (as an upload's next chunk would be).
 const api = await (await idle.request.get(BASE + "/api/auth/session")).json();
-ok("idle: API calls carry on", !!api?.user, JSON.stringify(api));
-// That API call refreshed the activity time, so set it back to stale for the page check.
-await idle.addCookies([{ name: "sf_active", value: String(Date.now() - 9 * 3_600_000), url: BASE }]);
+ok("idle: API calls are signed out", !api?.user, JSON.stringify(api));
 await p3.goto(BASE + "/library");
 await p3.waitForURL("**/login**", { timeout: 15000 }).catch(() => {});
 ok("idle over 8 hours: next page load signs out", new URL(p3.url()).pathname === "/login", p3.url());
@@ -63,7 +68,15 @@ await idle.close();
 
 // Recent activity keeps you in.
 const active = await browser.newContext();
-await active.addCookies((await ctx.cookies()).map((c) => (c.name === "sf_active" ? { ...c, value: String(Date.now() - 3_600_000) } : c)));
+const hourAgo = String(Date.now() - 3_600_000);
+await active.addCookies((await ctx.cookies()).map((c) => (c.name === "sf_active" ? { ...c, value: hourAgo } : c)));
+// A background check (new replies) works but doesn't count as using the site.
+const bg = await (await active.request.get(BASE + "/api/auth/session", { headers: { "x-sf-background": "1" } })).json();
+ok("background check while active: still signed in", !!bg?.user, JSON.stringify(bg));
+ok("background check doesn't extend the session", (await active.cookies()).find((c) => c.name === "sf_active")?.value === hourAgo);
+const fg = await (await active.request.get(BASE + "/api/auth/session")).json();
+ok("a normal API call while active works", !!fg?.user);
+ok("and counts as activity", (await active.cookies()).find((c) => c.name === "sf_active")?.value !== hourAgo);
 const p4 = await active.newPage();
 await p4.goto(BASE + "/library");
 await p4.waitForTimeout(2000);

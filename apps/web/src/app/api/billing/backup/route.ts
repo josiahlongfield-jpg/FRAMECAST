@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { ACTIVE_STATUSES, catalogKey, changeAddOns, intervalOf, priceId } from "@/lib/billing";
+import { ACTIVE_STATUSES, addOnChanges, catalogKey, changeAddOns, intervalOf, priceId, unpaid } from "@/lib/billing";
 import { applyBackupSetting } from "@/lib/retention";
 import { handle, HttpError, requireRole, requireUser } from "@/lib/session";
-import { stripe } from "@/lib/stripe";
+import { currentSubscription } from "@/lib/subscription";
 import { limitByIp } from "@/lib/rateLimit";
 
 const Body = z.object({ enabled: z.boolean() });
@@ -16,17 +16,12 @@ export const POST = handle(async (req: Request) => {
   const body = Body.safeParse(await req.json());
   await limitByIp("billing", 20, 600);
   if (!body.success) throw new HttpError(400, "Invalid request");
-  if (!workspace.stripeSubscriptionId) throw new HttpError(400, "Upgrade to a paid plan to add cloud backup");
-
-  const sub = await stripe().subscriptions.retrieve(workspace.stripeSubscriptionId);
+  const sub = await currentSubscription(workspace);
+  if (!sub) throw new HttpError(400, "Start a paid subscription to add cloud backup");
   if (!ACTIVE_STATUSES.has(sub.status)) throw new HttpError(400, "Your subscription is not active");
   const price = await priceId(catalogKey("cloud_backup", intervalOf(sub)));
-  const item = sub.items.data.find((i) => i.price.id === price);
-  const { payUrl } =
-    body.data.enabled && !item
-      ? await changeAddOns(sub, [{ price, quantity: 1 }], { adds: true })
-      : await changeAddOns(sub, !body.data.enabled && item ? [{ id: item.id, deleted: true }] : [], { adds: false });
-  if (payUrl) return Response.json({ error: "Your card couldn't be charged. Pay the invoice to finish.", url: payUrl }, { status: 402 });
+  const charge = await changeAddOns(sub, addOnChanges(sub, "cloud_backup", price, body.data.enabled ? 1 : 0), { adds: body.data.enabled && !workspace.cloudBackup });
+  if (!charge.paid) return unpaid(charge);
 
   await db.workspace.update({ where: { id: workspace.id }, data: { cloudBackup: body.data.enabled } });
   if (workspace.cloudBackup !== body.data.enabled) await applyBackupSetting(workspace.id, body.data.enabled);

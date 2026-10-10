@@ -159,6 +159,7 @@ res = await install(founder, { step: "finish", revision: REVISION });
 ok("re-run: finish again", res.ok() && JSON.parse(objects.get("models/manifest.json").body).files["config.json"].sha256 === manifest.files["config.json"].sha256);
 
 // ---------- 4. /models only hands out installed files ----------
+ok("signed out: /models needs sign-in", (await fetch(model("manifest.json"), { redirect: "manual" })).status === 401);
 res = await user.request.get(model("manifest.json"));
 const served = await res.json();
 ok("manifest.json served, not cached", res.ok() && served.revision === REVISION && res.headers()["cache-control"] === "no-store");

@@ -7,6 +7,7 @@ import { rateLimit } from "@/lib/rateLimit";
 import { handle, HttpError, requireRole, requireUser } from "@/lib/session";
 import { appUrl } from "@/lib/stripe";
 import { teamEmail } from "@/lib/teamEmail";
+import { teamPath } from "@/lib/teamLink";
 
 const Body = z.object({
   /** Staff user ids, or "all" for everyone else on the team. */
@@ -27,7 +28,8 @@ export const POST = handle(async (req: Request) => {
   if (!body.success) throw new HttpError(400, "Write a short message and choose who it's for");
   const { workspace } = me;
   await rateLimit(`staff-notice:${workspace.id}`, 100, 86_400);
-  const members = await db.membership.findMany({ where: { workspaceId: workspace.id }, include: { user: { select: { id: true, email: true, name: true } } } });
+  // Paused staff can't sign in, so they aren't sent reminders.
+  const members = await db.membership.findMany({ where: { workspaceId: workspace.id, pausedAt: null }, include: { user: { select: { id: true, email: true, name: true } } } });
   const wanted = body.data.to === "all" ? members.filter((m) => m.userId !== me.user.id) : members.filter((m) => (body.data.to as string[]).includes(m.userId));
   if (!wanted.length || (body.data.to !== "all" && wanted.length !== new Set(body.data.to).size)) throw new HttpError(400, "Choose people on your team");
 
@@ -65,7 +67,7 @@ export const POST = handle(async (req: Request) => {
         subject: `Reminder from ${fromName}`,
         lead: `${fromName} sent you a reminder:`,
         note: body.data.message,
-        button: { label: link ? link.mailLabel : `Open ${workspace.name}`, link: appUrl(link ? (link.path.startsWith("/v/") ? `${link.path}?team=1` : link.path) : "/library") },
+        button: { label: link ? link.mailLabel : `Open ${workspace.name}`, link: appUrl(link ? (link.path.startsWith("/v/") ? `${link.path}?team=1` : teamPath(link.path, workspace.id)) : teamPath("/library", workspace.id)) },
         logoUrl: brand.logoUrl,
         color: brand.color,
       });

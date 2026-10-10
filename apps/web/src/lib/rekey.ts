@@ -1,12 +1,13 @@
 import { z } from "zod";
-import type { Prisma, Workspace } from "@prisma/client";
-import { db } from "@/lib/db";
+import type { Prisma } from "@prisma/client";
+import { db, type Workspace } from "@/lib/db";
 import { clientLink, newClientToken } from "@/lib/clients";
-import { sendMail } from "@/lib/mail";
+import { sendMails } from "@/lib/mail";
 import { newLinkEmail } from "@/lib/newLinkEmail";
 import { brandOf } from "@/lib/branding";
 import { HttpError } from "@/lib/session";
 import { appUrl } from "@/lib/stripe";
+import { clientMailSettings } from "@/lib/reminders";
 
 const Wrap = z.string().min(40).max(200);
 const Fp = z.string().min(16).max(64);
@@ -42,14 +43,14 @@ const sameSet = (a: string[], b: string[]) => a.length === b.length && new Set(a
 export async function applyRekey(workspace: Workspace, d: z.infer<typeof RekeyBody>, also?: (tx: Prisma.TransactionClient) => Promise<void>) {
   if (d.from !== workspace.keyFingerprint) throw new HttpError(409, "Your team's keys already changed. Reload the page and try again.");
   const newTokens = new Map<string, string>();
-  const emails: { email: string; name: string; token: string }[] = [];
+  const emails: { email: string; name: string; token: string; assignedToId: string | null }[] = [];
   await db.$transaction(
     async (tx) => {
       // Lock the workspace row so two resets can't interleave.
       const locked = await tx.$queryRaw<{ keyFingerprint: string | null }[]>`SELECT "keyFingerprint" FROM "Workspace" WHERE id = ${workspace.id} FOR UPDATE`;
       if (locked[0]?.keyFingerprint !== d.from) throw new HttpError(409, "Your team's keys already changed. Reload the page and try again.");
       const [clients, videos, items] = await Promise.all([
-        tx.client.findMany({ where: { workspaceId: workspace.id, teamKeyWrap: { not: null } }, select: { id: true, removedAt: true, email: true, name: true } }),
+        tx.client.findMany({ where: { workspaceId: workspace.id, teamKeyWrap: { not: null } }, select: { id: true, removedAt: true, pausedAt: true, email: true, name: true, assignedToId: true } }),
         tx.video.findMany({ where: { workspaceId: workspace.id, teamKeyWrap: { not: null } }, select: { id: true } }),
         tx.item.findMany({ where: { workspaceId: workspace.id }, select: { id: true } }),
       ]);
@@ -65,7 +66,8 @@ export async function applyRekey(workspace: Workspace, d: z.infer<typeof RekeyBo
         if (live && c.rotation) await tx.keyRotation.create({ data: { workspaceId: workspace.id, clientId: c.id, fromFingerprint: c.rotation.from, wrap: c.rotation.wrap } });
         if (live) {
           newTokens.set(c.id, token!);
-          if (live.email) emails.push({ email: live.email, name: live.name, token: token! });
+          // A paused client gets their new link when they're restored (the team can copy it then).
+          if (live.email && !live.pausedAt) emails.push({ email: live.email, name: live.name, token: token!, assignedToId: live.assignedToId });
         }
       }
       // Clients from before encryption have no key to replace, but their links still change.
@@ -73,7 +75,7 @@ export async function applyRekey(workspace: Workspace, d: z.infer<typeof RekeyBo
         const token = newClientToken();
         await tx.client.update({ where: { id: c.id }, data: { token } });
         newTokens.set(c.id, token);
-        if (c.email) emails.push({ email: c.email, name: c.name, token });
+        if (c.email && !c.pausedAt) emails.push({ email: c.email, name: c.name, token, assignedToId: c.assignedToId });
       }
       for (const v of d.videos) await tx.video.update({ where: { id: v.id }, data: { teamKeyWrap: v.teamKeyWrap, clientKeyWrap: v.clientKeyWrap } });
       for (const i of d.items) await tx.item.update({ where: { id: i.id }, data: { body: i.body } });
@@ -88,15 +90,18 @@ export async function applyRekey(workspace: Workspace, d: z.infer<typeof RekeyBo
   );
 
   const brand = brandOf(workspace, appUrl(""));
-  let emailed = 0;
-  for (const e of emails) {
-    const mail = newLinkEmail({ business: workspace.name, clientName: e.name, link: clientLink(e.token), logoUrl: brand.logoUrl, color: brand.color });
-    try {
-      await sendMail({ to: e.email, ...mail, fromName: workspace.name, replyTo: workspace.reminderReplyTo });
-      emailed++;
-    } catch (err) {
-      console.error("new link email failed", err);
-    }
-  }
+  const members = await db.membership.findMany({ where: { workspaceId: workspace.id } });
+  // Sent in batches, so a business with many clients isn't held up by the per-second sending limit.
+  const emailed = await sendMails(
+    emails.map((e) => {
+      const mail = newLinkEmail({ business: workspace.name, clientName: e.name, link: clientLink(e.token), logoUrl: brand.logoUrl, color: brand.color });
+      // Replies reach whoever looks after the client, as with every other client email.
+      const { replyTo } = clientMailSettings(workspace, members.find((m) => m.userId === e.assignedToId));
+      return { to: e.email, ...mail, fromName: workspace.name, replyTo };
+    }),
+  ).catch((err) => {
+    console.error("new link emails failed", err);
+    return 0;
+  });
   return { emailed, links: [...newTokens].map(([id, token]) => ({ id, link: clientLink(token) })) };
 }

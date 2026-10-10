@@ -3,18 +3,20 @@ import AppHeader from "@/components/AppHeader";
 import ClientsManager from "@/components/ClientsManager";
 import { db } from "@/lib/db";
 import { clientLink, seatUsage } from "@/lib/clients";
-import { EXTRA_SEAT_PRICE, PLANS } from "@/lib/plans";
-import { requirePageUser } from "@/lib/session";
+import { EXTRA_SEAT_PRICE, EXTRA_SEAT_PRICE_YEARLY, PLANS } from "@/lib/plans";
+import { followTeamLink, requirePageUser } from "@/lib/session";
 import { accessOf, clientScopeWhere, effectivePerms } from "@/lib/permissions";
 
 export const metadata: Metadata = { title: "Clients" };
 
-export default async function ClientsPage() {
+export default async function ClientsPage({ searchParams }: { searchParams: Promise<{ ws?: string }> }) {
+  await followTeamLink((await searchParams).ws, "/clients");
   const me = await requirePageUser("/clients");
   const { user, workspace, role } = me;
   const access = accessOf(me);
   const perms = effectivePerms(access);
   const plan = PLANS[workspace.plan];
+  const yearly = workspace.billingInterval === "year";
   const [clients, seats, members] = await Promise.all([
     db.client.findMany({
       where: { ...clientScopeWhere(access), removedAt: null },
@@ -39,7 +41,7 @@ export default async function ClientsPage() {
         {clients.some((c) => c.pausedAt) && (
           <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" data-testid="paused-clients-note">
             Your plan covers {seats.limit} {seats.limit === 1 ? "client" : "clients"}, so the clients marked Paused can&apos;t open their videos or be sent new ones.
-            Nothing has been deleted. Upgrade or add seats, or remove clients you no longer need, and they&apos;re restored straight away (longest-standing first).
+            Pausing doesn&apos;t delete anything, though recordings still expire on the usual schedule. Upgrade or add seats, or remove clients you no longer need, and they&apos;re restored straight away (longest-standing first).
             Please let them know about the change.
           </p>
         )}
@@ -59,15 +61,17 @@ export default async function ClientsPage() {
           initialSeats={seats}
           includedSeats={plan.clientSeats}
           extraSeats={workspace.extraClientSeats}
-          seatPrice={EXTRA_SEAT_PRICE}
-          canBuySeats={workspace.plan !== "FREE"}
+          seatPrice={yearly ? EXTRA_SEAT_PRICE_YEARLY : EXTRA_SEAT_PRICE}
+          per={yearly ? "year" : "month"}
+          canBuySeats={workspace.plan !== "FREE" && !!workspace.stripeSubscriptionId}
+          complimentary={workspace.plan !== "FREE" && !workspace.stripeSubscriptionId}
           isOwner={role === "OWNER"}
           canManage={role !== "MEMBER"}
           canAdd={perms.addClients}
           seesAll={perms.seeAllClients}
           meId={user.id}
           staff={members.map((m) => ({ id: m.userId, name: m.user.name ?? m.user.email.split("@")[0] }))}
-          studioHint={workspace.plan === "SOLO" ? { soloBase: PLANS.SOLO.priceMonthly, studioPrice: PLANS.STUDIO.priceMonthly, studioClients: PLANS.STUDIO.clientSeats } : undefined}
+          studioHint={workspace.plan === "SOLO" && !yearly ? { soloBase: PLANS.SOLO.priceMonthly, studioPrice: PLANS.STUDIO.priceMonthly, studioClients: PLANS.STUDIO.clientSeats } : undefined}
         />
       </main>
     </>

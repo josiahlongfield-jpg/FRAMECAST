@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import type { Membership, Role } from "@prisma/client";
@@ -14,9 +15,10 @@ export class HttpError extends Error {
 
 /**
  * The signed-in user and their active workspace. A personal workspace is
- * created on first use so every user can record immediately.
+ * created on first use so every user can record immediately. Cached for the
+ * request, so a page and its metadata don't each look it up (or create one).
  */
-export async function currentUser() {
+export const currentUser = cache(async () => {
   const session = await auth();
   const userId = session?.user?.id;
   if (!userId) return null;
@@ -33,16 +35,24 @@ export async function currentUser() {
     // Staff over the plan's limits (lib/seatLimits.ts) can't use the team until restored.
     return { user, workspace, role: membership.role, membership: m as Membership, paused: !!membership.pausedAt };
   }
-  const workspace = await db.workspace.create({
-    data: {
-      name: `${user.name ?? user.email.split("@")[0]}'s workspace`,
-      members: { create: { userId: user.id, role: "OWNER" } },
-    },
-    include: { members: true },
+  // One at a time per user, so two tabs opening at once can't make two personal workspaces.
+  const made = await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"personal:" + user.id}))`;
+    const existing = await tx.membership.findFirst({ where: { userId: user.id }, include: { workspace: true }, orderBy: { id: "asc" } });
+    if (existing) return existing;
+    const workspace = await tx.workspace.create({
+      data: {
+        name: `${user.name ?? user.email.split("@")[0]}'s workspace`,
+        members: { create: { userId: user.id, role: "OWNER" } },
+      },
+      include: { members: true },
+    });
+    const { members, ...ws } = workspace;
+    return { ...members[0], workspace: ws };
   });
-  const { members, ...ws } = workspace;
-  return { user, workspace: ws, role: "OWNER" as Role, membership: members[0], paused: false };
-}
+  const { workspace, ...m } = made;
+  return { user, workspace, role: m.role, membership: m as Membership, paused: !!m.pausedAt };
+});
 
 /** Throws unless the signed-in member has one of the given roles. */
 export function requireRole(me: { role: Role }, ...roles: Role[]) {
@@ -56,10 +66,11 @@ export async function requireUser() {
   return me;
 }
 
-export async function requirePageUser(next = "/library") {
+export async function requirePageUser(next = "/library", { allowPaused = false } = {}) {
   const me = await currentUser();
   if (!me) redirect(`/login?next=${encodeURIComponent(next)}`);
-  if (me.paused) redirect("/paused");
+  // Paused staff can still reach their own account (to download their data or delete it).
+  if (me.paused && !allowPaused) redirect("/paused");
   return me;
 }
 
@@ -72,8 +83,24 @@ export function handle<A extends unknown[]>(fn: (...args: A) => Promise<Response
       if (err instanceof HttpError) return Response.json({ error: err.message }, { status: err.status });
       // A missing or malformed JSON body (req.json()) is the caller's mistake, not ours.
       if (err instanceof SyntaxError) return Response.json({ error: "Invalid request body" }, { status: 400 });
-      console.error(err);
+      // One line with the route, so it can be found and alerted on in the logs.
+      const req = args[0] instanceof Request ? args[0] : null;
+      const e = err as { name?: string; message?: string; stack?: string };
+      console.error(JSON.stringify({ level: "error", route: req ? new URL(req.url).pathname : null, method: req?.method ?? null, name: e?.name, message: String(e?.message ?? err).slice(0, 1000), stack: e?.stack?.slice(0, 3000) }));
       return Response.json({ error: "Internal error" }, { status: 500 });
     }
   };
+}
+
+/**
+ * Team email links carry ?ws=<workspace id>. Someone on more than one team
+ * opens the team the email was about, not whichever one they had open last.
+ */
+export async function followTeamLink(ws: string | undefined, path: string) {
+  if (!ws) return;
+  const me = await currentUser();
+  if (!me || me.workspace.id === ws) return;
+  if (!me.user.memberships.some((m) => m.workspaceId === ws && !m.pausedAt)) return;
+  await db.user.update({ where: { id: me.user.id }, data: { activeWorkspaceId: ws } });
+  redirect(path);
 }

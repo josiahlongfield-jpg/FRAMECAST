@@ -92,6 +92,8 @@ model Workspace {
   currentPeriodEnd      DateTime?
   /// When a cancelled subscription ends (it stays paid until then). Null while it renews.
   cancelsAt             DateTime?
+  /// "month" or "year": how often the subscription bills, so add-ons are priced to match. Null without one.
+  billingInterval       String?
   /// Client seats bought on top of the plan's included seats.
   extraClientSeats      Int                @default(0)
   /// Staff seats bought on top of the plan's included staff (Studio and Agency).
@@ -209,6 +211,7 @@ model Membership {
   workspace             Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([userId, workspaceId])
+  @@index([workspaceId])
 }
 
 // ---------- Videos ----------
@@ -219,7 +222,7 @@ enum VideoStatus {
   PROCESSING // transcoding to HLS
   READY // HLS available
   FAILED
-  EXPIRED // server copy deleted after the relay window; originals live on devices
+  EXPIRED // server copy deleted after the relay window
 }
 
 model Video {
@@ -254,6 +257,8 @@ model Video {
   parentKeyWrap        String? /// reply media key, wrapped with the conversation's video key
   /// When the relay copy is deleted (null = kept, e.g. cloud backup).
   purgeAt              DateTime?
+  /// When it was sent to its client (team overview counts sends by this, not by recording date).
+  sentAt               DateTime?
   /// When the recorder was emailed that the relay copy is deleted within 24 hours.
   /// Cleared whenever purgeAt is rescheduled (cloud backup turned off again).
   expiryWarnedAt       DateTime?
@@ -279,6 +284,8 @@ model Video {
   @@index([replyToId])
   @@index([sourceId])
   @@index([purgeAt])
+  @@index([clientId])
+  @@index([ownerId])
 }
 
 /// AI transcript and summary of a recording (the AI summaries add-on). Both
@@ -341,6 +348,7 @@ model Reply {
   authorUser   User?     @relation(fields: [authorUserId], references: [id], onDelete: SetNull)
 
   @@index([videoId, createdAt])
+  @@index([authorUserId])
 }
 
 model Reaction {
@@ -350,6 +358,8 @@ model Reaction {
   createdAt   DateTime @default(now())
   videoId     String
   video       Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@index([videoId])
 }
 
 /// Someone a creator works with (e.g. a personal trainer's client). Clients
@@ -390,6 +400,7 @@ model Client {
   keyRotations   KeyRotation[]
 
   @@index([workspaceId, removedAt])
+  @@index([assignedToId])
 }
 
 enum ItemKind {
@@ -427,6 +438,7 @@ model Item {
 
   @@index([workspaceId, clientId])
   @@index([spawnedNext, dueAt])
+  @@index([seriesId])
 }
 
 enum ReminderTo {
@@ -496,6 +508,7 @@ model KeyRotation {
   client          Client?   @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, clientId])
+  @@index([clientId])
 }
 
 enum TicketStatus {
@@ -570,6 +583,7 @@ model TeamNotification {
 
   @@index([sentAt, createdAt])
   @@index([userId, groupKey])
+  @@index([workspaceId])
 }
 
 /// The last team email per person and group, so bursts send one email per 15 minutes.

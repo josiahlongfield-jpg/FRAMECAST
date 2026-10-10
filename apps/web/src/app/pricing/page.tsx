@@ -21,7 +21,7 @@ export default function Pricing() {
         </div>
         <PricingTable />
         <p className="mt-10 text-center text-sm text-slate-500">More than 100 clients? Add extra clients for US$1.50 a month each.</p>
-        <p className="mt-2 text-center text-sm text-slate-500" data-testid="currency-note">All prices are in US dollars (USD), plus any sales tax, VAT or GST that applies where you are. Your bank converts them to your own currency when you pay.</p>
+        <p className="mt-2 text-center text-sm text-slate-500" data-testid="currency-note">All prices are in US dollars (USD), plus any sales tax, VAT or GST that applies where you are. Checkout may offer to charge you in your own currency at Stripe&rsquo;s exchange rate; otherwise your bank converts it.</p>
 
         <section className="mx-auto mt-16 max-w-3xl" aria-labelledby="add-ons">
           <h2 id="add-ons" className="text-center text-2xl font-semibold tracking-tight text-slate-900">Optional add-ons</h2>

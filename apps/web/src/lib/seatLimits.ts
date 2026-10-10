@@ -3,6 +3,7 @@ import { sendMail } from "@/lib/mail";
 import { clientSeatLimit, PLANS, staffSeatLimit } from "@/lib/plans";
 import { appUrl } from "@/lib/stripe";
 import { teamEmail } from "@/lib/teamEmail";
+import { teamPath } from "@/lib/teamLink";
 
 /**
  * Keeps a workspace's clients and staff within what its plan pays for.
@@ -62,17 +63,17 @@ async function emailOwner(workspaceId: string, business: string, planName: strin
   if (!owner) return;
   const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
   const lines = [
-    ...(clients ? [{ text: `${plural(clients, "client is", "clients are")} paused and can't open their videos or be sent new ones.`, link: appUrl("/clients") }] : []),
-    ...(staff ? [{ text: `${plural(staff, "staff login is", "staff logins are")} paused and can't sign in to your team.`, link: appUrl("/settings/team") }] : []),
+    ...(clients ? [{ text: `${plural(clients, "client is", "clients are")} paused and can't open their videos or be sent new ones.`, link: appUrl(teamPath("/clients", workspaceId)) }] : []),
+    ...(staff ? [{ text: `${plural(staff, "staff login is", "staff logins are")} paused and can't sign in to your team.`, link: appUrl(teamPath("/settings/team", workspaceId)) }] : []),
   ];
   const mail = teamEmail({
     business,
     subject: "Some of your clients or staff are paused",
     lead: `Your SureFrame plan is now ${planName}, which covers fewer clients or staff than you have.`,
     lines,
-    button: { label: "Choose a plan", link: appUrl("/settings/billing") },
+    button: { label: "Choose a plan", link: appUrl(teamPath("/settings/billing", workspaceId)) },
     footer:
-      "Nothing has been deleted. Upgrade, or remove clients or staff you no longer need, and the others are restored straight away. Please let anyone affected know about the change.",
+      "Pausing doesn't delete anything, though recordings still expire on the usual schedule. Upgrade, or remove clients or staff you no longer need, and the others are restored straight away. Please let anyone affected know about the change.",
   });
   await sendMail({ to: owner.user.email, ...mail });
 }

@@ -3,6 +3,7 @@ import { portalConfiguration } from "@/lib/billing";
 import { handle, HttpError, requireRole, requireUser } from "@/lib/session";
 import { appUrl, stripe } from "@/lib/stripe";
 import { limitByIp } from "@/lib/rateLimit";
+import { currentCustomer } from "@/lib/subscription";
 
 const Body = z.object({ back: z.enum(["/pricing", "/settings/billing"]).default("/settings/billing") });
 
@@ -12,9 +13,11 @@ export const POST = handle(async (req: Request) => {
   const me = await requireUser();
   requireRole(me, "OWNER");
   const { back } = Body.parse(await req.json().catch(() => ({})));
-  if (!me.workspace.stripeCustomerId) throw new HttpError(400, "No subscription yet");
+  // A customer deleted in Stripe (or from test mode) is forgotten rather than failing here.
+  const customer = await currentCustomer(me.workspace);
+  if (!customer) throw new HttpError(400, "No subscription yet");
   const session = await stripe().billingPortal.sessions.create({
-    customer: me.workspace.stripeCustomerId,
+    customer,
     configuration: await portalConfiguration(),
     flow_data: { type: "payment_method_update", after_completion: { type: "redirect", redirect: { return_url: appUrl(back) } } },
     return_url: appUrl(back),

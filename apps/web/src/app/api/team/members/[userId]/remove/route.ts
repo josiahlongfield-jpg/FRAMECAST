@@ -4,6 +4,8 @@ import { handle, HttpError, requireRole, requireUser } from "@/lib/session";
 import { rateLimit } from "@/lib/rateLimit";
 import { enforceSeatLimits } from "@/lib/seatLimits";
 
+export const maxDuration = 120;
+
 /**
  * Remove someone from the team and reset every key they could have held.
  * The remover's browser made new team and client keys and re-sealed
@@ -24,6 +26,9 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ userId:
   if (!body.success) throw new HttpError(400, "Invalid key reset");
   const result = await applyRekey(workspace, body.data, async (tx) => {
     await tx.client.updateMany({ where: { workspaceId: workspace.id, assignedToId: userId }, data: { assignedToId: null } });
+    // Their recordings stay with the business: the owner takes them over.
+    const owner = await tx.membership.findFirstOrThrow({ where: { workspaceId: workspace.id, role: "OWNER" } });
+    await tx.video.updateMany({ where: { workspaceId: workspace.id, ownerId: userId }, data: { ownerId: owner.userId } });
     await tx.membership.delete({ where: { id: m.id } });
     await tx.user.updateMany({ where: { id: userId, activeWorkspaceId: workspace.id }, data: { activeWorkspaceId: null } });
   });

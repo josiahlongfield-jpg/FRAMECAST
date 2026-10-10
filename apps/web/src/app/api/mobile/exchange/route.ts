@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { z } from "zod";
 import { encode } from "next-auth/jwt";
 import { db } from "@/lib/db";
+import { mobileSignInEnabled } from "@/lib/mobileSignIn";
 import { limitByIp } from "@/lib/rateLimit";
 import { appSecret } from "@/lib/secrets";
 import { handle, HttpError } from "@/lib/session";
@@ -12,6 +13,7 @@ const MAX_AGE = 30 * 24 * 60 * 60;
 
 /** Trade a one-time code plus the app's PKCE verifier for a session the app sends as a cookie. */
 export const POST = handle(async (req: Request) => {
+  if (!mobileSignInEnabled()) throw new HttpError(404, "Not found");
   const body = Body.safeParse(await req.json());
   await limitByIp("mobile-exchange", 20, 600);
   if (!body.success) throw new HttpError(400, "Invalid request");

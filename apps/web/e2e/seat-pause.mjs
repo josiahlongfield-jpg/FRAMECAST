@@ -2,7 +2,7 @@
 // taken back), clients and staff beyond the new limits are paused, the owner
 // is emailed, and they come back on an upgrade or when seats free up.
 // Needs the app running with AUTH_DEV_LOGIN=true and SUPPORT_EMAIL=owner@test.dev.
-import { chromium } from "playwright";
+import { chromium } from "@playwright/test";
 import { readdirSync, readFileSync } from "node:fs";
 import { PrismaClient } from "@prisma/client";
 

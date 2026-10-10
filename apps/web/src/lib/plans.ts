@@ -91,7 +91,7 @@ export const PLANS: Record<Plan, PlanLimits> = {
     clientSeats: 40,
     staffSeats: 3,
     showsPromo: false,
-    features: ["40 clients included", "3 staff logins", "Assign clients to staff", "Choose what each staff member can see and do", "Team overview: replies waiting, videos sent, staff reminders", "Extra staff US$8/month each", "Everything in Solo"],
+    features: ["40 clients included", "3 staff logins (yours included)", "Assign clients to staff", "Choose what each staff member can see and do", "Team overview: replies waiting, videos sent, staff reminders", "Extra staff US$8/month each", "Everything in Solo"],
   },
   AGENCY: {
     name: "Agency",
@@ -103,7 +103,7 @@ export const PLANS: Record<Plan, PlanLimits> = {
     clientSeats: 100,
     staffSeats: 10,
     showsPromo: false,
-    features: ["100 clients included", "10 staff logins", "Assign clients to staff", "Choose what each staff member can see and do", "Team overview: replies waiting, videos sent, staff reminders", "Extra staff US$8/month each", "Everything in Solo"],
+    features: ["100 clients included", "10 staff logins (yours included)", "Assign clients to staff", "Choose what each staff member can see and do", "Team overview: replies waiting, videos sent, staff reminders", "Extra staff US$8/month each", "Everything in Solo"],
   },
 };
 
@@ -119,9 +119,4 @@ export const TEAM_PLANS: Plan[] = ["STUDIO", "AGENCY"];
 
 export function staffSeatLimit(w: { plan: Plan; extraStaffSeats: number }) {
   return PLANS[w.plan].staffSeats + (TEAM_PLANS.includes(w.plan) ? w.extraStaffSeats : 0);
-}
-
-/** Monthly cost of Solo with n clients, used to suggest Studio once it's cheaper. */
-export function soloMonthlyCost(clients: number) {
-  return PLANS.SOLO.priceMonthly + EXTRA_SEAT_PRICE * Math.max(0, clients - PLANS.SOLO.clientSeats);
 }

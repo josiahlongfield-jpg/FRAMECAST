@@ -30,17 +30,23 @@ export async function teamStats(workspaceId: string, o: { days: number; staleDay
   const since = new Date(now.getTime() - o.days * 86_400_000);
   const staleBefore = new Date(now.getTime() - o.staleDays * 86_400_000);
 
-  const [members, clients, conversations, todos] = await Promise.all([
+  const yearAgo = new Date(now.getTime() - 365 * 86_400_000);
+  const recentReplies = { ...visibleReplies, createdAt: { gt: yearAgo } };
+  const [members, clients, conversations, lastSent, todos] = await Promise.all([
     db.membership.findMany({ where: { workspaceId }, include: { user: { select: { name: true, email: true } } }, orderBy: { id: "asc" } }),
     db.client.findMany({ where: { workspaceId, removedAt: null }, select: { id: true, name: true, assignedToId: true }, orderBy: { name: "asc" } }),
+    // Only conversations that matter here: sent in this period, or with a reply in the last year
+    // (reply times and anyone still waiting). Older ones only count towards "last video".
     db.video.findMany({
-      where: { workspaceId, replyToId: null, clientId: { not: null } },
+      where: { workspaceId, replyToId: null, clientId: { not: null }, OR: [{ sentAt: { gte: since } }, { createdAt: { gte: since } }, { replies: { some: recentReplies } }] },
       select: {
-        id: true, title: true, ownerId: true, clientId: true, createdAt: true,
-        replies: { where: { ...visibleReplies, createdAt: { gt: new Date(now.getTime() - 365 * 86_400_000) } }, select: { authorUserId: true, createdAt: true }, orderBy: { createdAt: "asc" } },
+        id: true, title: true, ownerId: true, clientId: true, createdAt: true, sentAt: true,
+        replies: { where: recentReplies, select: { authorUserId: true, createdAt: true }, orderBy: { createdAt: "asc" } },
       },
     }),
-    db.item.findMany({ where: { workspaceId, kind: "TASK", done: false, dueAt: { lt: now }, clientId: { not: null } }, select: { id: true, clientId: true, dueAt: true }, orderBy: { dueAt: "asc" } }),
+    // A video is sent when it's made or later, so the latest of either is the client's last video.
+    db.video.groupBy({ by: ["clientId"], where: { workspaceId, replyToId: null, clientId: { not: null } }, _max: { sentAt: true, createdAt: true } }),
+    db.item.findMany({ where: { workspaceId, kind: "TASK", done: false, dueAt: { lt: now }, clientId: { not: null } }, select: { id: true, clientId: true, dueAt: true }, orderBy: { dueAt: "asc" }, take: 2000 }),
   ]);
 
   const memberIds = new Set(members.map((m) => m.userId));
@@ -52,14 +58,19 @@ export async function teamStats(workspaceId: string, o: { days: number; staleDay
 
   const sent = new Map<string, number>();
   const lastVideo = new Map<string, Date>();
+  for (const g of lastSent) {
+    const times = [g._max.sentAt, g._max.createdAt].filter((d): d is Date => !!d);
+    if (g.clientId && times.length) lastVideo.set(g.clientId, new Date(Math.max(...times.map((d) => d.getTime()))));
+  }
   const replyTimes = new Map<string | null, number[]>();
   const allReplyTimes: number[] = [];
   const unanswered: Unanswered[] = [];
 
   for (const v of conversations) {
     const clientId = v.clientId!;
-    if (v.createdAt >= since) sent.set(v.ownerId, (sent.get(v.ownerId) ?? 0) + 1);
-    if (!lastVideo.has(clientId) || lastVideo.get(clientId)! < v.createdAt) lastVideo.set(clientId, v.createdAt);
+    // Counted from when it was sent, so an older recording sent today counts today.
+    const sentAt = v.sentAt ?? v.createdAt;
+    if (sentAt >= since) sent.set(v.ownerId, (sent.get(v.ownerId) ?? 0) + 1);
     const client = clientById.get(clientId);
     if (!client) continue; // removed client
     // Whoever looks after the client, else whoever recorded the video.
