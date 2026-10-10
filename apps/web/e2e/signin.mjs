@@ -2,6 +2,7 @@
 // (no RESEND_API_KEY), which writes emails to .data/outbox.
 import { chromium } from "@playwright/test";
 import { readdirSync, readFileSync } from "node:fs";
+import { PrismaClient } from "@prisma/client";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const outbox = ".data/outbox";
@@ -9,6 +10,9 @@ const ok = (label, cond) => {
   console.log(`${cond ? "PASS" : "FAIL"} ${label}`);
   if (!cond) process.exitCode = 1;
 };
+// Earlier runs share this machine's IP; start with fresh rate-limit windows.
+const prisma = new PrismaClient();
+await prisma.rateLimit.deleteMany();
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM });
 const page = await browser.newPage();
 const email = `link${Date.now()}@example.com`;
@@ -46,6 +50,22 @@ await other.goto(link);
 await other.click("[data-testid=confirm-sign-in]");
 await other.waitForURL("**/login**");
 ok("a used link is refused with a clear message", await other.isVisible("text=expired or was already used"));
+// A closed account (waiting to be deleted) signing in by email is offered to keep it.
+const closedEmail = `link-closed${Date.now()}@example.com`;
+await prisma.user.create({ data: { email: closedEmail, deletionRequestedAt: new Date(Date.now() - 60_000), deleteAt: new Date(Date.now() + 29 * 86_400_000) } });
+const closed = await (await browser.newContext()).newPage();
+await closed.goto(BASE + "/login?next=/library");
+await closed.fill('input[name="email"]', closedEmail);
+await closed.click("text=Email me a sign-in link");
+await closed.waitForURL("**/login/check**");
+const closedMail = readdirSync(outbox)
+  .map((f) => JSON.parse(readFileSync(`${outbox}/${f}`, "utf8")))
+  .find((m) => m.to === closedEmail);
+await closed.goto(closedMail.text.match(/https?:\/\/\S+/)[0]);
+await closed.click("[data-testid=confirm-sign-in]");
+await closed.waitForURL("**/account/restore", { timeout: 30000 });
+ok("a closed account signing in by email is offered to keep it", await closed.isVisible("button:text-is('Keep my account')"));
+
 // Five links per address per hour: the sixth request is refused politely.
 const spam = await (await browser.newContext()).newPage();
 for (let i = 0; i < 5; i++) {
@@ -56,3 +76,4 @@ for (let i = 0; i < 5; i++) {
 }
 ok("sign-in emails to one address are limited", await spam.waitForSelector("text=Too many sign-in emails", { timeout: 5000 }).then(() => true, () => false));
 await browser.close();
+await prisma.$disconnect();

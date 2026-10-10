@@ -141,6 +141,7 @@ export function start(port = Number(process.env.FAKE_STRIPE_PORT ?? 12111)) {
       }
       if (req.method === "POST") {
         sub.lastUpdate = form;
+        if ("cancel_at_period_end" in form) sub.cancel_at_period_end = form.cancel_at_period_end === "true";
         if (control.declineNext && form.payment_behavior === "pending_if_incomplete") {
           control.declineNext = false;
           return send(200, { ...sub, pending_update: { expires_at: 0 }, latest_invoice: { id: id("in"), hosted_invoice_url: "https://invoice.stripe.test/pay" } });

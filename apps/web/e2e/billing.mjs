@@ -234,8 +234,13 @@ const exp = await res.json();
 ok("export downloads as a file", /attachment/.test(res.headers()["content-disposition"] ?? ""));
 ok("export has the account and workspace", exp.user?.email === email && exp.workspaces?.[0]?.workspace?.id === workspaceId);
 
-// 8) Account deletion.
+// 8) Deleting the account: closed now and deleted 30 days later, unless they sign in and keep it.
+// The dispute above stopped renewal; renew again, as in Manage subscription.
+sub2.cancel_at_period_end = false;
+await webhook("customer.subscription.updated", sub2);
 await page.goto(BASE + "/settings/account");
+const explainer = (await page.textContent("[data-testid=delete-explainer]")).replace(/\s+/g, " ");
+ok("explainer: closed now, deleted in 30 days unless kept, plan won't renew", explainer.includes("closed straight away and permanently deleted on") && explainer.includes("sign in to keep it") && explainer.includes("your plan won't renew"), explainer);
 await page.fill('input[name="confirm"]', "someone@else.com");
 await page.click("text=Delete my account");
 await page.waitForURL("**error=confirm**");
@@ -243,10 +248,45 @@ ok("wrong confirmation refused", !!(await page.waitForSelector("text=doesn't mat
 await page.fill('input[name="confirm"]', email);
 await page.click("text=Delete my account");
 await page.waitForURL((u) => u.pathname === "/login");
-ok("after deleting: told the account is gone", !!(await page.waitForSelector("[data-testid=deleted-note]", { timeout: 10000 }).catch(() => null)));
-ok("deleting cancels billing in Stripe", state.deletedCustomers.includes(session.customer) && state.subs.filter((s) => s.customer === session.customer).every((s) => s.status === "canceled"));
+ok("after closing: told it's deleted in 30 days unless kept", ((await page.textContent("[data-testid=deleted-note]", { timeout: 10000 }).catch(() => "")) ?? "").includes("will be deleted in 30 days"));
+const closedUser = await prisma.user.findUnique({ where: { email } });
+const closedWs = await prisma.workspace.findUnique({ where: { id: workspaceId } });
+ok("closing schedules deletion 30 days out", !!closedUser?.deleteAt && Math.abs(closedUser.deleteAt.getTime() - (Date.now() + 30 * 86_400_000)) < 10 * 60_000);
+ok("closing stops renewal, and notes it so keeping turns it back on", closedWs.deleteAt?.getTime() === closedUser.deleteAt.getTime() && !!closedWs.renewalStoppedAt);
+ok("closing stops renewal in Stripe, without cancelling or deleting the customer", sub2.cancel_at_period_end === true && sub2.status === "active" && !state.deletedCustomers.includes(session.customer));
+const closedMail = outbox().find((m) => m.to === email && m.subject.startsWith("Your SureFrame account will be deleted on"));
+ok("emailed the date, how to keep it, and that the plan won't renew", !!closedMail && closedMail.text.includes("/account/restore") && closedMail.text.includes("Your Solo plan won't renew"), closedMail?.text);
 await page.goto(BASE + "/settings/billing");
 // Pages stream behind a loading state, so the sign-in redirect can land just after the load.
+ok("signed out after closing", !!(await page.waitForURL("**/login**", { timeout: 10000 }).then(() => true).catch(() => null)));
+
+// Signing in again offers to keep it; keeping it turns renewal back on.
+await page.goto(BASE + "/login?next=/settings/billing");
+await page.fill('input[name="email"]', email);
+await page.click("text=Continue");
+await page.waitForURL((u) => u.pathname === "/account/restore");
+ok("signing in again offers to keep the account", (await page.textContent("main")).includes("Your Solo plan renews as normal again"));
+await page.click("button:text-is('Keep my account')");
+await page.waitForURL((u) => u.pathname === "/library");
+const keptUser = await prisma.user.findUnique({ where: { email } });
+const keptWs = await prisma.workspace.findUnique({ where: { id: workspaceId } });
+ok("keeping it clears the deletion", !keptUser.deleteAt && !keptWs.deleteAt && !keptWs.renewalStoppedAt && new URL(page.url()).searchParams.get("restored") === "1");
+ok("keeping it turns renewal back on in Stripe", sub2.cancel_at_period_end === false && sub2.lastUpdate?.cancel_at_period_end === "false" && sub2.status === "active");
+await webhook("customer.subscription.updated", sub2);
+await planText();
+ok("Billing shows the renewal again", (await page.isVisible("[data-testid=renews-on]")) && /Solo plan/.test(await page.textContent("main")));
+
+// Closed again; once the date has passed the daily job deletes it, ends billing and deletes the customer.
+await page.goto(BASE + "/settings/account");
+await page.fill('input[name="confirm"]', email);
+await page.click("text=Delete my account");
+await page.waitForURL((u) => u.pathname === "/login");
+await prisma.user.update({ where: { email }, data: { deleteAt: new Date(Date.now() - 60_000) } });
+res = await daily();
+ok("the daily job deletes it once its date has passed", res.ok() && (await res.json()).accountsPurged >= 1 && !(await prisma.user.findUnique({ where: { email } })) && !(await prisma.workspace.findUnique({ where: { id: workspaceId } })));
+ok("deleting cancels billing in Stripe", state.deletedCustomers.includes(session.customer) && state.subs.filter((s) => s.customer === session.customer).every((s) => s.status === "canceled"));
+ok("and says so by email", outbox().some((m) => m.to === email && m.subject === "Your SureFrame account has been deleted"));
+await page.goto(BASE + "/settings/billing");
 ok("signed out after deletion", !!(await page.waitForURL("**/login**", { timeout: 10000 }).then(() => true).catch(() => null)));
 
 // 9) Rate limits.
