@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { enforceSeatLimits } from "@/lib/seatLimits";
-import { ACTIVE_STATUSES, catalogKey, intervalOf, priceId } from "@/lib/billing";
+import { ACTIVE_STATUSES, catalogKey, changeAddOns, intervalOf, priceId } from "@/lib/billing";
 import { PLANS, TEAM_PLANS } from "@/lib/plans";
 import { handle, HttpError, requireRole, requireUser } from "@/lib/session";
 import { stripe } from "@/lib/stripe";
@@ -35,7 +35,8 @@ export const POST = handle(async (req: Request) => {
     body.data.extraStaff === 0
       ? item ? [{ id: item.id, deleted: true }] : []
       : item ? [{ id: item.id, quantity: body.data.extraStaff }] : [{ price, quantity: body.data.extraStaff }];
-  if (items.length) await stripe().subscriptions.update(sub.id, { items, proration_behavior: "create_prorations" });
+  const { payUrl } = await changeAddOns(sub, items, { adds: body.data.extraStaff > workspace.extraStaffSeats });
+  if (payUrl) return Response.json({ error: "Your card couldn't be charged. Pay the invoice to finish.", url: payUrl }, { status: 402 });
   // The webhook confirms; update now so the page reflects it immediately.
   await db.workspace.update({ where: { id: workspace.id }, data: { extraStaffSeats: body.data.extraStaff } });
   await enforceSeatLimits(workspace.id);

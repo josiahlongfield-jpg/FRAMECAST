@@ -159,9 +159,12 @@ function Manager({ teamKey, workspaceId, keyResetNeeded, role, meId, initialSeat
   }
 
   async function buyStaff() {
+    if (!confirm(`Add ${buyQty} extra staff ${buyQty === 1 ? "login" : "logins"} for ${money(buyQty * staffPrice)} a month? You're charged today for the rest of this billing period, then it renews with your plan.`)) return;
     setError(undefined);
     const res = await fetch("/api/billing/staff", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ extraStaff: extraStaff + buyQty }) });
-    if (!res.ok) return setError((await res.json().catch(() => ({}))).error ?? "Could not add staff logins");
+    const data = await res.json().catch(() => ({}));
+    if (data.url) return void (window.location.href = data.url);
+    if (!res.ok) return setError(data.error ?? "Could not add staff logins");
     window.location.reload();
   }
 

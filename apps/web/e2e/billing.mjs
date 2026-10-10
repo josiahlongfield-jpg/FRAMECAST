@@ -74,6 +74,12 @@ const seatItem = sub.items.data.find((i) => i.price.lookup_key === "sureframe_cl
 ok("extra seats added to the subscription", res.ok() && seatItem?.quantity === 3 && seatItem.price.unit_amount === 150);
 res = await api("/api/billing/backup", { enabled: true });
 ok("cloud backup added", res.ok() && sub.items.data.some((i) => i.price.lookup_key === "sureframe_cloud_backup_monthly"));
+ok("add-ons are charged today, not at the next renewal", sub.lastUpdate?.proration_behavior === "always_invoice" && sub.lastUpdate?.payment_behavior === "pending_if_incomplete");
+control.declineNext = true;
+res = await api("/api/billing/seats", { extraSeats: 5 });
+ok("a declined card adds nothing and links to the invoice", res.status() === 402 && !!(await res.json()).url && seatItem.quantity === 3);
+res = await api("/api/billing/seats", { extraSeats: 3 });
+ok("removing seats credits the next bill instead", res.ok() && sub.lastUpdate?.proration_behavior === "create_prorations");
 await webhook("customer.subscription.updated", sub);
 
 // 4) Upgrading switches the plan in place, after the owner confirms what's charged and to which card.

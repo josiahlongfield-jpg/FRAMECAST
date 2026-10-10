@@ -20,6 +20,7 @@ export default function CloudBackupToggle({
   const [error, setError] = useState<string>();
 
   async function toggle() {
+    if (!on && !confirm(`Add cloud backup for US$${price} a month (US$${yearlyPrice} a year on yearly billing)? You're charged today for the rest of this billing period, then it renews with your plan.`)) return;
     setBusy(true);
     setError(undefined);
     const res = await fetch("/api/billing/backup", {
@@ -29,6 +30,7 @@ export default function CloudBackupToggle({
     });
     const data = await res.json().catch(() => ({}));
     setBusy(false);
+    if (data.url) return void (window.location.href = data.url);
     if (!res.ok) return setError(data.error ?? "Could not change cloud backup");
     setOn(data.cloudBackup);
   }

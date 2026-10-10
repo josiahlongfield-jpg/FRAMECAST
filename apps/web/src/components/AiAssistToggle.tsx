@@ -20,7 +20,7 @@ export default function AiAssistToggle({ enabled, canEnable, priceLabel, usage, 
   const [error, setError] = useState<string>();
 
   async function toggle() {
-    if (!on && priceLabel && !confirm(`Add AI transcripts and summaries for ${priceLabel}? It's added to your subscription today.`)) return;
+    if (!on && priceLabel && !confirm(`Add AI transcripts and summaries for ${priceLabel}? You're charged today for the rest of this billing period, then it renews with your plan.`)) return;
     setBusy(true);
     setError(undefined);
     const res = await fetch("/api/billing/ai", {
@@ -30,6 +30,7 @@ export default function AiAssistToggle({ enabled, canEnable, priceLabel, usage, 
     });
     const data = await res.json().catch(() => ({}));
     setBusy(false);
+    if (data.url) return void (window.location.href = data.url);
     if (!res.ok) return setError(data.error ?? "Could not change AI summaries");
     setOn(data.aiAssist);
   }

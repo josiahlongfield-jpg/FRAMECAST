@@ -137,6 +137,7 @@ function Manager({
   }
 
   async function buySeats() {
+    if (!confirm(`Add ${buyQty} extra client ${buyQty === 1 ? "seat" : "seats"} for ${money(buyQty * seatPrice)} a month? You're charged today for the rest of this billing period, then it renews with your plan.`)) return;
     setError(undefined);
     const res = await fetch("/api/billing/seats", {
       method: "POST",
@@ -144,6 +145,7 @@ function Manager({
       body: JSON.stringify({ extraSeats: extraSeats + buyQty }),
     });
     const data = await res.json().catch(() => ({}));
+    if (data.url) return void (window.location.href = data.url);
     if (!res.ok) return setError(data.error ?? "Could not add seats");
     window.location.reload();
   }

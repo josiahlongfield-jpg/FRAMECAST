@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { ACTIVE_STATUSES, AI_ITEM, catalogKey, catalogOf, intervalOf, isAiItem, planOf, priceId } from "@/lib/billing";
+import { ACTIVE_STATUSES, AI_ITEM, catalogKey, catalogOf, changeAddOns, intervalOf, isAiItem, planOf, priceId } from "@/lib/billing";
 import { handle, HttpError, requireRole, requireUser } from "@/lib/session";
 import { stripe } from "@/lib/stripe";
 import { limitByIp } from "@/lib/rateLimit";
@@ -34,13 +34,12 @@ export const POST = handle(async (req: Request) => {
       if (!plan) throw new HttpError(400, "AI summaries are available on paid plans");
       const price = await priceId(catalogKey(AI_ITEM[plan], intervalOf(sub)));
       if (!existing.some((i) => i.price.id === price)) {
-        await stripe().subscriptions.update(sub.id, {
-          items: [{ price, quantity: 1 }, ...existing.map((i) => ({ id: i.id, deleted: true }))],
-        });
+        const { payUrl } = await changeAddOns(sub, [{ price, quantity: 1 }, ...existing.map((i) => ({ id: i.id, deleted: true }))], { adds: true });
+        if (payUrl) return Response.json({ error: "Your card couldn't be charged. Pay the invoice to finish.", url: payUrl }, { status: 402 });
       }
     }
     if (!enabled && existing.length && active) {
-      await stripe().subscriptions.update(sub.id, { items: existing.map((i) => ({ id: i.id, deleted: true })) });
+      await changeAddOns(sub, existing.map((i) => ({ id: i.id, deleted: true })), { adds: false });
     }
   } else if (enabled && !workspace.aiAssistComplimentary) {
     throw new HttpError(400, "Upgrade to a paid plan to add AI summaries");

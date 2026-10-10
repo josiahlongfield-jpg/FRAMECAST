@@ -148,3 +148,30 @@ export async function portalConfiguration(): Promise<string> {
   );
   return (portalConfig = created.id);
 }
+
+type ItemChange = Stripe.SubscriptionUpdateParams.Item;
+
+/**
+ * Changes add-ons or extra seats on a subscription. Anything added is charged
+ * today for the rest of the current billing period (then renews with the plan),
+ * so nothing is used before it's paid for, even on a cancelled plan that won't
+ * renew. Removals are credited against the next bill. If the card can't be
+ * charged nothing changes, and the returned link lets the owner pay.
+ */
+export async function changeAddOns(sub: Stripe.Subscription, items: ItemChange[], { adds }: { adds: boolean }) {
+  if (!items.length) return { payUrl: null };
+  if (!adds) {
+    await stripe().subscriptions.update(sub.id, { items, proration_behavior: "create_prorations" });
+    return { payUrl: null };
+  }
+  const updated = await stripe().subscriptions.update(sub.id, {
+    items,
+    proration_behavior: "always_invoice",
+    // Pending updates can't remove items, so a swap (AI add-on moving price) charges without waiting.
+    ...(items.some((i) => i.deleted) ? {} : { payment_behavior: "pending_if_incomplete" as const }),
+    expand: ["latest_invoice"],
+  });
+  if (!updated.pending_update) return { payUrl: null };
+  const invoice = updated.latest_invoice;
+  return { payUrl: (invoice && typeof invoice !== "string" && invoice.hosted_invoice_url) || null };
+}
