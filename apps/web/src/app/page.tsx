@@ -1,11 +1,12 @@
 import Link from "next/link";
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
+import { BRAND } from "@/lib/brand";
 
 const PILLARS = [
   {
     title: "Protected from crashes",
-    body: "Videos upload as you record and are backed up on your device. If the browser crashes or Wi-Fi drops, reopen it on the same device and your video carries on uploading by itself.",
+    body: "Videos upload as you record, and a copy stays on your device until the upload finishes. If the browser crashes or Wi-Fi drops, reopen it on the same device and your video carries on uploading by itself.",
     icon: "M12 3l8 4v5c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V7z",
   },
   {
@@ -19,7 +20,7 @@ const PILLARS = [
     icon: "M6 11h12v10H6zM9 11V7a3 3 0 0 1 6 0v4",
   },
   {
-    title: "Works in any browser",
+    title: "Works in your browser",
     body: "Record on a computer or a phone with nothing to install. iPhone and Android apps are coming soon.",
     icon: "M7 2h10v20H7zM11 18h2",
   },
@@ -40,7 +41,7 @@ const AUDIENCES = "Coaches, personal trainers, consultants, tutors, agencies, cl
 const PRIVACY = [
   ["Encrypted on your device", "Videos, replies, to-dos and notes are locked before they leave your phone or computer. Our servers only hold scrambled copies of them."],
   ["Every client gets their own copy", "Send one video to one client or a hundred. Each opens it from their own private link, and nobody sees anyone else's replies."],
-  ["Staff who leave are locked out", "Remove someone from your team and every key and client link is reset, so they can't open anything again."],
+  ["Staff who leave are locked out", `Remove someone from your team and your team's keys and every client link are reset, so they can't open anything through ${BRAND.name} again.`],
 ];
 
 const STEPS = [
@@ -99,7 +100,8 @@ export default function Home() {
                 <div className="absolute right-6 top-6 flex items-center gap-2 rounded-full bg-black/60 px-3 py-1 text-xs text-white">
                   <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" /> Recording · 1:24
                 </div>
-                <div className="absolute bottom-6 right-6 rounded-lg bg-emerald-500/90 px-3 py-1.5 text-xs font-medium text-white">Saved to cloud</div>
+                {/* Wraps on narrow phones rather than covering the camera bubble. */}
+                <div className="absolute bottom-6 right-6 max-w-[45%] rounded-lg bg-emerald-500/90 px-3 py-1.5 text-right text-xs font-medium text-white sm:max-w-none">Uploading as you record</div>
               </div>
             </div>
           </div>

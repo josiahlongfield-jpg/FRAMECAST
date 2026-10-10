@@ -513,7 +513,7 @@ function UploadBadge({ s }: { s: UploadState }) {
     );
   return (
     <p className="text-sm text-emerald-700">
-      Saved to cloud: {(s.uploadedBytes / 1024 / 1024).toFixed(1)} MB
+      Uploaded: {(s.uploadedBytes / 1024 / 1024).toFixed(1)} MB
       {s.bufferedBytes > 0 && <span className="text-slate-500"> (+{(s.bufferedBytes / 1024 / 1024).toFixed(1)} MB on device)</span>}
     </p>
   );

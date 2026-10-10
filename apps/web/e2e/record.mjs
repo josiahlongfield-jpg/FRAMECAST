@@ -51,7 +51,7 @@ await page.click("text=Camera only");
 await page.click("text=Start recording");
 await page.waitForSelector("text=/Recording · \\d/", { timeout: 15000 });
 await page.waitForTimeout(25000);
-const status = await page.textContent("text=Saved to cloud");
+const status = await page.textContent("text=/Uploaded: /");
 console.log("before crash:", status);
 await page.close({ runBeforeUnload: false });
 

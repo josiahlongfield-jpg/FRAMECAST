@@ -5,6 +5,7 @@ import { exportKey, generateKey, wrapKey } from "@/lib/e2e/crypto";
 import { saveKey, teamKeyName } from "@/lib/e2e/keystore";
 import { rekey, type Bundle } from "@/lib/e2e/rekey";
 import TeamKeyGate from "./TeamKeyGate";
+import { BRAND } from "@/lib/brand";
 
 /** US$8, US$37.50 */
 const money = (n: number) => `US$${Number.isInteger(n) ? n : n.toFixed(2)}`;
@@ -117,7 +118,7 @@ function Manager({ teamKey, workspaceId, keyResetNeeded, role, meId, initialSeat
   }
 
   async function remove(m: Member) {
-    if (!confirm(`Remove ${m.name}? Your team's encryption keys and every client's personal link will be reset, so they can't open anything again. Clients with an email get their new link automatically.`)) return;
+    if (!confirm(`Remove ${m.name}? Your team's encryption keys and every client's personal link will be reset, so they can't open anything through ${BRAND.name} again. Clients with an email get their new link automatically.`)) return;
     await resetKeys(m);
   }
 
@@ -229,7 +230,7 @@ function Manager({ teamKey, workspaceId, keyResetNeeded, role, meId, initialSeat
       {resetDue && canManage && (
         <section role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-950">
           <h2 className="font-semibold">{keyResetNeeded} left the team and still holds its keys</h2>
-          <p className="mt-1">Reset your team&apos;s keys and every client&apos;s personal link so they can&apos;t open anything again. Clients with an email get their new link automatically.</p>
+          <p className="mt-1">Reset your team&apos;s keys and every client&apos;s personal link so they can&apos;t open anything through {BRAND.name} again. Clients with an email get their new link automatically.</p>
           <button onClick={() => resetKeys()} disabled={!!removing} className="mt-3 rounded-lg bg-amber-600 px-4 py-2 font-semibold text-white hover:bg-amber-700 disabled:opacity-50">
             {removing === "reset" ? "Resetting keys…" : "Reset keys now"}
           </button>
