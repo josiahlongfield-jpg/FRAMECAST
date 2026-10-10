@@ -7,10 +7,14 @@ import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { enforceSeatLimits } from "@/lib/seatLimits";
 import { PLANS } from "@/lib/plans";
+import { logAdmin } from "@/lib/support/admin";
 import { isSupportAgent } from "@/lib/support/tickets";
 import { currentSubscription } from "@/lib/subscription";
 
 export type CompResult = { ok: boolean; message: string } | null;
+
+/** The support agent, for the support log. */
+const agentOf = (session: { user?: { id?: string | null; email?: string | null } } | null) => ({ userId: session?.user?.id ?? "", email: session?.user?.email ?? "" });
 
 /** Gives (or takes back) a free paid plan on the workspace an email address owns. */
 export async function setComplimentary(_prev: CompResult, form: FormData): Promise<CompResult> {
@@ -27,10 +31,22 @@ export async function setComplimentary(_prev: CompResult, form: FormData): Promi
   const ws = (await currentSubscription(owner.workspace)) ? owner.workspace : await db.workspace.findUniqueOrThrow({ where: { id: owner.workspaceId } });
   if (ws.stripeSubscriptionId) return { ok: false, message: `${ws.name} already pays for ${PLANS[ws.plan].name}, so nothing was changed.` };
 
-  await db.workspace.update({
-    where: { id: ws.id },
-    // Free AI summaries only come with a free plan.
-    data: plan === "FREE" ? { plan: "FREE", complimentaryPlan: null, aiAssistComplimentary: false, aiAssist: false } : { plan, complimentaryPlan: plan },
+  await db.$transaction(async (tx) => {
+    const after = await tx.workspace.update({
+      where: { id: ws.id },
+      // Free AI summaries only come with a free plan.
+      data: plan === "FREE" ? { plan: "FREE", complimentaryPlan: null, aiAssistComplimentary: false, aiAssist: false } : { plan, complimentaryPlan: plan },
+    });
+    await logAdmin(tx, agentOf(session), {
+      action: "plan.complimentary",
+      workspaceId: ws.id,
+      userId: owner.userId,
+      target: `${ws.name} (${email})`,
+      details: {
+        before: { plan: ws.plan, complimentaryPlan: ws.complimentaryPlan, aiAssist: ws.aiAssist, aiAssistComplimentary: ws.aiAssistComplimentary },
+        after: { plan: after.plan, complimentaryPlan: after.complimentaryPlan, aiAssist: after.aiAssist, aiAssistComplimentary: after.aiAssistComplimentary },
+      },
+    });
   });
   await enforceSeatLimits(ws.id);
   revalidatePath("/support/accounts");
@@ -54,7 +70,16 @@ export async function setComplimentaryAi(_prev: CompResult, form: FormData): Pro
   if (ws.stripeSubscriptionId) return { ok: false, message: `${ws.name} pays by card, so they can add AI summaries in Settings > Billing. Nothing was changed.` };
   if (on && !ws.complimentaryPlan) return { ok: false, message: `Give ${ws.name} a free paid plan first. AI summaries aren't available on Free.` };
 
-  await db.workspace.update({ where: { id: ws.id }, data: { aiAssistComplimentary: on, aiAssist: on } });
+  await db.$transaction(async (tx) => {
+    await tx.workspace.update({ where: { id: ws.id }, data: { aiAssistComplimentary: on, aiAssist: on } });
+    await logAdmin(tx, agentOf(session), {
+      action: "plan.complimentary_ai",
+      workspaceId: ws.id,
+      userId: owner.userId,
+      target: `${ws.name} (${email})`,
+      details: { before: { aiAssist: ws.aiAssist, aiAssistComplimentary: ws.aiAssistComplimentary }, after: { aiAssist: on, aiAssistComplimentary: on } },
+    });
+  });
   revalidatePath("/support/accounts");
   return {
     ok: true,

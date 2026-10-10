@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requirePageUser } from "@/lib/session";
+import { isSupportAdmin } from "@/lib/support/admin";
 import { isSupportAgent } from "@/lib/support/tickets";
 import { deleteAllTickets } from "./actions";
 
@@ -25,9 +26,15 @@ export default async function SupportInbox({ searchParams }: { searchParams: Pro
   tickets.sort((a, b) => order[a.status] - order[b.status]);
   return (
     <main className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
-      <div className="flex items-baseline justify-between gap-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Support inbox</h1>
-        <div className="flex gap-4">
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          {isSupportAdmin(user.email) && (
+            <>
+              <Link href="/support/lookup" className="text-sm text-brand-700 hover:underline">Look up an account</Link>
+              <Link href="/support/log" className="text-sm text-brand-700 hover:underline">Support log</Link>
+            </>
+          )}
           <Link href="/support/accounts" className="text-sm text-brand-700 hover:underline">Free plans</Link>
           <Link href={show === "all" ? "/support" : "/support?show=all"} className="text-sm text-brand-700 hover:underline">
             {show === "all" ? "Only ones needing you" : "Show every conversation"}

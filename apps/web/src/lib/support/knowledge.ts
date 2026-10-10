@@ -56,6 +56,7 @@ ${plan("AGENCY")}
 - Where to add or remove things (owner only): extra clients on the Clients page ("Need more?" to add, "Fewer needed?" to remove unused ones), extra staff logins the same way on Settings > Team, cloud backup and AI transcripts and summaries on Settings > Billing. Workspaces on a complimentary plan start a paid subscription first. If a renewal payment fails, Settings > Billing says so; update the card under Manage subscription.
 - Only the workspace owner can change billing. Staff see an owner-only notice.
 - Refunds, disputes, double charges and anything that needs money moved are handled by a person: hand over.
+- If Settings > Billing still shows the wrong plan, seats or add-ons a few minutes after a payment or change (or clients or staff stay paused when the plan covers them), hand over: a person can re-check the subscription with Stripe.
 - After a hand over, a person replies within 2 business days (Queensland, Australia time), by email and in this chat. Don't promise anything faster.
 - The help chat has a daily limit per person. If someone hits it, they can email support instead.
 
