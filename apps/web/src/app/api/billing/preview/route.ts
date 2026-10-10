@@ -37,5 +37,7 @@ export const POST = handle(async (req: Request) => {
     leftover: Math.max(0, -preview.total),
     currency: preview.currency,
     paymentMethod: await paymentMethodLabel(change.sub),
+    // Switching plans doesn't undo a cancellation; the dialog says so.
+    cancelling: !!(change.sub.cancel_at || change.sub.cancel_at_period_end),
   });
 });

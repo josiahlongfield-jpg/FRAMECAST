@@ -81,7 +81,9 @@ async function accountOverview(ticket: SupportTicket) {
       workspace.complimentaryPlan && !workspace.stripeSubscriptionId
         ? "complimentary (given free by the team, no card needed)"
         : (workspace.subscriptionStatus ?? (workspace.plan === "FREE" ? "free plan" : "unknown")),
-    renewsOn: workspace.currentPeriodEnd?.toISOString().slice(0, 10) ?? null,
+    // A cancelled plan doesn't renew: it ends on cancelsOn and moves to Free.
+    renewsOn: workspace.cancelsAt ? null : (workspace.currentPeriodEnd?.toISOString().slice(0, 10) ?? null),
+    cancelsOn: workspace.cancelsAt?.toISOString().slice(0, 10) ?? null,
     clients: { used: clients, limit: p.clientSeats + workspace.extraClientSeats },
     staffLogins: { used: staff, limit: staffSeatLimit(workspace) },
     videos: { recorded: videos, limit: p.maxVideos },

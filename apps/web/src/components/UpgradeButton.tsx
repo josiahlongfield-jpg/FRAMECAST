@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { PLANS, type Interval, type PaidPlan } from "@/lib/plans";
 
-type Preview = { mode: "change"; dueToday: number; full: number; credit: number; leftover: number; currency: string; paymentMethod: string | null };
+type Preview = { mode: "change"; dueToday: number; full: number; credit: number; leftover: number; currency: string; paymentMethod: string | null; cancelling?: boolean };
 
 const money = (cents: number, currency: string) => new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase() }).format(cents / 100);
 
@@ -104,7 +104,9 @@ export default function UpgradeButton({ plan, interval = "month", featured = fal
             <p className="mt-3 text-sm text-slate-600">
               {confirm.dueToday > 0 && <>Charged to {confirm.paymentMethod ? <strong>{confirm.paymentMethod}</strong> : "the card you subscribed with"}. </>}
               {confirm.leftover > 0 && <>The remaining {money(confirm.leftover, confirm.currency)} comes off your next bills. </>}
-              Your plan then renews on this date each {interval}.
+              {confirm.cancelling
+                ? "Your subscription is still set to cancel, so it won't renew. To keep it going, choose Manage subscription on the Billing page and renew it."
+                : `Your plan then renews on this date each ${interval}.`}
             </p>
             {error && <p className="mt-3 text-sm text-red-700">{error}</p>}
             <div className="mt-6 flex flex-col gap-2 sm:flex-row-reverse">

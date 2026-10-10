@@ -5,6 +5,13 @@ import { stripe } from "@/lib/stripe";
 import { applyBackupSetting } from "@/lib/retention";
 import { enforceSeatLimits } from "@/lib/seatLimits";
 
+/** When a cancelled subscription ends, or null if it renews. */
+function cancelDate(sub: Stripe.Subscription, planItem?: Stripe.SubscriptionItem) {
+  if (sub.cancel_at) return new Date(sub.cancel_at * 1000);
+  if (sub.cancel_at_period_end && planItem?.current_period_end) return new Date(planItem.current_period_end * 1000);
+  return null;
+}
+
 async function syncSubscription(sub: Stripe.Subscription) {
   const workspaceId = sub.metadata.workspaceId;
   if (!workspaceId) return;
@@ -36,6 +43,7 @@ async function syncSubscription(sub: Stripe.Subscription) {
       cloudBackup,
       aiAssist,
       currentPeriodEnd: active && planItem?.current_period_end ? new Date(planItem.current_period_end * 1000) : null,
+      cancelsAt: active ? cancelDate(sub, planItem) : null,
     },
   });
   // Only a real change to cloud backup moves deletion dates; renewals and seat changes must not.

@@ -90,6 +90,8 @@ model Workspace {
   /// A paid plan given free by the founder (trials, partners). Used whenever there's no active subscription.
   complimentaryPlan     Plan?
   currentPeriodEnd      DateTime?
+  /// When a cancelled subscription ends (it stays paid until then). Null while it renews.
+  cancelsAt             DateTime?
   /// Client seats bought on top of the plan's included seats.
   extraClientSeats      Int                @default(0)
   /// Staff seats bought on top of the plan's included staff (Studio and Agency).

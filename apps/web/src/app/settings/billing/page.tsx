@@ -63,10 +63,16 @@ export default async function Billing({ searchParams }: { searchParams: Promise<
           {comp && (
             <p className="mt-1 text-sm text-emerald-700">Complimentary from {BRAND.name}. No card needed. Upgrading starts a paid subscription and keeps everything as it is.</p>
           )}
-          {workspace.currentPeriodEnd && (
-            <p className="mt-1 text-sm text-slate-500">
-              Renews {workspace.currentPeriodEnd.toLocaleDateString("en-US", { dateStyle: "long" })}
+          {workspace.cancelsAt ? (
+            <p className="mt-1 text-sm font-medium text-amber-700" data-testid="cancels-on">
+              Cancels {workspace.cancelsAt.toLocaleDateString("en-US", { dateStyle: "long" })}. You keep the {plan.name} plan until then, then move to Free.
             </p>
+          ) : (
+            workspace.currentPeriodEnd && (
+              <p className="mt-1 text-sm text-slate-500" data-testid="renews-on">
+                Renews {workspace.currentPeriodEnd.toLocaleDateString("en-US", { dateStyle: "long" })}
+              </p>
+            )
           )}
           {plan.showsPromo && (
             <p className="mt-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">

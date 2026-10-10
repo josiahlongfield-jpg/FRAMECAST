@@ -58,6 +58,16 @@ ok("bad webhook signature refused", (await webhook("customer.subscription.create
 ok("webhook accepted", (await webhook("customer.subscription.created", sub)).ok());
 ok("billing page shows Solo", /Solo plan/.test(await planText()) && /Renews/.test(await page.textContent("main")));
 
+// Cancelling in the portal: the plan stays until the period ends, and Billing says so instead of "Renews".
+sub.cancel_at_period_end = true;
+await webhook("customer.subscription.updated", sub);
+await planText();
+ok("a cancelled plan shows when it cancels, not a renewal", (await page.isVisible("[data-testid=cancels-on]")) && !(await page.isVisible("[data-testid=renews-on]")) && /Solo plan/.test(await page.textContent("main")));
+sub.cancel_at_period_end = false;
+await webhook("customer.subscription.updated", sub);
+await planText();
+ok("renewing again shows the renewal date", (await page.isVisible("[data-testid=renews-on]")) && !(await page.isVisible("[data-testid=cancels-on]")));
+
 // 3) Extra client seats and cloud backup ride on the same subscription.
 res = await api("/api/billing/seats", { extraSeats: 3 });
 const seatItem = sub.items.data.find((i) => i.price.lookup_key === "sureframe_client_seat_monthly");
