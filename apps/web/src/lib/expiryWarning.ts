@@ -29,7 +29,8 @@ export async function warnExpiring(now = new Date()) {
       expiryWarnedAt: null,
       replyToId: null,
       status: { notIn: ["EXPIRED", "RECORDING"] },
-      workspace: { cloudBackup: false },
+      // Nothing is emailed while the owner's account is closed (lib/accountDeletion.ts); the recordings still expire.
+      workspace: { cloudBackup: false, deleteAt: null },
     },
     select: { id: true, ownerId: true, workspaceId: true, sourceId: true, createdAt: true, purgeAt: true, client: { select: { name: true } } },
     orderBy: { purgeAt: "asc" },

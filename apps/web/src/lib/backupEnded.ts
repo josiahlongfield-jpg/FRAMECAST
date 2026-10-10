@@ -15,7 +15,8 @@ import { teamPath } from "@/lib/teamLink";
 export async function tellOwnerBackupEnded(workspaceId: string) {
   const workspace = await db.workspace.findUnique({ where: { id: workspaceId } });
   const owner = await db.membership.findFirst({ where: { workspaceId, role: "OWNER" }, include: { user: { select: { email: true } } } });
-  if (!workspace || !owner) return;
+  // Not while the owner's account is closed: they're told what happens to their plan when they close it or keep it.
+  if (!workspace || !owner || workspace.deleteAt) return;
   const left = await db.video.count({ where: { workspaceId, status: { not: "EXPIRED" }, replyToId: null, sourceId: null } });
   if (!left) return;
   const when = zoned(workspace.timezone).longDay(purgeDate(false)!);

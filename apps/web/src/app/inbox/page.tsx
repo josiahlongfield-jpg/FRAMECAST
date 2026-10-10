@@ -16,21 +16,26 @@ import { REMOVED_COOKIE } from "@/lib/access";
 export const metadata: Metadata = { title: "Your videos" };
 
 /** A client's view: every video their coach (or coaches) sent them. */
-export default async function Inbox({ searchParams }: { searchParams: Promise<{ invalid?: string; paused?: string; removed?: string; c?: string }> }) {
-  const { invalid, paused, removed, c: arrivedAs } = await searchParams;
+export default async function Inbox({ searchParams }: { searchParams: Promise<{ invalid?: string; paused?: string; removed?: string; closed?: string; c?: string }> }) {
+  const { invalid, paused, removed, closed, c: arrivedAs } = await searchParams;
   const jar = await cookies();
   const tokens = jar
     .getAll()
     .filter((c) => c.name.startsWith("fc_client_"))
     .map((c) => c.value);
-  // Businesses that ended this person's access: from an old link just opened here (it sets no client cookie), or links this device already had.
+  // Businesses that ended this person's access or closed their account: from an old link just opened here (it sets
+  // no client cookie), or links this device already had.
   const justOpened = jar.get(REMOVED_COOKIE)?.value;
   const removedTokens = justOpened ? [...tokens, justOpened] : tokens;
   const now = new Date();
-  const removedBy = removedTokens.length
-    ? await db.client.findMany({ where: { token: { in: removedTokens }, removedAt: { not: null } }, select: { purgeAt: true, workspace: { select: { name: true, timezone: true } } } })
-    : [];
+  const [removedBy, closedBy] = removedTokens.length
+    ? await Promise.all([
+        db.client.findMany({ where: { token: { in: removedTokens }, removedAt: { not: null } }, select: { purgeAt: true, workspace: { select: { name: true, timezone: true } } } }),
+        db.client.findMany({ where: { token: { in: removedTokens }, removedAt: null, workspace: { deleteAt: { not: null } } }, select: { workspace: { select: { name: true } } } }),
+      ])
+    : [[], []];
   const ended = [...new Map(removedBy.map((r) => [r.workspace.name, r])).values()];
+  const closedNames = [...new Set(closedBy.map((c) => c.workspace.name))];
   const [clients, pausedBy] = tokens.length
     ? await Promise.all([
         db.client.findMany({
@@ -41,7 +46,7 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
           },
         }),
         // Businesses that paused this person's access, so a bookmark doesn't just say "open your link".
-        db.client.findMany({ where: { token: { in: tokens }, removedAt: null, pausedAt: { not: null } }, select: { workspace: { select: { name: true } } } }),
+        db.client.findMany({ where: { token: { in: tokens }, removedAt: null, pausedAt: { not: null }, workspace: { deleteAt: null } }, select: { workspace: { select: { name: true } } } }),
       ])
     : [[], []];
   // Newest first by when each video reached the client, not when it was recorded.
@@ -75,6 +80,16 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
             The business that sent you this link has ended your access, so it no longer opens your videos. If that&rsquo;s a mistake, contact them.
           </p>
         )}
+        {closedNames.map((name) => (
+          <p key={name} className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800" data-testid="client-closed">
+            {name} has closed their SureFrame account, so this link no longer opens your videos from them. If you need anything, contact them directly.
+          </p>
+        ))}
+        {closed && closedNames.length === 0 && (
+          <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800" data-testid="client-closed">
+            The business that sent you this link has closed their SureFrame account, so it no longer opens your videos. If you need anything, contact them directly.
+          </p>
+        )}
         {(paused || pausedNames.length > 0) && (
           <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800" data-testid="client-paused">
             Your access {pausedNames.length > 0 ? <>to videos from {pausedNames.join(", ")} </> : ""}is paused because{" "}
@@ -83,7 +98,7 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
           </p>
         )}
         {clients.length === 0 ? (
-          pausedNames.length > 0 || removed || ended.length > 0 ? null : 
+          pausedNames.length > 0 || removed || ended.length > 0 || closed || closedNames.length > 0 ? null : 
           <p className="mt-6 text-slate-600">Open the personal link you were sent to see your videos here.</p>
         ) : (
           clients.map((c) => (

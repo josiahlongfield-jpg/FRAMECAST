@@ -8,15 +8,20 @@ import { auth, authProviders, previewPassword, signIn } from "@/auth";
 import { safeNext } from "@/lib/secrets";
 import { db } from "@/lib/db";
 import { plainEmail } from "@/lib/emailAddress";
+import { DELETION_GRACE_DAYS } from "@/lib/accountDeletion";
+import { pendingDeletion } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Sign in" };
 
-export default async function Login({ searchParams }: { searchParams: Promise<{ next?: string; error?: string; deleted?: string }> }) {
-  const { next, error, deleted } = await searchParams;
+export default async function Login({ searchParams }: { searchParams: Promise<{ next?: string; error?: string; deleted?: string; closed?: string }> }) {
+  const { next, error, deleted, closed } = await searchParams;
   const redirectTo = safeNext(next);
   // Checked against the database: a sign-in left over from a deleted account must not bounce back and forth.
   const userId = (await auth())?.user?.id;
-  if (userId && (await db.user.findUnique({ where: { id: userId }, select: { id: true } }))) redirect(redirectTo);
+  const signedInAs = userId ? await db.user.findUnique({ where: { id: userId }, select: { deleteAt: true } }) : null;
+  if (signedInAs && !signedInAs.deleteAt) redirect(redirectTo);
+  // A closed account: a sign-in made since closing it is offered to keep it; an older one signs in again here.
+  if (signedInAs?.deleteAt && (await pendingDeletion())?.fresh) redirect("/account/restore");
   // Set by src/middleware.ts when a sign-in ends because the browser was closed or left idle.
   const signedOut = !error && (await cookies()).get("sf_signed_out")?.value === "1";
   const hasGoogle = authProviders.some((p) => p.id === "google");
@@ -30,7 +35,12 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
         <h1 className="mt-6 text-xl font-semibold text-slate-900">Sign in to start recording</h1>
         {deleted && (
           <p role="status" className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800" data-testid="deleted-note">
-            Your account has been deleted.
+            Your account is closed and will be deleted in {DELETION_GRACE_DAYS} days. We&apos;ve emailed you the date. Changed your mind? Sign in before then to keep it.
+          </p>
+        )}
+        {closed && !deleted && (
+          <p role="status" className="mt-3 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700" data-testid="closed-note">
+            Your account stays closed and will be deleted on the date in our email. Changed your mind? Sign in before then to keep it.
           </p>
         )}
         {signedOut && (

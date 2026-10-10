@@ -13,6 +13,7 @@ import {
   replyMaxMinutes,
 } from "@/lib/plans";
 import { RETENTION_DAYS } from "@/lib/retention";
+import { DELETION_GRACE_DAYS } from "@/lib/accountDeletion";
 
 /** US dollars, with cents only when there are some: US$15, US$1.50. */
 const usd = (n: number) => `US$${Number.isInteger(n) ? n : n.toFixed(2)}`;
@@ -138,7 +139,13 @@ ${plan("AGENCY")}
 - The Conversation panel next to the video has an expand button ("Open conversation in a larger view") for long conversations; Escape or the close button returns to normal.
 
 ## Account
-- Export your data from Settings > Account. Deleting the account there cancels billing and removes the workspace. An owner with other staff must remove them first. The workspace owner can't be changed or handed over to someone else.
+- Export your data from Settings > Account. The workspace owner can't be changed or handed over to someone else.
+- Deleting your account (Settings > Account > Delete my account) closes it straight away and deletes it for good ${DELETION_GRACE_DAYS} days later, with the workspace and its recordings, clients, to-dos and notes. An owner with other staff must remove them first.
+- While it's closed: they're signed out on every device, their clients' links stop working (clients see that the business closed its ${BRAND.name} account), reminders and new-video emails stop, pending invites are cancelled and the subscription doesn't renew (a paid-up plan stays until its period ends; one behind on payment is cancelled). Recordings without cloud backup still expire on their usual dates, and reminders due meanwhile aren't sent later.
+- Emails: one when it's closed (with the deletion date and a Keep my account button), and a reminder about 3 days before the date. Keeping it, and the final deletion, are emailed too.
+- To keep it: sign in before the date (the button in the email leads there) and choose Keep my account. Everything comes back as it was, and clients the plan covers can open their links again. Renewal comes back on if it was stopped and the plan hasn't ended; if the plan ended meanwhile, they choose a plan again on Billing. A browser that was still signed in before closing can't keep it: they must sign in again.
+- Staff who delete their account leave their teams straight away (their recordings stay with the team, and the owner and admins are asked to reset the team's keys). Keeping the account doesn't put them back on a team; they need a new invite.
+- Once the date has passed, an account can't be brought back; signing up with the same email starts a new, empty account. Requests to delete an account sooner, or to keep one after its date: hand over.
 - Sign-in problems: make sure you're on sureframe.app and check spam for the sign-in email. The link works once, expires after 24 hours, and opens a page with a Sign in button to press (so email scanners can't use it up first). Open it on the device you want to use. If it says the link has expired or was already used, ask for a new one on the sign-in page.
 - Why was I signed out? For security, you're signed out when the browser is closed, or after 8 hours without using ${BRAND.name}. The sign-in page then says so. Just sign in again; the device keeps its encryption keys, so no recovery key is needed on the same browser. Some browsers that restore tabs on restart can keep you signed in. If a recording was still uploading when they were signed out, it's kept on the device: sign in again in the same browser and it carries on. This doesn't affect clients, whose personal links keep working.
 `.trim();

@@ -243,7 +243,8 @@ export async function purgeRemovedClients(now = new Date(), budgetMs = 40_000) {
 export async function datePendingRemovals(now = new Date()) {
   // A stamp of our own, so a run overlapping this one can't claim (and announce) the same clients.
   const stamp = new Date(clientPurgeDate(now).getTime() + Math.floor(Math.random() * 60_000));
-  const res = await db.client.updateMany({ where: { removedAt: { not: null }, purgeAt: null }, data: { purgeAt: stamp, purgeWarnedAt: null } });
+  // Not while the owner's account is closed (lib/accountDeletion.ts): they go with it, or are dated once it's kept.
+  const res = await db.client.updateMany({ where: { removedAt: { not: null }, purgeAt: null, workspace: { deleteAt: null } }, data: { purgeAt: stamp, purgeWarnedAt: null } });
   if (!res.count) return 0;
   const claimed = await db.client.findMany({
     where: { removedAt: { not: null }, purgeAt: stamp },
@@ -299,7 +300,8 @@ export async function datePendingRemovals(now = new Date()) {
  */
 export async function warnClientPurge(now = new Date()) {
   const due = await db.client.findMany({
-    where: { removedAt: { not: null }, purgeAt: { gt: now, lte: new Date(now.getTime() + CLIENT_PURGE_WARN_MS) }, purgeWarnedAt: null },
+    // Not while the owner's account is closed (lib/accountDeletion.ts); warned after, if they keep it in time.
+    where: { removedAt: { not: null }, purgeAt: { gt: now, lte: new Date(now.getTime() + CLIENT_PURGE_WARN_MS) }, purgeWarnedAt: null, workspace: { deleteAt: null } },
     select: { id: true, workspaceId: true },
     take: 500,
   });

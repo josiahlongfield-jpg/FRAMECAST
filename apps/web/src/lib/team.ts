@@ -8,6 +8,11 @@ export const INVITE_DAYS = 7;
 export const newInviteToken = () => crypto.randomBytes(24).toString("base64url");
 export const hashToken = (token: string) => crypto.createHash("sha256").update(token).digest("hex");
 
+/** Joining refused while the joiner's own account is closed and waiting to be deleted (lib/accountDeletion.ts). */
+export const ACCOUNT_CLOSED_JOIN = "Your account is closed and waiting to be deleted. Keep it first, then open this invite again.";
+/** Joining refused while the team's owner has closed their account. */
+export const TEAM_CLOSED_JOIN = "This team has closed its SureFrame account, so it can't take new staff.";
+
 /** Staff seats in use: people on the team plus invites still waiting to be accepted. */
 export async function staffUsage(
   workspace: { id: string; plan: Parameters<typeof staffSeatLimit>[0]["plan"]; extraStaffSeats: number },

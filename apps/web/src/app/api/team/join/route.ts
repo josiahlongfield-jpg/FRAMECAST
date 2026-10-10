@@ -3,7 +3,7 @@ import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { handle, HttpError } from "@/lib/session";
 import { limitByIp } from "@/lib/rateLimit";
-import { hashToken, staffUsage } from "@/lib/team";
+import { ACCOUNT_CLOSED_JOIN, hashToken, staffUsage, TEAM_CLOSED_JOIN } from "@/lib/team";
 
 const Body = z.object({ token: z.string().min(20).max(100) });
 
@@ -17,12 +17,15 @@ export const POST = handle(async (req: Request) => {
   await limitByIp("join", 30, 3600);
   const userId = (await auth())?.user?.id;
   // A browser still holding a sign-in for an account deleted elsewhere.
-  const me = userId ? await db.user.findUnique({ where: { id: userId }, select: { email: true } }) : null;
+  const me = userId ? await db.user.findUnique({ where: { id: userId }, select: { email: true, deleteAt: true } }) : null;
   if (!userId || !me) throw new HttpError(401, "Sign in required");
+  // A closed account (lib/accountDeletion.ts) is kept first, from the page it's offered on.
+  if (me.deleteAt) throw new HttpError(403, ACCOUNT_CLOSED_JOIN);
   const body = Body.safeParse(await req.json());
   if (!body.success) throw new HttpError(400, "This invite link is incomplete");
   const invite = await db.invite.findUnique({ where: { tokenHash: hashToken(body.data.token) }, include: { workspace: true } });
   if (!invite || invite.revokedAt) throw new HttpError(404, "This invite was cancelled or doesn't exist. Ask for a new one.");
+  if (invite.workspace.deleteAt) throw new HttpError(410, TEAM_CLOSED_JOIN);
 
   // An invite made out to an address only works for that address.
   if (invite.email) {

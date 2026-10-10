@@ -163,6 +163,8 @@ export async function runReminders(now = new Date()) {
       await db.reminder.update({ where: { id: r.id }, data: { sentAt: now, error: why } });
     };
     if (item.done) { await skip("done"); continue; }
+    // The owner closed their account (lib/accountDeletion.ts): nothing goes out in the business's name.
+    if (ws.deleteAt) { await skip("account closed"); continue; }
     if (item.client?.removedAt) { await skip("client removed"); continue; }
     if (!item.dueAt || item.dueAt.getTime() < now.getTime() - 3_600_000) { await skip("late"); continue; }
 

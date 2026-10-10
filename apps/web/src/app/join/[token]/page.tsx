@@ -3,7 +3,8 @@ import Logo from "@/components/Logo";
 import JoinTeam from "@/components/JoinTeam";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
-import { hashToken } from "@/lib/team";
+import { ACCOUNT_CLOSED_JOIN, hashToken, TEAM_CLOSED_JOIN } from "@/lib/team";
+import { pendingDeletion } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Join your team", robots: { index: false } };
 
@@ -13,18 +14,23 @@ export const metadata: Metadata = { title: "Join your team", robots: { index: fa
  */
 export default async function Join({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const [session, invite] = await Promise.all([
+  const [session, invite, closed] = await Promise.all([
     auth(),
     db.invite.findUnique({ where: { tokenHash: hashToken(token) }, include: { workspace: true, invitedBy: true } }),
+    pendingDeletion(),
   ]);
   const userId = session?.user?.id;
   const problem = !invite || invite.revokedAt
     ? "This invite was cancelled or doesn't exist."
-    : invite.acceptedAt && invite.acceptedById !== userId
-      ? "This invite has already been used."
-      : !invite.acceptedAt && invite.expiresAt < new Date()
-        ? "This invite has expired."
-        : null;
+    : invite.workspace.deleteAt
+      ? TEAM_CLOSED_JOIN
+      : closed
+        ? ACCOUNT_CLOSED_JOIN
+        : invite.acceptedAt && invite.acceptedById !== userId
+          ? "This invite has already been used."
+          : !invite.acceptedAt && invite.expiresAt < new Date()
+            ? "This invite has expired."
+            : null;
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
@@ -33,7 +39,13 @@ export default async function Join({ params }: { params: Promise<{ token: string
         {problem || !invite ? (
           <>
             <h1 className="mt-6 text-xl font-semibold text-slate-900">{problem}</h1>
-            <p className="mt-2 text-sm text-slate-600">Ask whoever invited you to send a new link.</p>
+            {closed && problem === ACCOUNT_CLOSED_JOIN ? (
+              <a href={closed.fresh ? "/account/restore" : "/login?next=/account/restore"} className="mt-4 inline-block text-sm font-medium text-brand-700 hover:underline">
+                Keep my account
+              </a>
+            ) : (
+              <p className="mt-2 text-sm text-slate-600">Ask whoever invited you to send a new link.</p>
+            )}
           </>
         ) : (
           <>

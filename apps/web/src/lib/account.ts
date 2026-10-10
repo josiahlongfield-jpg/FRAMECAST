@@ -48,10 +48,13 @@ async function stopBilling(w: Workspace) {
 }
 
 /**
- * Permanently delete a user. Workspaces they alone belong to go with them,
- * including clients, to-dos, videos and stored files, and any subscription
- * is cancelled. Recordings they made for a team (including teams they've
- * since left) stay with that team, under its owner.
+ * Permanently delete a user, now. Workspaces they alone belong to go with
+ * them, including clients, to-dos, videos and stored files, and any
+ * subscription is cancelled. Recordings they made for a team (including teams
+ * they've since left) stay with that team, under its owner. Closing an account
+ * from Settings waits 30 days first (lib/accountDeletion.ts); this is the end
+ * of that, and support's "Delete now". Safe to run again: returns whether this
+ * run deleted the user.
  */
 export async function deleteAccount(userId: string) {
   const memberships = await db.membership.findMany({
@@ -63,6 +66,9 @@ export async function deleteAccount(userId: string) {
   for (const w of own) await stopBilling(w);
 
   const user = await db.user.findUnique({ where: { id: userId }, select: { name: true, email: true } });
+  const leaver = leaverName(user);
+  // Normally done when they closed the account; anything left is finished here.
+  for (const w of teams) await leaveTeam(userId, w, leaver);
   const kept = await db.video.findMany({
     where: { ownerId: userId, workspaceId: { notIn: own.map((w) => w.id) } },
     select: { workspaceId: true },
@@ -73,26 +79,51 @@ export async function deleteAccount(userId: string) {
     if (owner) await db.video.updateMany({ where: { workspaceId, ownerId: userId }, data: { ownerId: owner.userId } });
     else await deleteVideoFiles({ workspaceId, ownerId: userId });
   }
-  const leaver = user?.name ?? user?.email ?? "A former team member";
-  for (const w of teams) {
-    // They leave holding the team's keys; ask an admin to reset them.
-    await db.workspace.update({ where: { id: w.id }, data: { keyResetNeeded: leaver } });
-    // Their replies stay the team's: without an author they'd count as the client's in the Team overview.
-    const owner = await db.membership.findFirst({ where: { workspaceId: w.id, role: "OWNER", userId: { not: userId } } });
-    if (owner) await db.reply.updateMany({ where: { authorUserId: userId, video: { workspaceId: w.id } }, data: { authorUserId: owner.userId } });
-  }
   for (const w of own) {
     await deleteVideoFiles({ workspaceId: w.id });
-    await db.workspace.delete({ where: { id: w.id } });
+    await db.workspace.deleteMany({ where: { id: w.id } });
   }
-  await db.user.delete({ where: { id: userId } });
+  const gone = await db.user.deleteMany({ where: { id: userId } });
   // An unused sign-in link would otherwise make a fresh account under the same email.
   if (user?.email) await db.verificationToken.deleteMany({ where: { identifier: user.email } });
-  for (const w of teams) {
-    // The login they freed can lift a colleague's pause.
-    await enforceSeatLimits(w.id).catch((err) => console.error("[account] seat check after leaving", w.id, err));
-    await tellManagersAboutLeaver(w, leaver).catch((err) => console.error("[account] leaver email", w.id, err));
-  }
+  return gone.count > 0;
+}
+
+/** How a leaver is named to their team. */
+export const leaverName = (user: { name: string | null; email: string } | null) => user?.name ?? user?.email ?? "A former team member";
+
+/**
+ * Takes someone off a team they don't own because they closed or deleted
+ * their account. Their recordings and replies stay with the team under its
+ * owner, clients they looked after go back to the shared list, invites they
+ * sent stop working, their seat is freed, and the owner and admins are asked
+ * to reset the keys they held.
+ * Does nothing if they've already left.
+ */
+export async function leaveTeam(userId: string, w: Workspace, leaver: string) {
+  const left = await db.$transaction(async (tx) => {
+    const gone = await tx.membership.deleteMany({ where: { workspaceId: w.id, userId, role: { not: "OWNER" } } });
+    if (!gone.count) return false;
+    const owner = await tx.membership.findFirst({ where: { workspaceId: w.id, role: "OWNER" } });
+    if (owner) {
+      await tx.video.updateMany({ where: { workspaceId: w.id, ownerId: userId }, data: { ownerId: owner.userId } });
+      // Their replies stay the team's: without an author they'd count as the client's in the Team overview.
+      await tx.reply.updateMany({ where: { authorUserId: userId, video: { workspaceId: w.id } }, data: { authorUserId: owner.userId } });
+    }
+    await tx.client.updateMany({ where: { workspaceId: w.id, assignedToId: userId }, data: { assignedToId: null } });
+    // Invites they sent and nobody has used yet stop working with them.
+    await tx.invite.updateMany({ where: { workspaceId: w.id, invitedById: userId, acceptedAt: null, revokedAt: null }, data: { revokedAt: new Date() } });
+    await tx.teamNotification.deleteMany({ where: { workspaceId: w.id, userId } });
+    // They leave holding the team's keys; ask an admin to reset them.
+    await tx.workspace.update({ where: { id: w.id }, data: { keyResetNeeded: leaver } });
+    await tx.user.updateMany({ where: { id: userId, activeWorkspaceId: w.id }, data: { activeWorkspaceId: null } });
+    return true;
+  });
+  if (!left) return false;
+  // The login they freed can lift a colleague's pause.
+  await enforceSeatLimits(w.id).catch((err) => console.error("[account] seat check after leaving", w.id, err));
+  await tellManagersAboutLeaver(w, leaver).catch((err) => console.error("[account] leaver email", w.id, err));
+  return true;
 }
 
 /** Owners and admins hear at once that someone left with the team's keys, not only when they next open Settings > Team. */
@@ -101,8 +132,8 @@ async function tellManagersAboutLeaver(w: Workspace, leaver: string) {
   const brand = brandOf(w, appUrl(""));
   const mail = teamEmail({
     business: w.name,
-    subject: `${leaver} deleted their account and left ${w.name}`,
-    lead: `${leaver} deleted their ${BRAND.name} account, so they're no longer on your team.`,
+    subject: `${leaver} closed their ${BRAND.name} account and left ${w.name}`,
+    lead: `${leaver} closed their ${BRAND.name} account, so they're no longer on your team.`,
     lines: [{ text: "Their recordings now belong to the owner. They held your team's encryption keys, so reset the keys on Settings > Team now. Every client gets a new personal link; those with an email are sent theirs automatically." }],
     button: { label: "Reset keys on Settings > Team", link: appUrl(teamPath("/settings/team", w.id)) },
     logoUrl: brand.logoUrl,

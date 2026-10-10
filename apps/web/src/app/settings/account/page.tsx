@@ -7,13 +7,12 @@ import DeleteAccountButton from "@/components/DeleteAccountButton";
 import MyEmailPrefs from "@/components/MyEmailPrefs";
 import Link from "next/link";
 import { signOut } from "@/auth";
-import { deleteAccount } from "@/lib/account";
+import { deletionDate, requestAccountDeletion } from "@/lib/accountDeletion";
+import { zoned } from "@/lib/dates";
 import { db } from "@/lib/db";
+import { LEGAL } from "@/lib/legal";
 import { PLANS } from "@/lib/plans";
-import { requirePageUser } from "@/lib/session";
-
-// Deleting an account deletes every recording file too.
-export const maxDuration = 300;
+import { HttpError, requirePageUser } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Account" };
 
@@ -22,9 +21,12 @@ export default async function AccountSettings({ searchParams }: { searchParams: 
   const { user, workspace, role, membership, paused } = await requirePageUser("/settings/account", { allowPaused: true });
   const onTeam = role === "MEMBER" || (await db.membership.count({ where: { workspaceId: workspace.id } })) > 1;
   // What deleting the account does depends on whether they run a workspace of their own or work on someone else's team.
-  const mine = await db.membership.findMany({ where: { userId: user.id }, include: { workspace: { select: { name: true, _count: { select: { members: true } } } } } });
-  const ownsAlone = mine.some((m) => m.role === "OWNER" && m.workspace._count.members === 1);
+  const mine = await db.membership.findMany({ where: { userId: user.id }, include: { workspace: { select: { name: true, timezone: true, stripeSubscriptionId: true, _count: { select: { members: true } } } } } });
+  const ownWorkspace = mine.find((m) => m.role === "OWNER" && m.workspace._count.members === 1)?.workspace;
+  const ownsAlone = !!ownWorkspace;
   const teamNames = mine.filter((m) => m.role !== "OWNER" && m.workspace._count.members > 1).map((m) => m.workspace.name);
+  // Deleted for good this long after closing, unless they sign in and keep it (lib/accountDeletion.ts).
+  const deletesOn = zoned(ownWorkspace?.timezone).longDay(deletionDate());
 
   async function rename(form: FormData) {
     "use server";
@@ -41,15 +43,16 @@ export default async function AccountSettings({ searchParams }: { searchParams: 
     const { user } = await requirePageUser("/settings/account", { allowPaused: true });
     const typed = String(form.get("confirm") ?? "").trim().toLowerCase();
     if (typed !== user.email.toLowerCase()) redirect("/settings/account?error=confirm");
-    // An owner leaving would strand their staff in a workspace nobody pays for.
-    const owned = await db.membership.findMany({ where: { userId: user.id, role: "OWNER" }, include: { workspace: { include: { _count: { select: { members: true } } } } } });
-    if (owned.some((m) => m.workspace._count.members > 1)) redirect("/settings/account?error=team");
+    let refused: "team" | "failed" | null = null;
     try {
-      await deleteAccount(user.id);
+      // Closed now (signed out everywhere, clients' links stop), deleted for good 30 days later unless kept.
+      await requestAccountDeletion(user.id);
     } catch (err) {
-      console.log("[account] delete failed", JSON.stringify({ user: user.id, error: String(err) }));
-      redirect("/settings/account?error=failed");
+      // An owner leaving would strand their staff in a workspace nobody pays for.
+      refused = err instanceof HttpError && err.status === 409 ? "team" : "failed";
+      if (refused === "failed") console.log("[account] close failed", JSON.stringify({ user: user.id, error: String(err) }));
     }
+    if (refused) redirect(`/settings/account?error=${refused}`);
     await signOut({ redirectTo: "/login?deleted=1" });
   }
 
@@ -114,13 +117,14 @@ export default async function AccountSettings({ searchParams }: { searchParams: 
         <section className="mt-6 rounded-2xl border border-red-200 bg-white p-6">
           <h2 className="font-semibold text-red-700">Delete account</h2>
           <p className="mt-1 text-sm text-slate-600" data-testid="delete-explainer">
-            This permanently deletes your account. This can&apos;t be undone.
+            Your account is closed straight away and permanently deleted on {deletesOn}. Until then, sign in to keep it with everything as it was.
             {ownsAlone && (
-              <> Your workspace goes with it: its recordings, clients, to-dos and notes. Any subscription is cancelled straight away, and your clients&apos; links stop working.</>
+              <> Your workspace goes with it: its recordings, clients, to-dos and notes. Your clients&apos; links stop working now{ownWorkspace.stripeSubscriptionId ? <>, your plan won&apos;t renew</> : null}, and recordings without cloud backup still expire on their usual dates.</>
             )}
             {teamNames.length > 0 && (
-              <> Recordings you made for {teamNames.join(" and ")} stay with {teamNames.length === 1 ? "that team" : "those teams"}, and {teamNames.length === 1 ? "its" : "their"} clients aren&apos;t affected.</>
+              <> You leave {teamNames.join(" and ")} straight away, and keeping your account won&apos;t put you back. Recordings you made for {teamNames.length === 1 ? "that team" : "those teams"} stay with {teamNames.length === 1 ? "it" : "them"}, and {teamNames.length === 1 ? "its" : "their"} clients aren&apos;t affected.</>
             )}
+            {" "}Want it deleted sooner? Email <a href={`mailto:${LEGAL.email}`} className="font-medium text-brand-700 hover:underline">{LEGAL.email}</a>.
           </p>
           <form action={remove} className="mt-4 space-y-3">
             <label className="block text-sm text-slate-700">
@@ -128,7 +132,7 @@ export default async function AccountSettings({ searchParams }: { searchParams: 
               <input name="confirm" type="email" autoComplete="off" required className="mt-1 block w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
             </label>
             {error === "confirm" && <p role="alert" className="text-sm text-red-700">That doesn&apos;t match your email.</p>}
-            {error === "failed" && <p role="alert" className="text-sm text-red-700">Your account couldn&apos;t be deleted just now (we must cancel any subscription first). Please try again in a few minutes, or ask in Help.</p>}
+            {error === "failed" && <p role="alert" className="text-sm text-red-700">Your account couldn&apos;t be closed just now (we must stop any subscription first). Please try again in a few minutes, or ask in Help.</p>}
             {error === "team" && <p role="alert" className="text-sm text-red-700">You own a team with other staff. Remove them on the Team page first.</p>}
             <DeleteAccountButton />
           </form>

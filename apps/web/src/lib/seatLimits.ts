@@ -21,7 +21,8 @@ import { teamPath } from "@/lib/teamLink";
  */
 export async function enforceSeatLimits(workspaceId: string, { notify = true } = {}) {
   const workspace = await db.workspace.findUnique({ where: { id: workspaceId } });
-  if (!workspace) return { pausedClients: 0, pausedStaff: 0 };
+  // A closed account keeps every client paused until it's kept (lib/accountDeletion.ts), whatever the plan does meanwhile.
+  if (!workspace || workspace.deleteAt) return { pausedClients: 0, pausedStaff: 0 };
   const now = new Date();
 
   const clients = await db.client.findMany({

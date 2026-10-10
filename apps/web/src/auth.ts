@@ -111,11 +111,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return account?.provider !== "google" || profile?.email_verified === true;
     },
     jwt({ token, user }) {
-      if (user?.id) token.sub = user.id;
+      if (user?.id) {
+        token.sub = user.id;
+        // Only a sign-in after closing an account can keep it (lib/session.ts pendingDeletion).
+        token.signedInAt = Date.now();
+      }
       return token;
     },
     session({ session, token }) {
       if (token.sub) session.user.id = token.sub;
+      session.signedInAt = token.signedInAt;
       return session;
     },
   },

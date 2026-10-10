@@ -117,7 +117,8 @@ export async function flushGroup(userId: string, kind: TeamNotificationKind, gro
     db.user.findUnique({ where: { id: userId }, select: { email: true } }),
     db.membership.findFirst({ where: { userId, workspaceId: pending[0].workspaceId } }),
   ]);
-  if (!ws || !user || !membership || membership.pausedAt) return false; // left the team, or paused, since
+  // Left the team or paused since, or the owner closed the account (lib/accountDeletion.ts).
+  if (!ws || !user || !membership || membership.pausedAt || ws.deleteAt) return false;
   const brand = brandOf(ws, appUrl(""));
   const clients = new Map((await db.client.findMany({ where: { id: { in: pending.map((p) => p.clientId!).filter(Boolean) } }, select: { id: true, name: true } })).map((c) => [c.id, c.name]));
   const clientName = (id: string | null) => (id && clients.get(id)) || "A client";

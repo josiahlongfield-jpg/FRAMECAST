@@ -20,8 +20,8 @@ const fmt = (ms: number | null) => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 };
 
-export default async function Library({ searchParams }: { searchParams: Promise<{ show?: string; filter?: string; ws?: string }> }) {
-  const { show, filter, ws } = await searchParams;
+export default async function Library({ searchParams }: { searchParams: Promise<{ show?: string; filter?: string; ws?: string; restored?: string }> }) {
+  const { show, filter, ws, restored } = await searchParams;
   await followTeamLink(ws, filter ? `/library?filter=${encodeURIComponent(filter)}` : "/library");
   const me = await requirePageUser("/library");
   const { user, workspace } = me;
@@ -67,6 +67,18 @@ export default async function Library({ searchParams }: { searchParams: Promise<
     <>
       <AppHeader email={user.email} plan={plan.name} />
       <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+        {restored && (
+          // Just kept their closed account (app/account/restore).
+          <p role="status" className="mb-6 max-w-2xl rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800" data-testid="account-restored">
+            Your account is open again and won&apos;t be deleted.
+            {restored === "ended" && (
+              <>
+                {" "}Your subscription ended while it was closed. Subscribe again to get your paid features back; until then, clients your current plan doesn&apos;t cover stay paused.{" "}
+                <Link href="/settings/billing" className="font-medium text-emerald-900 underline">Open Billing</Link>
+              </>
+            )}
+          </p>
+        )}
         <div className="mb-8 flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{team ? "Team videos" : "Your videos"}</h1>

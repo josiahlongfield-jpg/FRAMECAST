@@ -12,25 +12,33 @@ datasource db {
 // ---------- Auth.js ----------
 
 model User {
-  id                String             @id @default(cuid())
-  name              String?
-  email             String             @unique
-  emailVerified     DateTime?
-  image             String?
-  createdAt         DateTime           @default(now())
-  accounts          Account[]
-  sessions          Session[]
-  memberships       Membership[]
-  videos            Video[]
-  replies           Reply[]
+  id                  String             @id @default(cuid())
+  name                String?
+  email               String             @unique
+  emailVerified       DateTime?
+  image               String?
+  createdAt           DateTime           @default(now())
+  accounts            Account[]
+  sessions            Session[]
+  memberships         Membership[]
+  videos              Video[]
+  replies             Reply[]
   /// The workspace this user is working in when they belong to several (e.g. their own and an employer's).
-  activeWorkspaceId String?
-  assignedClients   Client[]           @relation("ClientAssignee")
-  invitesSent       Invite[]           @relation("InviteSender")
-  supportTickets    SupportTicket[]
-  teamNotifications TeamNotification[]
-  noticesSent       StaffNotice[]      @relation("NoticeFrom")
-  noticesReceived   StaffNotice[]      @relation("NoticeTo")
+  activeWorkspaceId   String?
+  assignedClients     Client[]           @relation("ClientAssignee")
+  invitesSent         Invite[]           @relation("InviteSender")
+  supportTickets      SupportTicket[]
+  teamNotifications   TeamNotification[]
+  noticesSent         StaffNotice[]      @relation("NoticeFrom")
+  noticesReceived     StaffNotice[]      @relation("NoticeTo")
+  /// They asked to delete their account (lib/accountDeletion.ts). Only a sign-in after this can keep it.
+  deletionRequestedAt DateTime?
+  /// Closed until then and deleted for good after it, unless they sign in and keep it. Null while active.
+  deleteAt            DateTime?
+  /// When they were emailed that the deletion is a few days away.
+  deletionWarnedAt    DateTime?
+
+  @@index([deleteAt])
 }
 
 model Account {
@@ -129,6 +137,12 @@ model Workspace {
   /// Original recordings that finished uploading, on any plan. Deleting or expiring a video doesn't lower
   /// it. The Free plan's lifetime limit is checked against it (lib/videoAllowance.ts).
   videosRecorded        Int                @default(0)
+  /// The owner closed their account: deleted with it on this date unless they keep it. Clients' links,
+  /// reminders and emails stop meanwhile (lib/accountDeletion.ts).
+  deleteAt              DateTime?
+  /// We stopped the subscription because of that (renewal off, or cancelled if a payment was outstanding).
+  /// Keeping the account turns renewal back on while the plan is still running.
+  renewalStoppedAt      DateTime?
   createdAt             DateTime           @default(now())
   members               Membership[]
   videos                Video[]

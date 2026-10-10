@@ -17,6 +17,8 @@ export class HttpError extends Error {
  * The signed-in user and their active workspace. A personal workspace is
  * created on first use so every user can record immediately. Cached for the
  * request, so a page and its metadata don't each look it up (or create one).
+ * A closed account waiting to be deleted counts as signed out, on every
+ * device (see pendingDeletion).
  */
 export const currentUser = cache(async () => {
   const session = await auth();
@@ -26,7 +28,7 @@ export const currentUser = cache(async () => {
     where: { id: userId },
     include: { memberships: { include: { workspace: true }, orderBy: { id: "asc" } } },
   });
-  if (!user) return null;
+  if (!user || user.deleteAt) return null;
   // The workspace they last joined or switched to, else their first one they can still use.
   const membership =
     user.memberships.find((m) => m.workspaceId === user.activeWorkspaceId) ?? user.memberships.find((m) => !m.pausedAt) ?? user.memberships[0];
@@ -66,9 +68,28 @@ export async function requireUser() {
   return me;
 }
 
+/**
+ * The signed-in browser's account when it is closed and waiting to be deleted
+ * (lib/accountDeletion.ts). Only a sign-in made after it was closed ("fresh")
+ * may keep it, so a browser left signed in elsewhere can't.
+ */
+export const pendingDeletion = cache(async () => {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) return null;
+  const user = await db.user.findUnique({ where: { id: userId }, select: { id: true, name: true, email: true, deleteAt: true, deletionRequestedAt: true } });
+  if (!user?.deleteAt) return null;
+  const fresh = !!user.deletionRequestedAt && (session.signedInAt ?? 0) > user.deletionRequestedAt.getTime();
+  return { ...user, deleteAt: user.deleteAt, fresh };
+});
+
 export async function requirePageUser(next = "/library", { allowPaused = false } = {}) {
   const me = await currentUser();
-  if (!me) redirect(`/login?next=${encodeURIComponent(next)}`);
+  if (!me) {
+    // A closed account just signed in again: offer to keep it.
+    if ((await pendingDeletion())?.fresh) redirect("/account/restore");
+    redirect(`/login?next=${encodeURIComponent(next)}`);
+  }
   // Paused staff can still reach their own account (to download their data or delete it).
   if (me.paused && !allowPaused) redirect("/paused");
   return me;

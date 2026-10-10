@@ -28,8 +28,10 @@ export const POST = handle(async (req: Request) => {
 
   const user = await db.user.findUnique({ where: { id: row.userId } });
   if (!user) throw new HttpError(400, "That account no longer exists.");
+  // Closed and waiting to be deleted (lib/accountDeletion.ts): it can only be kept on the website.
+  if (user.deleteAt) throw new HttpError(403, "This account is closed. To keep it, sign in on the SureFrame website before its deletion date.");
   const cookie = appUrl().startsWith("https://") ? "__Secure-authjs.session-token" : "authjs.session-token";
-  const token = await encode({ token: { sub: user.id, email: user.email, name: user.name }, secret: appSecret(), salt: cookie, maxAge: MAX_AGE });
+  const token = await encode({ token: { sub: user.id, email: user.email, name: user.name, signedInAt: Date.now() }, secret: appSecret(), salt: cookie, maxAge: MAX_AGE });
   await db.mobileCode.deleteMany({ where: { expiresAt: { lt: new Date(Date.now() - 86_400_000) } } });
   return Response.json({ cookie, token });
 });
