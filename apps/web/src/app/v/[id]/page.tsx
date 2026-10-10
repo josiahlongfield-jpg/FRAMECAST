@@ -16,6 +16,7 @@ import { clientLink } from "@/lib/clients";
 import { publicVideo } from "@/lib/videos";
 import { replyDTO, visibleReplies } from "@/lib/replies";
 import { canDeleteVideo, clientScopeWhere, effectivePerms } from "@/lib/permissions";
+import { zoned } from "@/lib/dates";
 
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ team?: string }> };
 
@@ -80,11 +81,20 @@ export default async function Watch({ params, searchParams }: Props) {
     access && !video.sourceId ? db.video.findMany({ where: { sourceId: video.id, client: clientScopeWhere(access) }, select: { id: true, clientId: true }, orderBy: { createdAt: "asc" } }) : Promise.resolve([]),
   ]);
   // Staff can open a video they recorded that went to someone else's client: show who, nothing more.
+  // So do removed and paused clients, who can't open it.
   const recipient = access && video.clientId && !clients.some((c) => c.id === video.clientId)
-    ? await db.client.findUnique({ where: { id: video.clientId }, select: { id: true, name: true } })
+    ? await db.client.findUnique({ where: { id: video.clientId }, select: { id: true, name: true, removedAt: true, purgeAt: true, pausedAt: true } })
     : null;
   const expired = !!video.expiresAt && video.expiresAt < new Date();
   const workspace = await db.workspace.findUniqueOrThrow({ where: { id: video.workspaceId } });
+  // A removed client's conversations are deleted with them. The recording stays when it was also sent to
+  // other clients: this is a copy of it, or an original with copies (lib/clientRemoval.ts).
+  const removed = recipient?.removedAt
+    ? {
+        until: recipient.purgeAt && recipient.purgeAt > new Date() ? zoned(workspace.timezone).longDay(recipient.purgeAt) : null,
+        keepsRecording: !!video.sourceId || (await db.video.count({ where: { sourceId: video.id, OR: [{ clientId: null }, { clientId: { not: recipient.id } }] } })) > 0,
+      }
+    : undefined;
   // AI summaries add-on. Copies sent to other clients share the original recording's transcript.
   const aiOn = aiAssistActive(workspace);
   const insight = await db.videoInsight.findUnique({ where: { videoId: video.sourceId ?? video.id }, select: { transcript: true, summary: true } });
@@ -129,7 +139,7 @@ export default async function Watch({ params, searchParams }: Props) {
             }
             clients={[
               ...clients.map((c) => ({ id: c.id, name: c.name, link: clientLink(c.token, video.id), teamKeyWrap: c.teamKeyWrap, assignedToId: c.assignedToId, hasLink: !!(c.linkOpenedAt || c.linkSentAt), emailable: !!c.email && !c.remindersOff, emailsOff: !!c.email && c.remindersOff })),
-              ...(recipient ? [{ id: recipient.id, name: recipient.name, link: "", teamKeyWrap: null, assignedToId: null }] : []),
+              ...(recipient ? [{ id: recipient.id, name: recipient.name, link: "", teamKeyWrap: null, assignedToId: null, removed, paused: !!recipient.pausedAt }] : []),
             ]}
             sendMany={
               viewer.kind === "member" && perms?.sendToMany

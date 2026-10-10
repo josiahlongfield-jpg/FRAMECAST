@@ -43,7 +43,7 @@ The camera and secure storage need a development build (`expo run:*` or `eas bui
 
 ## Privacy
 
-Videos and replies are end-to-end encrypted in the browser before upload; see section 6 of PLAN.md. The first device to record creates the team key and shows a recovery key once. Clients get their key inside their personal link's `#k=` fragment. Schedule `GET /api/cron/purge` daily (`vercel.json` does this on Vercel) to delete expired relay copies.
+Videos and replies are end-to-end encrypted in the browser before upload; see section 6 of PLAN.md. The first device to record creates the team key and shows a recovery key once. Clients get their key inside their personal link's `#k=` fragment. Schedule `GET /api/cron/purge` daily (`vercel.json` does this on Vercel) to delete expired relay copies and removed clients whose 30 days are up.
 
 ## Tests
 
@@ -80,7 +80,7 @@ Live at **https://sureframe.app** (bought through Vercel). `www.sureframe.app`, 
 
 Without `S3_BUCKET`, videos are stored in Postgres (`StoredPart`) in 2 MB parts, under Vercel's 4.5 MB request limit. That suits a preview. For launch, use R2/S3 with direct-to-bucket (presigned) part uploads.
 
-Sign-in links and reminder emails need `RESEND_API_KEY` and `MAIL_FROM`; without them they are only logged. Reminders, team digests and expiry warnings are checked every 5 minutes, and expired copies deleted, by `/api/cron/reminders`; `/api/cron/purge` does the daily clean-up (`vercel.json`, needs Vercel Pro).
+Sign-in links and reminder emails need `RESEND_API_KEY` and `MAIL_FROM`; without them they are only logged. Reminders, team digests and expiry warnings (recordings, and removed clients 3 days before they're deleted) are checked every 5 minutes, and expired copies and removed clients deleted, by `/api/cron/reminders`; `/api/cron/purge` does the daily clean-up (`vercel.json`, needs Vercel Pro).
 
 ### Production storage (Cloudflare R2)
 

@@ -395,7 +395,15 @@ model Client {
   assignedToId   String?
   assignedTo     User?         @relation("ClientAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
   createdAt      DateTime      @default(now())
+  /// Removed by the business: the link stops working and the seat is freed at once.
   removedAt      DateTime?
+  /// When a removed client is deleted for good (removedAt + 30 days); until then they can be restored.
+  /// Null while active. A removed client without a date is never deleted (lib/clientRemoval.ts dates them).
+  purgeAt        DateTime?
+  /// When the business was warned that this removed client is about to be deleted.
+  purgeWarnedAt  DateTime?
+  /// Who removed them. A plain id, no relation, so it survives them leaving the team.
+  removedById    String?
   workspaceId    String
   workspace      Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   videos         Video[]
@@ -404,6 +412,7 @@ model Client {
 
   @@index([workspaceId, removedAt])
   @@index([assignedToId])
+  @@index([purgeAt])
 }
 
 enum ItemKind {

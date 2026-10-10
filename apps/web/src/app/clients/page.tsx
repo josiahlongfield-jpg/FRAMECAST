@@ -6,18 +6,21 @@ import { clientLink, seatUsage } from "@/lib/clients";
 import { EXTRA_SEAT_PRICE, EXTRA_SEAT_PRICE_YEARLY, PLANS } from "@/lib/plans";
 import { followTeamLink, requirePageUser } from "@/lib/session";
 import { accessOf, clientScopeWhere, effectivePerms } from "@/lib/permissions";
+import { CLIENT_KEEP_DAYS, restorableWhere } from "@/lib/clientRemoval";
 
 export const metadata: Metadata = { title: "Clients" };
 
-export default async function ClientsPage({ searchParams }: { searchParams: Promise<{ ws?: string }> }) {
-  await followTeamLink((await searchParams).ws, "/clients");
+export default async function ClientsPage({ searchParams }: { searchParams: Promise<{ ws?: string; removed?: string }> }) {
+  const { ws, removed } = await searchParams;
+  await followTeamLink(ws, removed ? "/clients?removed=1" : "/clients");
   const me = await requirePageUser("/clients");
   const { user, workspace, role } = me;
   const access = accessOf(me);
   const perms = effectivePerms(access);
   const plan = PLANS[workspace.plan];
   const yearly = workspace.billingInterval === "year";
-  const [clients, seats, members] = await Promise.all([
+  const canManage = role !== "MEMBER";
+  const [clients, seats, members, removedClients] = await Promise.all([
     db.client.findMany({
       where: { ...clientScopeWhere(access), removedAt: null },
       orderBy: { name: "asc" },
@@ -25,6 +28,10 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
     }),
     seatUsage(workspace),
     db.membership.findMany({ where: { workspaceId: workspace.id }, include: { user: true }, orderBy: { id: "asc" } }),
+    // Owners and admins can restore removed clients until they're deleted.
+    canManage
+      ? db.client.findMany({ where: { workspaceId: workspace.id, ...restorableWhere() }, orderBy: { removedAt: "desc" }, select: { id: true, name: true, email: true, removedAt: true, purgeAt: true } })
+      : Promise.resolve([]),
   ]);
 
   return (
@@ -58,6 +65,10 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
             assignedToId: c.assignedToId,
             paused: !!c.pausedAt,
           }))}
+          initialRemoved={removedClients.map((c) => ({ id: c.id, name: c.name, email: c.email, removedAt: c.removedAt!.toISOString(), purgeAt: c.purgeAt?.toISOString() ?? null }))}
+          keepDays={CLIENT_KEEP_DAYS}
+          openRemoved={!!removed}
+          timezone={workspace.timezone}
           initialSeats={seats}
           includedSeats={plan.clientSeats}
           extraSeats={workspace.extraClientSeats}
@@ -66,7 +77,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
           canBuySeats={workspace.plan !== "FREE" && !!workspace.stripeSubscriptionId}
           complimentary={workspace.plan !== "FREE" && !workspace.stripeSubscriptionId}
           isOwner={role === "OWNER"}
-          canManage={role !== "MEMBER"}
+          canManage={canManage}
           canAdd={perms.addClients}
           seesAll={perms.seeAllClients}
           meId={user.id}

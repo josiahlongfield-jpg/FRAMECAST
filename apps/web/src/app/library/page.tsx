@@ -39,7 +39,7 @@ export default async function Library({ searchParams }: { searchParams: Promise<
   const soon = filter === "soon";
   const [videos, soonCount, allowance] = await Promise.all([
     // Copies sent to other clients count their views towards the original.
-    db.video.findMany({ where: soon ? soonWhere : scope, orderBy: soon ? { purgeAt: "asc" } : { createdAt: "desc" }, include: { copies: { select: { viewCount: true } } } }),
+    db.video.findMany({ where: soon ? soonWhere : scope, orderBy: soon ? { purgeAt: "asc" } : { createdAt: "desc" }, include: { copies: { select: { viewCount: true } }, client: { select: { removedAt: true, purgeAt: true } } } }),
     db.video.count({ where: soonWhere }),
     plan.maxVideos !== null ? videosUsed(workspace.id) : null,
   ]);
@@ -59,6 +59,7 @@ export default async function Library({ searchParams }: { searchParams: Promise<
     { href: withParams({ show: team ? showParam(mine) : undefined, filter: "soon" }), label: `Deleting soon${soonCount ? ` (${soonCount})` : ""}`, active: soon },
   ];
   const dates = zoned(workspace.timezone);
+  const now = new Date();
   const views = (v: (typeof videos)[number]) => v.viewCount + v.copies.reduce((n, c) => n + c.viewCount, 0);
   const pill = (active: boolean) => `rounded-md px-3 py-1.5 ${active ? "bg-white font-medium text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`;
 
@@ -163,6 +164,11 @@ export default async function Library({ searchParams }: { searchParams: Promise<
                     {dates.day(v.createdAt)} · {views(v)} {views(v) === 1 ? "view" : "views"}
                   </p>
                   <StorageStatus status={v.status} purgeAt={v.purgeAt?.toISOString() ?? null} cloudBackup={workspace.cloudBackup} />
+                  {v.client?.removedAt && (
+                    <p className="text-xs text-amber-700" data-testid="client-removed-badge">
+                      Client removed{v.client.purgeAt && v.client.purgeAt > now ? ` · conversation deleted ${dates.shortDay(v.client.purgeAt)}` : ""}
+                    </p>
+                  )}
                 </Link>
               </li>
             ))}

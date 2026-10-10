@@ -134,7 +134,7 @@ export async function exportAccount(userId: string) {
       const [clients, videos, items, notices] = await Promise.all([
         db.client.findMany({
           where: clientScopeWhere(access),
-          select: { id: true, name: true, email: true, createdAt: true, removedAt: true, remindersOff: true },
+          select: { id: true, name: true, email: true, createdAt: true, removedAt: true, purgeAt: true, remindersOff: true },
         }),
         db.video.findMany({
           where: { workspaceId: w.id, ...(all ? {} : mineOnly) },

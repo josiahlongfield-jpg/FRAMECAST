@@ -1,5 +1,7 @@
+import { after } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { clientPurgeDate, emailClientRemoved } from "@/lib/clientRemoval";
 import { enforceSeatLimits } from "@/lib/seatLimits";
 import { handle, HttpError, requireRole, requireUser } from "@/lib/session";
 import { rateLimit } from "@/lib/rateLimit";
@@ -34,15 +36,25 @@ export const PATCH = handle(async (req: Request, ctx: { params: Promise<{ id: st
   return Response.json({ ok: true });
 });
 
-/** Remove a client: frees their seat and their link stops working immediately. */
-export const DELETE = handle(async (_req: Request, ctx: { params: Promise<{ id: string }> }) => {
+/**
+ * Remove a client: frees their seat and their link stops working immediately.
+ * Everything about them is kept for 30 days so they can be restored, then
+ * deleted for good (lib/clientRemoval.ts). With ?notify=1 the client is
+ * emailed that their access has ended.
+ */
+export const DELETE = handle(async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
   const { id } = await ctx.params;
   const me = await requireUser();
   requireRole(me, "OWNER", "ADMIN");
   const { workspace } = me;
-  const res = await db.client.updateMany({ where: { id, workspaceId: workspace.id, removedAt: null }, data: { removedAt: new Date() } });
+  const now = new Date();
+  const res = await db.client.updateMany({
+    where: { id, workspaceId: workspace.id, removedAt: null },
+    data: { removedAt: now, purgeAt: clientPurgeDate(now), purgeWarnedAt: null, removedById: me.user.id },
+  });
   if (res.count === 0) throw new HttpError(404, "Client not found");
   // A freed seat restores a paused client.
   await enforceSeatLimits(workspace.id);
+  if (new URL(req.url).searchParams.get("notify") === "1") after(() => emailClientRemoved(id));
   return new Response(null, { status: 204 });
 });

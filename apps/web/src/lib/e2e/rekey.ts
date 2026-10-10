@@ -27,7 +27,7 @@ export async function rekey(oldTeam: CryptoKey, bundle: Bundle) {
       if (!old) return { id: c.id, teamKeyWrap: c.teamKeyWrap };
       oldClient.set(c.id, old);
       if (!c.active) {
-        // Removed clients' links already don't work; keep their key so the team can still read their history.
+        // Removed clients' links already don't work; keep their key so the team can read their history, and restore them, until they're deleted.
         newClient.set(c.id, old);
         return { id: c.id, teamKeyWrap: await wrapKey(old, team) };
       }

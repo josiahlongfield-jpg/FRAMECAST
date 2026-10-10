@@ -46,6 +46,10 @@ type ClientOption = {
   emailsOff?: boolean;
   /** For a copy sent to another client: that client's own conversation. */
   copyId?: string;
+  /** Removed by the business: deleted for good on `until` (null once due or before it's set) unless restored. */
+  removed?: { until: string | null; keepsRecording: boolean };
+  /** Paused because the business's plan covers fewer clients. */
+  paused?: boolean;
 };
 
 /** Members only: what's needed to send this recording to several clients at once. */
@@ -642,6 +646,15 @@ function WatchBody({
           </p>
         )}
 
+        {canEdit && recipient?.removed && (
+          <p data-testid="recipient-removed" className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            {recipient.name} was removed from your clients, so their link no longer opens this.
+            {recipient.removed.until &&
+              (recipient.removed.keepsRecording
+                ? ` Their conversation here will be deleted on ${recipient.removed.until} unless ${recipient.name} is restored on the Clients page. The recording itself stays, as you also sent it to other clients.`
+                : ` This conversation and recording will be deleted on ${recipient.removed.until} unless ${recipient.name} is restored on the Clients page.`)}
+          </p>
+        )}
         {canEdit && sendMany?.sourceId && (
           <p className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
             This is {recipient?.name ?? "a client"}&apos;s own conversation about this recording.{" "}
@@ -674,6 +687,12 @@ function WatchBody({
                 ? "Nobody outside your team can watch this until you send it to a client."
                 : sendError
                   ? sendError
+                : recipient.removed
+                  ? `${recipient.name} was removed from your clients, so only your team can watch this.`
+                : recipient.paused
+                  ? `${recipient.name} is paused because your plan covers fewer clients, so only your team can watch this until they're restored.`
+                : !recipient.link
+                  ? `Only your team and ${recipient.name} can watch this.`
                 : !recipient.hasLink
                   ? <>Only your team and {recipient.name} can watch this. {recipient.name} hasn&apos;t had their personal link yet, so send it to them yourself this first time.{" "}
                       <button type="button" onClick={() => setFirstLink([recipient])} className="font-medium text-brand-700 hover:underline">Why?</button></>

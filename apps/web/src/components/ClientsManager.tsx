@@ -1,14 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { exportKey, fingerprint, generateKey, unwrapKey, wrapKey } from "@/lib/e2e/crypto";
+import { zoned } from "@/lib/dates";
 import TeamKeyGate from "./TeamKeyGate";
 import RemoveExtras from "./RemoveExtras";
 
 type Seats = { used: number; limit: number };
 type Client = { id: string; name: string; email: string | null; link: string; teamKeyWrap: string | null; videoCount: number; assignedToId: string | null; paused?: boolean };
 type Staff = { id: string; name: string };
+/** A removed client the business can still restore. Dates are ISO strings. */
+type Removed = { id: string; name: string; email: string | null; removedAt: string; purgeAt: string | null };
 
 /** US$37.50, US$45 */
 const money = (n: number) => `US$${Number.isInteger(n) ? n : n.toFixed(2)}`;
@@ -51,6 +54,14 @@ type Props = {
   staff: Staff[];
   /** Solo plans: suggest Studio once extra seats would cost about as much. */
   studioHint?: { soloBase: number; studioPrice: number; studioClients: number };
+  /** Owners and admins: removed clients kept until their deletion date. */
+  initialRemoved?: Removed[];
+  /** Days a removed client is kept before being deleted. */
+  keepDays: number;
+  /** Scroll to the removed clients (links in emails). */
+  openRemoved?: boolean;
+  /** The business's time zone, for dates. */
+  timezone: string | null;
 };
 
 export default function ClientsManager({ workspaceId, fingerprint, ...rest }: Props) {
@@ -78,6 +89,10 @@ function Manager({
   meId,
   staff,
   studioHint,
+  initialRemoved = [],
+  keepDays,
+  openRemoved = false,
+  timezone,
 }: Omit<Props, "workspaceId" | "fingerprint"> & { teamKey: CryptoKey }) {
   const [clients, setClients] = useState(initialClients);
   const [seats, setSeats] = useState(initialSeats);
@@ -87,6 +102,22 @@ function Manager({
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState<string>();
   const [buyQty, setBuyQty] = useState(5);
+  const [removed, setRemoved] = useState(initialRemoved);
+  // The client being removed, and the date they'd be kept until.
+  const [confirming, setConfirming] = useState<{ id: string; until: Date } | null>(null);
+  const [tellClient, setTellClient] = useState(true);
+  const [working, setWorking] = useState<string>();
+  const [notice, setNotice] = useState<string>();
+  const [listError, setListError] = useState<string>();
+  const removedSection = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (openRemoved) removedSection.current?.scrollIntoView({ block: "start" });
+  }, [openRemoved]);
+  const dates = zoned(timezone);
+  const first = (name: string) => name.split(" ")[0];
+  // Adding someone who was removed: offer to restore them instead, so their history comes back.
+  const typed = email.trim().toLowerCase();
+  const removedMatch = typed ? removed.find((r) => r.email?.toLowerCase() === typed) : undefined;
   // Staff start on their own clients; owners and admins on everyone.
   const [show, setShow] = useState<"all" | "mine">(canManage ? "all" : "mine");
   const full = seats.used >= seats.limit;
@@ -117,12 +148,55 @@ function Manager({
     setEmail("");
   }
 
+  function askRemove(c: Client) {
+    setConfirming({ id: c.id, until: new Date(Date.now() + keepDays * 86_400_000) });
+    setTellClient(true);
+    setNotice(undefined);
+    setListError(undefined);
+  }
+
   async function remove(c: Client) {
-    if (!confirm(`Remove ${c.name}? Their link will stop working and the seat becomes free.`)) return;
-    const res = await fetch(`/api/clients/${c.id}`, { method: "DELETE" });
-    if (!res.ok) return;
+    setWorking(c.id);
+    setListError(undefined);
+    const res = await fetch(`/api/clients/${c.id}${c.email && tellClient ? "?notify=1" : ""}`, { method: "DELETE" }).catch(() => null);
+    setWorking(undefined);
+    if (!res?.ok) return setListError((await res?.json().catch(() => ({})))?.error ?? "Couldn't remove the client. Check your connection and try again.");
+    const now = new Date();
+    const until = new Date(now.getTime() + keepDays * 86_400_000);
     setClients((list) => list.filter((x) => x.id !== c.id));
     setSeats((s) => ({ ...s, used: s.used - 1 }));
+    setRemoved((list) => [{ id: c.id, name: c.name, email: c.email, removedAt: now.toISOString(), purgeAt: until.toISOString() }, ...list]);
+    setConfirming(null);
+    setNotice(`${c.name} removed. You can restore them until ${dates.longDay(until)}.`);
+  }
+
+  async function restore(r: Removed) {
+    setWorking(r.id);
+    setNotice(undefined);
+    setListError(undefined);
+    const res = await fetch(`/api/clients/${r.id}/restore`, { method: "POST" }).catch(() => null);
+    const data = (await res?.json().catch(() => null)) ?? {};
+    setWorking(undefined);
+    if (!res?.ok) {
+      // Already deleted, or already restored elsewhere.
+      if (res?.status === 404 || res?.status === 409) setRemoved((list) => list.filter((x) => x.id !== r.id));
+      return setListError(data.error ?? "Couldn't restore the client. Check your connection and try again.");
+    }
+    setRemoved((list) => list.filter((x) => x.id !== r.id));
+    setClients((list) => [...list.filter((x) => x.id !== r.id), data.client].sort((a, b) => a.name.localeCompare(b.name)));
+    setSeats(data.seats);
+    // Restored from the add form's hint: they're not being added again.
+    if (removedMatch?.id === r.id) {
+      setName("");
+      setEmail("");
+    }
+    setNotice(
+      !data.newLink
+        ? `${r.name} is back, and their personal link works again.`
+        : data.emailed
+          ? `${r.name} is back. Your team's keys were reset while they were removed, so they have a new personal link, which we've emailed to them.`
+          : `${r.name} is back. Your team's keys were reset while they were removed, so they have a new personal link. Copy it below and send it to them.`,
+    );
   }
 
   async function assign(c: Client, assignedToId: string | null) {
@@ -222,6 +296,14 @@ function Manager({
             Add client
           </button>
         </form>
+        {removedMatch && (
+          <p className="mt-2 text-sm text-slate-600" data-testid="removed-match">
+            {removedMatch.name} was removed on {dates.day(new Date(removedMatch.removedAt))}. Restore them instead to keep their history.{" "}
+            <button type="button" onClick={() => restore(removedMatch)} disabled={full || working === removedMatch.id} className="font-medium text-brand-700 hover:underline disabled:opacity-50">
+              Restore {first(removedMatch.name)}
+            </button>
+          </p>
+        )}
         {full && (
           <p className="mt-2 text-sm text-amber-700" data-testid="seats-full">
             All {seats.limit} client seats are in use.{" "}
@@ -234,6 +316,12 @@ function Manager({
         )}
         {error && <p role="alert" className="mt-2 text-sm text-red-700">{error}</p>}
       </section>
+      )}
+
+      {(notice || listError) && (
+        <p role={listError ? "alert" : "status"} data-testid="clients-notice" className={`rounded-xl border p-3 text-sm ${listError ? "border-red-200 bg-red-50 text-red-800" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}>
+          {listError ?? notice}
+        </p>
       )}
 
       <section className="rounded-2xl border border-slate-200 bg-white">
@@ -276,13 +364,70 @@ function Manager({
                   <button onClick={() => copy(c)} className="rounded-lg border border-slate-300 px-3 py-1.5 hover:bg-slate-50">
                     {copied === c.id ? "Copied" : "Copy personal link"}
                   </button>
-                  {canManage && <button onClick={() => remove(c)} className="rounded-lg px-3 py-1.5 text-slate-500 hover:bg-slate-50 hover:text-red-700">Remove</button>}
+                  {canManage && <button onClick={() => askRemove(c)} className="rounded-lg px-3 py-1.5 text-slate-500 hover:bg-slate-50 hover:text-red-700">Remove</button>}
                 </div>
+                {confirming?.id === c.id && (
+                  <div data-testid="remove-client-confirm" className="w-full rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-slate-700">
+                    <p className="font-medium text-slate-900">Remove {c.name}? Their personal link stops working now and their seat is freed.</p>
+                    <p className="mt-2">
+                      Their videos, conversations, to-dos and notes are kept until {dates.longDay(confirming.until)}, so you can restore them from Removed clients on this page.
+                    </p>
+                    <p className="mt-2">
+                      After that they&apos;re deleted for good, including your team&apos;s replies to them, even with cloud backup on. Recordings you also sent to other clients stay with those clients.
+                    </p>
+                    {c.email && (
+                      <label className="mt-3 flex items-center gap-2">
+                        <input type="checkbox" checked={tellClient} onChange={(e) => setTellClient(e.target.checked)} data-testid="remove-client-email" />
+                        Email {first(c.name)} that their access has ended
+                      </label>
+                    )}
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button onClick={() => remove(c)} disabled={working === c.id} className="rounded-lg bg-red-600 px-3 py-1.5 font-semibold text-white hover:bg-red-700 disabled:opacity-60">
+                        Remove {first(c.name)}
+                      </button>
+                      <button onClick={() => setConfirming(null)} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 hover:bg-slate-50">Cancel</button>
+                    </div>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
         )}
       </section>
+
+      {canManage && removed.length > 0 && (
+        <section ref={removedSection} data-testid="removed-clients" className="scroll-mt-6 rounded-2xl border border-slate-200 bg-white">
+          <div className="px-6 pt-5">
+            <h2 className="font-semibold text-slate-900">Removed clients</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Their links don&apos;t work and they don&apos;t use a seat. They&apos;re kept until the date shown, then deleted for good with their videos, conversations, to-dos and notes. Restoring uses a client seat.
+            </p>
+          </div>
+          <ul className="mt-3 divide-y divide-slate-100">
+            {removed.map((r) => (
+              <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 px-6 py-4">
+                <div>
+                  <p className="font-medium text-slate-900">{r.name}</p>
+                  <p className="text-xs text-slate-500">
+                    {r.email ? `${r.email} · ` : ""}Removed {dates.day(new Date(r.removedAt))}
+                    {r.purgeAt && ` · deleted for good after ${dates.dayTime(new Date(r.purgeAt))} ${dates.zoneName(new Date(r.purgeAt))}`}
+                  </p>
+                </div>
+                <button
+                  onClick={() => restore(r)}
+                  disabled={full || working === r.id}
+                  title={full ? "Free a seat or add seats to restore" : undefined}
+                  data-testid="restore-client"
+                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-50"
+                >
+                  {working === r.id ? "Restoring…" : "Restore"}
+                </button>
+              </li>
+            ))}
+          </ul>
+          {full && <p className="px-6 pb-4 text-xs text-amber-700">All client seats are in use. Free a seat or add seats to restore someone.</p>}
+        </section>
+      )}
     </div>
   );
 }

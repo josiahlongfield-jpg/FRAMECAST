@@ -11,16 +11,26 @@ import ClientPlanner from "@/components/ClientPlanner";
 import { db } from "@/lib/db";
 import { unsubscribeUrl } from "@/lib/reminders";
 import { zoned } from "@/lib/dates";
+import { REMOVED_COOKIE } from "@/lib/access";
 
 export const metadata: Metadata = { title: "Your videos" };
 
 /** A client's view: every video their coach (or coaches) sent them. */
-export default async function Inbox({ searchParams }: { searchParams: Promise<{ invalid?: string; paused?: string; c?: string }> }) {
-  const { invalid, paused, c: arrivedAs } = await searchParams;
-  const tokens = (await cookies())
+export default async function Inbox({ searchParams }: { searchParams: Promise<{ invalid?: string; paused?: string; removed?: string; c?: string }> }) {
+  const { invalid, paused, removed, c: arrivedAs } = await searchParams;
+  const jar = await cookies();
+  const tokens = jar
     .getAll()
     .filter((c) => c.name.startsWith("fc_client_"))
     .map((c) => c.value);
+  // Businesses that ended this person's access: from an old link just opened here (it sets no client cookie), or links this device already had.
+  const justOpened = jar.get(REMOVED_COOKIE)?.value;
+  const removedTokens = justOpened ? [...tokens, justOpened] : tokens;
+  const now = new Date();
+  const removedBy = removedTokens.length
+    ? await db.client.findMany({ where: { token: { in: removedTokens }, removedAt: { not: null } }, select: { purgeAt: true, workspace: { select: { name: true, timezone: true } } } })
+    : [];
+  const ended = [...new Map(removedBy.map((r) => [r.workspace.name, r])).values()];
   const [clients, pausedBy] = tokens.length
     ? await Promise.all([
         db.client.findMany({
@@ -52,6 +62,19 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
             That link is no longer active. Ask the person who sent it for a new one.
           </p>
         )}
+        {ended.map((r) => (
+          <p key={r.workspace.name} className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800" data-testid="client-removed">
+            {r.workspace.name} has ended your access to your videos from them. If that&rsquo;s a mistake, contact them.
+            {r.purgeAt && r.purgeAt > now && (
+              <> They can restore it until {zoned(r.workspace.timezone).longDay(r.purgeAt)}, after which your videos, messages and shared to-dos with them are deleted.</>
+            )}
+          </p>
+        ))}
+        {removed && ended.length === 0 && (
+          <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800" data-testid="client-removed">
+            The business that sent you this link has ended your access, so it no longer opens your videos. If that&rsquo;s a mistake, contact them.
+          </p>
+        )}
         {(paused || pausedNames.length > 0) && (
           <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800" data-testid="client-paused">
             Your access {pausedNames.length > 0 ? <>to videos from {pausedNames.join(", ")} </> : ""}is paused because{" "}
@@ -60,7 +83,7 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
           </p>
         )}
         {clients.length === 0 ? (
-          pausedNames.length > 0 ? null : 
+          pausedNames.length > 0 || removed || ended.length > 0 ? null : 
           <p className="mt-6 text-slate-600">Open the personal link you were sent to see your videos here.</p>
         ) : (
           clients.map((c) => (

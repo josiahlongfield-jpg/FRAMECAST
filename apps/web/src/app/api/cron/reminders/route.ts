@@ -3,10 +3,11 @@ import { purgeExpired } from "@/lib/retention";
 import { flushTeamNotifications } from "@/lib/teamNotify";
 import { cronAuthorized } from "@/lib/secrets";
 import { warnExpiring } from "@/lib/expiryWarning";
+import { purgeRemovedClients, warnClientPurge } from "@/lib/clientRemoval";
 
 export const maxDuration = 300;
 
-const JOBS = ["reminders", "digests", "expiryWarnings", "purged"] as const;
+const JOBS = ["reminders", "digests", "expiryWarnings", "purged", "clientWarnings", "clientsPurged"] as const;
 
 /** Run every few minutes (e.g. Vercel Cron) with Authorization: Bearer $CRON_SECRET. */
 export async function GET(req: Request) {
@@ -20,6 +21,9 @@ export async function GET(req: Request) {
     warnExpiring(),
     // Copies are deleted close to the time shown, not just once a day.
     purgeExpired(new Date(), 20_000),
+    // Removed clients: the business hears ~3 days ahead, and they're deleted close to the date shown.
+    warnClientPurge(),
+    purgeRemovedClients(new Date(), 20_000),
   ]);
   const out: Record<string, unknown> = {};
   results.forEach((r, i) => {
@@ -30,5 +34,5 @@ export async function GET(req: Request) {
     }
   });
   const reminders = out.reminders;
-  return Response.json({ ...(typeof reminders === "object" && reminders ? reminders : { reminders }), digests: out.digests, expiryWarnings: out.expiryWarnings, purged: out.purged });
+  return Response.json({ ...(typeof reminders === "object" && reminders ? reminders : { reminders }), digests: out.digests, expiryWarnings: out.expiryWarnings, purged: out.purged, clientWarnings: out.clientWarnings, clientsPurged: out.clientsPurged });
 }

@@ -6,6 +6,8 @@ import { accessOf, canSeeClient, canSeeVideo, type Access } from "@/lib/permissi
 
 /** Cookie a client's personal link sets, one per workspace they belong to. */
 export const clientCookie = (workspaceId: string) => `fc_client_${workspaceId}`;
+/** Set briefly when a removed client opens their old link, so their inbox can say who ended it (never grants access). */
+export const REMOVED_COOKIE = "fc_removed";
 
 export type Viewer =
   | { kind: "member"; userId: string; name: string; access: Access }

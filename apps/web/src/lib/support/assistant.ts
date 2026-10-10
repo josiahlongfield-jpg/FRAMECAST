@@ -6,6 +6,7 @@ import { summaryUsage } from "@/lib/ai/summary";
 import { zoned } from "@/lib/dates";
 import { PLANS, replyMaxMinutes, staffSeatLimit } from "@/lib/plans";
 import { videosUsed } from "@/lib/videoAllowance";
+import { restorableWhere } from "@/lib/clientRemoval";
 import { SUPPORT_GUIDE } from "@/lib/support/knowledge";
 import { handToHuman } from "@/lib/support/tickets";
 
@@ -40,7 +41,7 @@ ${SUPPORT_GUIDE}
 const ACCOUNT_TOOL: Anthropic.Beta.BetaTool = {
   name: "account_overview",
   description:
-    "The signed-in customer's own workspace: plan, billing status and renewal date, clients and staff used against the plan's limits, free videos used (a lifetime total, not per month), cloud backup, AI transcripts and summaries, and their role. Use it for questions about their plan, limits, billing state or why something is blocked. Contains no video, reply or to-do content.",
+    "The signed-in customer's own workspace: plan, billing status and renewal date, clients and staff used against the plan's limits, free videos used (a lifetime total, not per month), removed clients waiting to be deleted (owners and admins), cloud backup, AI transcripts and summaries, and their role. Use it for questions about their plan, limits, billing state or why something is blocked. Contains no video, reply or to-do content.",
   input_schema: { type: "object", properties: {}, additionalProperties: false },
   strict: true,
 };
@@ -88,6 +89,11 @@ async function accountOverview(ticket: SupportTicket) {
   }
   const p = PLANS[workspace.plan];
   const day = zoned(workspace.timezone).longDay;
+  // Only owners and admins see and restore removed clients.
+  const removed =
+    membership.role === "MEMBER"
+      ? null
+      : await db.client.aggregate({ where: { workspaceId: workspace.id, ...restorableWhere() }, _count: { _all: true }, _min: { purgeAt: true } });
   const ai = workspace.aiAssist && workspace.plan !== "FREE";
   const overview = {
     signedIn: true,
@@ -96,6 +102,10 @@ async function accountOverview(ticket: SupportTicket) {
     plan: p.name,
     clients: { used: clients, limit: p.clientSeats + workspace.extraClientSeats, paused: pausedClients },
     staffLogins: { used: staff, limit: staffSeatLimit(workspace), paused: pausedStaff },
+    // Removed clients can be restored (Clients > Removed clients, uses a seat) until they're deleted.
+    ...(removed?._count._all
+      ? { removedClients: { waitingToBeDeleted: removed._count._all, nextDeletionOn: removed._min.purgeAt ? day(removed._min.purgeAt) : null } }
+      : {}),
     // Free's limit is for the life of the workspace: every finished recording counts, on any plan, deleted ones too.
     videos:
       p.maxVideos === null
