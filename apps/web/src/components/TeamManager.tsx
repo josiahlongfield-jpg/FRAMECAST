@@ -262,7 +262,7 @@ function Manager({ teamKey, workspaceId, keyResetNeeded, role, meId, initialSeat
                   <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">{ROLE_LABEL[m.role]}</span>
                 )}
                 {m.role !== "OWNER" && canManage && m.userId !== meId && (
-                  <button onClick={() => remove(m)} disabled={!!removing} className="rounded-lg px-3 py-1.5 text-slate-500 hover:bg-slate-50 hover:text-red-700 disabled:opacity-50">
+                  <button onClick={() => remove(m)} disabled={!!removing} data-testid="remove-member" className="rounded-lg px-3 py-1.5 text-slate-500 hover:bg-slate-50 hover:text-red-700 disabled:opacity-50">
                     {removing === m.userId ? "Resetting keys…" : "Remove"}
                   </button>
                 )}

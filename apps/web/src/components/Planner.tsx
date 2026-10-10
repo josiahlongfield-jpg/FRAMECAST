@@ -229,13 +229,14 @@ export default function Planner({
                 <RepeatIcon /> {repeatLabel(i.repeat)}
               </span>
             )}
-            {i.dueAt && !i.done && i.reminders.length > 0 && (i.remindClient || i.remindTeam) && (
+            {i.dueAt && !i.done && i.reminders.length > 0 && ((i.remindClient && !client?.remindersOff) || i.remindTeam) && (
               <span className="inline-flex items-center gap-1" title="Email reminders">
                 <BellIcon /> {sortRules(i.reminders).map(ruleLabel).join(", ")}
                 {role === "member" && (
                   <span className="text-slate-400">
                     {" "}
-                    · {[i.remindClient && first, i.remindTeam && teamWho.tag].filter(Boolean).join(" and ")}
+                    {/* A client who turned emails off isn't sent one, though the to-do keeps asking for when they turn them back on. */}
+                    · {[i.remindClient && !client?.remindersOff && first, i.remindTeam && teamWho.tag].filter(Boolean).join(" and ")}
                   </span>
                 )}
               </span>

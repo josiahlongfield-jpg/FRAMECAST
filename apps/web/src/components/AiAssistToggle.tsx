@@ -51,7 +51,7 @@ export default function AiAssistToggle({ enabled, canEnable, priceLabel, usage, 
             <li>• Automatic transcripts and AI summaries can contain mistakes.</li>
           </ul>
           <p className="mt-3 text-xs text-slate-500">
-            {!canEnable && !on ? "Available with a paid subscription (not on Free)." : priceLabel ? `${priceLabel}, optional.` : "Included free with your plan."}
+            {!canEnable && !on ? "Available with a paid subscription (not on Free)." : priceLabel ? `${priceLabel}, plus any tax. Optional.` : "Included free with your plan."}
             {usage && ` ${usage.used} of ${usage.limit} summaries used this month.`}
           </p>
           {!modelReady && (on || canEnable) && (

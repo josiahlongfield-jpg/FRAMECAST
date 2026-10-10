@@ -1,4 +1,5 @@
 import type Stripe from "stripe";
+import { intervalOf } from "@/lib/billing";
 import { db, type Workspace } from "@/lib/db";
 import { tellOwnerBackupEnded } from "@/lib/backupEnded";
 import { applyBackupSetting } from "@/lib/retention";
@@ -76,4 +77,40 @@ export async function currentCustomer(workspace: Workspace): Promise<string | nu
   if (workspace.stripeSubscriptionId) await forgetSubscription(workspace, { customer: true });
   else await db.workspace.update({ where: { id: workspace.id }, data: { stripeCustomerId: null } });
   return null;
+}
+
+/**
+ * Daily: subscriptions nobody has opened Billing for are checked too, so one
+ * Stripe no longer has (from test mode, or deleted there) stops giving paid
+ * features, and workspaces from before the billing interval was stored get it.
+ * Visited in a random order within a time budget, so a long list is covered
+ * over a few days.
+ */
+export async function reconcileSubscriptions(budgetMs = 120_000) {
+  if (!process.env.STRIPE_SECRET_KEY) return { checked: 0, forgotten: 0 };
+  const deadline = Date.now() + budgetMs;
+  const ids = (await db.workspace.findMany({ where: { stripeSubscriptionId: { not: null } }, select: { id: true } })).map((w) => w.id);
+  for (let i = ids.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+  }
+  let checked = 0;
+  let forgotten = 0;
+  for (const id of ids) {
+    if (Date.now() > deadline) break;
+    const w = await db.workspace.findUnique({ where: { id } });
+    if (!w?.stripeSubscriptionId) continue;
+    try {
+      const sub = await currentSubscription(w);
+      checked++;
+      if (!sub) forgotten++;
+      else if (w.billingInterval !== intervalOf(sub)) await db.workspace.update({ where: { id }, data: { billingInterval: intervalOf(sub) } });
+    } catch (err) {
+      console.error(JSON.stringify({ level: "error", message: "[billing] subscription check failed", workspace: id, error: String(err) }));
+      // Stripe can't be reached: try again tomorrow rather than failing every one.
+      if ((err as { type?: string })?.type === "StripeConnectionError") break;
+    }
+  }
+  console.log("[billing] subscriptions checked", JSON.stringify({ checked, forgotten, total: ids.length }));
+  return { checked, forgotten };
 }

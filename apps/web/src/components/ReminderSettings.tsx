@@ -111,7 +111,7 @@ export default function ReminderSettings({ initial }: { initial: Settings }) {
             </label>
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={s.remindTeamDefault} onChange={(e) => set({ remindTeamDefault: e.target.checked })} className="accent-brand-600" />
-              Email me too
+              Email whoever looks after the client too
             </label>
           </div>
         </section>

@@ -18,7 +18,11 @@ type Preview = {
   cancelling?: boolean;
 };
 
-const money = (cents: number, currency: string) => new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase() }).format(cents / 100);
+const money = (cents: number, currency: string) => {
+  const amount = new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase() }).format(cents / 100);
+  // "US$" like every other price on the site, not a bare "$".
+  return currency.toUpperCase() === "USD" ? amount.replace("$", "US$") : amount;
+};
 
 export default function UpgradeButton({ plan, interval = "month", featured = false }: { plan: PaidPlan; interval?: Interval; featured?: boolean }) {
   const [busy, setBusy] = useState(false);

@@ -16,7 +16,9 @@ const Body = z.object({ token: z.string().min(20).max(100) });
 export const POST = handle(async (req: Request) => {
   await limitByIp("join", 30, 3600);
   const userId = (await auth())?.user?.id;
-  if (!userId) throw new HttpError(401, "Sign in required");
+  // A browser still holding a sign-in for an account deleted elsewhere.
+  const me = userId ? await db.user.findUnique({ where: { id: userId }, select: { email: true } }) : null;
+  if (!userId || !me) throw new HttpError(401, "Sign in required");
   const body = Body.safeParse(await req.json());
   if (!body.success) throw new HttpError(400, "This invite link is incomplete");
   const invite = await db.invite.findUnique({ where: { tokenHash: hashToken(body.data.token) }, include: { workspace: true } });
@@ -24,8 +26,7 @@ export const POST = handle(async (req: Request) => {
 
   // An invite made out to an address only works for that address.
   if (invite.email) {
-    const me = await db.user.findUnique({ where: { id: userId }, select: { email: true } });
-    if (me?.email?.toLowerCase() !== invite.email.toLowerCase()) {
+    if (me.email?.toLowerCase() !== invite.email.toLowerCase()) {
       throw new HttpError(403, `This invite is for ${invite.email}. Sign in with that address to accept it.`);
     }
   }
