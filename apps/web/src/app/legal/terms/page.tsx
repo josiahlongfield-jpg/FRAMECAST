@@ -10,7 +10,7 @@ export default function Page() {
   return (
     <LegalPage title="Terms of Service">
       <p>
-        {operatorLine()} (&ldquo;we&rdquo;, &ldquo;us&rdquo;). These terms apply when you use {LEGAL.product} at {LEGAL.website} or in our apps. By creating an account
+        {operatorLine()} (&ldquo;we&rdquo;, &ldquo;us&rdquo;). These terms apply when you use {LEGAL.product} at {LEGAL.website} (and in any apps we release). By creating an account
         or using the service, you agree to them.
       </p>
 
@@ -71,10 +71,17 @@ export default function Page() {
           Paid plans are subscriptions billed in advance, monthly or yearly, in US dollars, and renew automatically until cancelled. Prices are on our{" "}
           <Link href="/pricing">pricing page</Link>.
         </li>
-        <li>Payments are processed by Stripe, which may appear on your statement as the seller. Taxes are added where they apply.</li>
+        <li>
+          Purchases are sold through Link, Stripe&rsquo;s merchant-of-record service. Link charges you, adds any tax that applies where you are, sends your receipts
+          and handles payment questions. Your statement shows LINK.COM* SUREFRAME.APP.
+        </li>
         <li>
           When you change plans, we show you the cost before you confirm. Your new plan starts straight away, you&rsquo;re credited for unused time on your old plan,
           and your billing date moves to the day of the change.
+        </li>
+        <li>
+          Extra clients, extra staff logins and add-ons (such as cloud backup or AI summaries) are charged when you add them, for the rest of the current billing
+          period, then renew with your plan. Removing one credits the unused time against your next bill.
         </li>
         <li>
           You can cancel any time in Settings &gt; Billing. Your plan stays active until the end of the period you&rsquo;ve paid for, then your workspace moves to the
@@ -84,14 +91,16 @@ export default function Page() {
           Each plan covers a set number of clients and staff logins. To move to a smaller plan or fewer seats, first remove the clients or staff it doesn&rsquo;t
           cover. If your plan drops for another reason (you cancel, a payment fails and isn&rsquo;t fixed, or a free plan we gave you ends), the clients and staff
           beyond the new plan&rsquo;s limits are paused: they can&rsquo;t open anything or be sent anything until you upgrade or remove others. The owner and the
-          longest-standing clients and staff keep access, and nothing is deleted because of a pause.
+          longest-standing clients keep access, as do admins and then the longest-standing staff. A pause doesn&rsquo;t delete anything, though recordings still
+          expire on the usual schedule.
         </li>
         <li>
           We email the workspace owner when anyone is paused. It&rsquo;s your responsibility to tell your staff and clients about any change to your plan that
           affects them.
         </li>
         <li>
-          Payments aren&rsquo;t refundable for partial periods, except where the law requires a refund. If you think you&rsquo;ve been charged in error, email {mail}.
+          Apart from the credits described above, payments aren&rsquo;t refundable for partial periods, except where the law requires a refund (including under the Australian Consumer Law), or where Link
+          gives one under its own terms. If you think you&rsquo;ve been charged in error, email {mail}.
         </li>
         <li>We may change our prices. We&rsquo;ll give you at least 30 days&rsquo; notice by email, and the new price applies from your next renewal.</li>
         <li>If a payment fails, we may limit paid features until it&rsquo;s resolved.</li>
@@ -106,7 +115,8 @@ export default function Page() {
       <h2>7. Storage and lost recordings</h2>
       <p>
         Without cloud backup, the encrypted copy of a video on our servers is deleted {LEGAL.retentionDays} days after it&rsquo;s recorded, and after that it can&rsquo;t
-        be watched from its link. A recording stays on the device it was made on only until its upload finishes. To keep your own copy, open the video and choose Save
+        be watched from its link. Video and voice replies follow the same rule; text replies, to-dos and notes are kept until they&rsquo;re deleted. A recording
+        stays on the device it was made on only until its upload finishes. To keep your own copy, open the video and choose Save
         to device. With cloud backup, content is kept until you delete it or close your account. If cloud backup ends (you switch it off, cancel, or your paid plan
         ends), our copies are deleted {LEGAL.retentionDays} days later. Please keep your own copies of anything important.
       </p>
@@ -153,8 +163,9 @@ export default function Page() {
         <li>Staff logins are for one person each. Don&rsquo;t share a login between people.</li>
         <li>We may delete Free workspaces that haven&rsquo;t been used for 12 months, after emailing you at least 30 days beforehand.</li>
         <li>
-          If you dispute a valid charge with your bank instead of contacting us, or a payment turns out to be fraudulent, we may suspend your account until it&rsquo;s
-          resolved.
+          If a payment is disputed, your subscription stops renewing (it stays active until the end of the period already paid for) while we look into it. If
+          you dispute a valid charge with your bank instead of contacting us, or a payment turns out to be fraudulent, we may also suspend your account until
+          it&rsquo;s resolved.
         </li>
       </ul>
 
@@ -176,15 +187,15 @@ export default function Page() {
         Our help chat is answered first by an AI assistant, which can make mistakes. It gives general help with using {LEGAL.product} only and isn&rsquo;t legal,
         financial or other professional advice. A person from our team will step in when needed.
       </p>
-      <p>
-        {LEGAL.product} relies on third-party services such as hosting, payments and email. We&rsquo;re not responsible for their own terms or for outages on their side,
-        though we&rsquo;ll do what we reasonably can to keep you working.
-      </p>
 
       <h2>14. Availability and changes</h2>
       <p>
         We work hard to keep {LEGAL.product} running and your recordings safe, but we can&rsquo;t promise the service will always be available or error-free. We may
         improve, change or remove features over time, and we&rsquo;ll tell you in advance about changes that significantly affect you.
+      </p>
+      <p>
+        {LEGAL.product} relies on third-party services such as hosting, payments and email. We&rsquo;re not responsible for their own terms or for outages on their side,
+        though we&rsquo;ll do what we reasonably can to keep you working.
       </p>
 
       <h2>15. Australian Consumer Law</h2>
@@ -197,7 +208,7 @@ export default function Page() {
       <h2>16. Limit of liability</h2>
       <p>
         To the extent the law allows, we&rsquo;re not liable for indirect or consequential loss, such as lost profits, revenue or data. Our total liability for any
-        claim relating to {LEGAL.product} is limited to the greater of the amount you paid us in the 12 months before the claim arose and US$50.
+        claim relating to {LEGAL.product} is limited to the greater of the amount paid for {LEGAL.product} in the 12 months before the claim arose and US$50.
       </p>
       <p>
         We&rsquo;re not responsible for delays or failures caused by events outside our reasonable control, such as outages at our providers, internet failures,
@@ -207,7 +218,7 @@ export default function Page() {
       <h2>17. Closing your account</h2>
       <p>
         You can delete your account at any time in Settings &gt; Account. Deleting it cancels your subscription and permanently removes your workspace and content, so
-        export anything you want to keep first. We may close accounts that seriously or repeatedly break these terms.
+        save anything you want to keep first: save videos from each video&rsquo;s page (text in the data export stays encrypted). We may close accounts that seriously or repeatedly break these terms.
       </p>
 
       <h2>18. Changes to these terms</h2>
@@ -241,7 +252,7 @@ export default function Page() {
 
       <h2>22. AI transcripts and summaries</h2>
       <p>
-        AI transcripts and summaries is an optional paid add-on, off unless the workspace owner switches it on. These points apply to it, on top of the rest of
+        AI transcripts and summaries is an optional paid add-on, off unless the workspace owner switches it on (or asks us to). These points apply to it, on top of the rest of
         these terms:
       </p>
       <ul>

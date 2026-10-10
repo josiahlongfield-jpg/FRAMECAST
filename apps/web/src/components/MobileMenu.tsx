@@ -25,7 +25,7 @@ export default function MobileMenu({ links, plan, email, signOut }: { links: rea
   }, [open]);
 
   return (
-    <div ref={box} className="lg:hidden">
+    <div ref={box} className="xl:hidden">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -45,7 +45,8 @@ export default function MobileMenu({ links, plan, email, signOut }: { links: rea
       </button>
       {open && (
         <div id="app-menu" className="absolute inset-x-0 top-16 z-40 border-b border-slate-200 bg-white shadow-lg" data-testid="app-menu">
-          <nav className="mx-auto flex max-w-6xl flex-col px-2 py-2 text-base sm:px-4">
+          {/* Any link closes the menu, the current page's too (that one doesn't change the path). */}
+          <nav onClick={(e) => (e.target as HTMLElement).closest("a") && setOpen(false)} className="mx-auto flex max-w-6xl flex-col px-2 py-2 text-base sm:px-4">
             <NavLinks links={links} className="rounded-lg px-3 py-2.5 hover:bg-slate-50" />
           </nav>
           <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 border-t border-slate-100 px-5 py-3 text-sm sm:px-7">

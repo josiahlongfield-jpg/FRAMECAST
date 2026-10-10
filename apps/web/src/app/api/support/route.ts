@@ -1,9 +1,13 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { LEGAL } from "@/lib/legal";
 import { handle, HttpError, currentUser } from "@/lib/session";
 import { clientIp, limitByIp, rateLimit } from "@/lib/rateLimit";
 import { answer, assistantEnabled } from "@/lib/support/assistant";
 import { handToHuman, newAccessToken, publicTicket } from "@/lib/support/tickets";
+
+// The assistant can take a few turns; leave room to hand over if it's slow.
+export const maxDuration = 120;
 
 const MAX_MESSAGES = 60;
 const Body = z.object({
@@ -18,12 +22,17 @@ async function load(token: string) {
   return ticket;
 }
 
+/** A signed-in customer's conversation is theirs alone, even on a shared computer after they've been signed out. */
+const ownedBySomeoneElse = (ticket: { userId: string | null }, me: { user: { id: string } } | null) => !!ticket.userId && ticket.userId !== me?.user.id;
+
 /** The conversation for the token the browser holds (checked for a person's reply). */
 export const GET = handle(async (req: Request) => {
   await limitByIp("support-read", 120, 600);
   const token = req.headers.get("x-support-token");
   if (!token) throw new HttpError(400, "Missing conversation");
-  return Response.json(publicTicket(await load(token)));
+  const ticket = await load(token);
+  if (ownedBySomeoneElse(ticket, await currentUser().catch(() => null))) throw new HttpError(403, "Sign in to see this conversation");
+  return Response.json(publicTicket(ticket));
 });
 
 /**
@@ -39,11 +48,12 @@ export const POST = handle(async (req: Request) => {
   const me = await currentUser().catch(() => null);
   // Daily allowances, so one person (signed in or not) can't run up AI costs or flood the inbox.
   await dailyAllowance(me ? `support-day:user:${me.user.id}` : `support-day:ip:${await clientIp()}`, me ? 80 : 25);
-  if (!token) await limitByIp("support-new", 15, 86400).catch(() => { throw new HttpError(429, TODAY_LIMIT); });
 
-  // A token for a conversation that's since been deleted just starts a new one.
+  // A token for a conversation that's since been deleted, or that belongs to someone else's account, starts a new one.
   let ticket = token ? await load(token).catch(() => null) : null;
+  if (ticket && ownedBySomeoneElse(ticket, me)) ticket = null;
   if (!ticket) {
+    await limitByIp("support-new", 15, 86400).catch(() => { throw new HttpError(429, TODAY_LIMIT); });
     ticket = await db.supportTicket.create({
       data: { accessToken: newAccessToken(), userId: me?.user.id, workspaceId: me?.workspace.id, email: me ? null : email },
       include: { messages: true },
@@ -71,7 +81,9 @@ export const POST = handle(async (req: Request) => {
     } catch (e) {
       const err = e as { status?: number; message?: string; error?: unknown };
       console.error("[support] assistant failed", JSON.stringify({ ticket: ticket.id, status: err.status, message: err.message?.slice(0, 500), error: err.error }));
-      await handToHuman(ticket.id, waiting ? null : "The assistant had a technical problem answering. Please reply to the customer.", ticket.urgent);
+      // If the assistant had already handed over before failing, keep its summary.
+      const now = await db.supportTicket.findUnique({ where: { id: ticket.id }, select: { status: true } });
+      await handToHuman(ticket.id, waiting || now?.status === "NEEDS_HUMAN" ? null : "The assistant had a technical problem answering. Please reply to the customer.", ticket.urgent);
       await say("Sorry, I hit a problem answering that. I've passed your message to the team, and a person will reply.");
     }
   } else {
@@ -85,5 +97,5 @@ export const POST = handle(async (req: Request) => {
 /** A ceiling on assistant answers per day across everyone, so a flood of new chats can't run up the AI bill. */
 const underDailyAiCap = () => rateLimit("support-ai:global", Number(process.env.SUPPORT_AI_DAILY_CAP ?? 2000), 86400).then(() => true, () => false);
 
-const TODAY_LIMIT = `You've reached today's limit for the help chat. Please email ${process.env.SUPPORT_EMAIL ?? "us"} and a person will get back to you.`;
+const TODAY_LIMIT = `You've reached today's limit for the help chat. Please email ${LEGAL.email} and a person will get back to you.`;
 const dailyAllowance = (key: string, limit: number) => rateLimit(key, limit, 86400).catch(() => { throw new HttpError(429, TODAY_LIMIT); });

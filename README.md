@@ -21,7 +21,7 @@ npx prisma migrate dev
 npm run dev                          # http://localhost:3000
 ```
 
-With no S3 or Mux keys, uploads are stored on local disk and played back directly. That is enough to demo the full record → share flow.
+With no S3 keys, uploads are stored on local disk and played back directly. That is enough to demo the full record → share flow.
 
 ## Run the mobile app
 
@@ -64,22 +64,23 @@ node e2e/signin.mjs
 ## Going to production
 
 - Host `apps/web` on Vercel; Postgres on Neon or Supabase; storage on Cloudflare R2 (set `S3_*`).
-- Create a Mux account and point its webhook at `/api/webhooks/mux`.
-- Stripe: set `STRIPE_SECRET_KEY`. Products and prices (Solo, Studio, Agency, extra client, cloud backup, each monthly and yearly) are created on first use by lookup key (`src/lib/billing.ts`), with the SaaS business-use tax code, so there are no price ids to copy. Checkout uses Managed Payments (Stripe is merchant of record and handles tax, fraud and disputes); accept its terms under Settings → Managed Payments, or set `STRIPE_MANAGED_PAYMENTS=off` for plain Checkout with Stripe Tax. Add a webhook endpoint `https://<domain>/api/webhooks/stripe` for `customer.subscription.created`, `.updated` and `.deleted`, and put its signing secret in `STRIPE_WEBHOOK_SECRET`.
+- Stripe: set `STRIPE_SECRET_KEY`. Products and prices (Solo, Studio, Agency, extra client, cloud backup, each monthly and yearly) are created on first use by lookup key (`src/lib/billing.ts`), with the SaaS business-use tax code, so there are no price ids to copy. Checkout uses Managed Payments (Stripe is merchant of record and handles tax, fraud and disputes); accept its terms under Settings → Managed Payments, or set `STRIPE_MANAGED_PAYMENTS=off` for plain Checkout with Stripe Tax. Add a webhook endpoint `https://<domain>/api/webhooks/stripe` for `customer.subscription.created`, `.updated` and `.deleted`, `customer.deleted`, `charge.refunded` and `charge.dispute.created`, and put its signing secret in `STRIPE_WEBHOOK_SECRET`.
 - Ship mobile with `eas build` and `eas submit`. Paid upgrades in the iOS and Android apps must follow App Store and Play billing rules (RevenueCat recommended).
 
-## Hosted preview on Vercel (free tier)
+## Deploying on Vercel
 
 1. Import the GitHub repo in Vercel and set **Root Directory** to `apps/web`.
-2. Environment variables: `AUTH_SECRET` (random), `CRON_SECRET` (random), `AUTH_DEV_LOGIN=true`, `PREVIEW_PASSWORD` (shared password for the email sign-in).
+2. Environment variables: `AUTH_SECRET` (random), `CRON_SECRET` (random), `APP_URL`, `RESEND_API_KEY` and `MAIL_FROM`, plus the Stripe, storage and support settings below. The app logs an error at start-up for any production setting that's missing (`src/instrumentation.ts`).
 3. Storage tab: create a **Neon** Postgres database and connect it to the project. It sets `DATABASE_URL` and `DATABASE_URL_UNPOOLED`.
-4. Redeploy. The `vercel-build` script runs migrations before building.
+4. Deploy. The `vercel-build` script runs migrations for production deployments only, so preview builds never change the live database.
+
+`AUTH_DEV_LOGIN=true` with `PREVIEW_PASSWORD` (a shared password for email sign-in) is for preview deployments without email; it is ignored in production and whenever `RESEND_API_KEY` is set. Test-only switches (`RATE_LIMITS=off`, `STRIPE_API_BASE`) are ignored in production too, and the mobile app's sign-in hand-off stays off there until `MOBILE_SIGNIN=on`.
 
 Live at **https://sureframe.app** (bought through Vercel). `www.sureframe.app`, `getsureframe.com` and `www.getsureframe.com` redirect there. `APP_URL=https://sureframe.app` is set for production so emails, share links and Stripe redirects use it.
 
 Without `S3_BUCKET`, videos are stored in Postgres (`StoredPart`) in 2 MB parts, under Vercel's 4.5 MB request limit. That suits a preview. For launch, use R2/S3 with direct-to-bucket (presigned) part uploads.
 
-Sign-in links and reminder emails need `RESEND_API_KEY` and `MAIL_FROM`; without them they are only logged. Setting `RESEND_API_KEY` turns on email-link sign-in and switches the preview's password login off. Reminders are checked every 5 minutes (`vercel.json`, needs Vercel Pro).
+Sign-in links and reminder emails need `RESEND_API_KEY` and `MAIL_FROM`; without them they are only logged. Reminders, team digests and expiry warnings are checked every 5 minutes, and expired copies deleted, by `/api/cron/reminders`; `/api/cron/purge` does the daily clean-up (`vercel.json`, needs Vercel Pro).
 
 ### Production storage (Cloudflare R2)
 

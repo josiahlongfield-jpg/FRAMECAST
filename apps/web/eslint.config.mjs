@@ -18,6 +18,8 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      // Vendored ONNX Runtime files for the on-device speech model.
+      "public/ort/**",
     ],
   },
 ];

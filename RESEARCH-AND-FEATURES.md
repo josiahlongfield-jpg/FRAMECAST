@@ -2,6 +2,8 @@
 
 Researched 2026-10-06 from public reviews (Capterra, review roundups) and Loom's own support pages. Sources at the bottom.
 
+> Internal research, kept for history. Competitors are never named on the public site.
+
 ## 1. What Loom users complain about most
 
 | # | Complaint | What reviewers say | How often |

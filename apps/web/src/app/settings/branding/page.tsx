@@ -29,6 +29,12 @@ export default async function BrandingSettings() {
               Upgrade to put your logo and colour on them.
               {(workspace.brandLogoType || workspace.brandColor) && " Your saved logo and colour are kept and come back when you upgrade."}
             </p>
+            {/'s workspace$/i.test(workspace.name.trim()) && (
+              <p className="mt-3 text-sm text-amber-700" data-testid="name-hint">
+                Clients see the name &ldquo;{workspace.name}&rdquo;. Change it to your business name in{" "}
+                <Link href="/settings/reminders" className="font-medium underline">Settings &gt; Reminders</Link> (any plan).
+              </p>
+            )}
             <Link href="/pricing" className="mt-4 inline-block rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">See plans</Link>
           </div>
         ) : (

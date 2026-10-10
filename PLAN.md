@@ -1,6 +1,8 @@
 # SureFrame: Product & Architecture Plan
 
 > Product name: SureFrame (chosen 2026-10-06; previously the placeholder "Framecast").
+>
+> This is the original plan from 2026-10-06, kept for history. Pricing, plans and features have changed since; the live site, `apps/web/src/lib/plans.ts` and the root README are the current source of truth.
 
 ## 1. Positioning
 

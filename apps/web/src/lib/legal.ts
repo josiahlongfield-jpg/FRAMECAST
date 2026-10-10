@@ -16,7 +16,7 @@ export const LEGAL = {
   country: "Australia",
   minimumAge: 18,
   retentionDays: RETENTION_DAYS,
-  updated: "9 October 2026",
+  updated: "10 October 2026",
 };
 
 export const operatorLine = () =>

@@ -1,9 +1,10 @@
 "use client";
 
 import { Component, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { reportClientError } from "@/lib/clientError";
 
 type Message = { id: string; author: "CUSTOMER" | "ASSISTANT" | "STAFF"; body: string; at: string };
-type Ticket = { status: "OPEN" | "NEEDS_HUMAN" | "ANSWERED" | "CLOSED"; messages: Message[] };
+type Ticket = { status: "OPEN" | "NEEDS_HUMAN" | "ANSWERED" | "CLOSED"; hasEmail?: boolean; messages: Message[] };
 
 const KEY = "sureframe.support";
 const read = () => {
@@ -32,12 +33,14 @@ export function SupportChat({ signedIn, className = "" }: { signedIn: boolean; c
   const [error, setError] = useState<string>();
   const end = useRef<HTMLDivElement>(null);
 
-  const refresh = useCallback(async (t: string) => {
-    const res = await fetch("/api/support", { headers: { "x-support-token": t } });
-    if (res.status === 404) {
+  const refresh = useCallback(async (t: string, background = false) => {
+    const res = await fetch("/api/support", { headers: { "x-support-token": t, ...(background ? { "x-sf-background": "1" } : {}) } });
+    // Gone, or a signed-in customer's conversation and they aren't the one signed in here (a shared computer).
+    if (res.status === 404 || res.status === 403) {
       save(null);
       setToken(null);
       setTicket(null);
+      if (res.status === 403) setError("That conversation belongs to an account. Sign in to it to see the conversation, or ask a new question here.");
       return;
     }
     if (res.ok) setTicket(await res.json());
@@ -60,7 +63,7 @@ export function SupportChat({ signedIn, className = "" }: { signedIn: boolean; c
   // While a person is involved, check for their reply now and then.
   useEffect(() => {
     if (!token || !ticket || ticket.status === "OPEN") return;
-    const id = setInterval(() => refresh(token), 20000);
+    const id = setInterval(() => refresh(token, true), 20000);
     return () => clearInterval(id);
   }, [token, ticket, refresh]);
 
@@ -75,7 +78,7 @@ export function SupportChat({ signedIn, className = "" }: { signedIn: boolean; c
     setBusy(true);
     setError(undefined);
     const optimistic: Message = { id: "pending", author: "CUSTOMER", body, at: new Date().toISOString() };
-    setTicket((t) => ({ status: t?.status ?? "OPEN", messages: [...(t?.messages ?? []), optimistic] }));
+    setTicket((t) => ({ status: t?.status ?? "OPEN", hasEmail: t?.hasEmail, messages: [...(t?.messages ?? []), optimistic] }));
     setText("");
     try {
       const res = await fetch("/api/support", {
@@ -87,7 +90,7 @@ export function SupportChat({ signedIn, className = "" }: { signedIn: boolean; c
       if (!res.ok) throw new Error(data.error ?? "Couldn't send that. Please try again.");
       save(data.token);
       setToken(data.token);
-      setTicket({ status: data.status, messages: data.messages });
+      setTicket({ status: data.status, hasEmail: data.hasEmail, messages: data.messages });
     } catch (e) {
       setError((e as Error).message);
       setText(body);
@@ -105,7 +108,8 @@ export function SupportChat({ signedIn, className = "" }: { signedIn: boolean; c
   }
 
   const withPerson = ticket && ticket.status !== "OPEN";
-  const needsEmail = !signedIn && !token;
+  // Asked until there's an address on the conversation, so a person's reply can reach them by email.
+  const needsEmail = !signedIn && !ticket?.hasEmail;
 
   return (
     <div className={`flex min-h-0 flex-col ${className}`} translate="no">
@@ -116,7 +120,7 @@ export function SupportChat({ signedIn, className = "" }: { signedIn: boolean; c
         {withPerson && (
           <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-900" data-testid="with-person">
             {ticket.status === "ANSWERED" ? "The SureFrame team has replied." : "A person from the SureFrame team will reply"}
-            {signedIn ? " here and by email." : email || !needsEmail ? " here and by email if you gave your address." : " here."}
+            {signedIn || ticket.hasEmail ? " here and by email." : " here. Add your email below to get the reply by email too."}
           </p>
         )}
         <div ref={end} />
@@ -177,7 +181,10 @@ export function SupportChat({ signedIn, className = "" }: { signedIn: boolean; c
             </button>
           )}
         </div>
-        <p className="mt-2 text-[11px] text-slate-400">Answers come from an AI assistant and can be wrong. Never share your recovery key, password or card details.</p>
+        <p className="mt-2 text-[11px] text-slate-500">
+          Answers come from an AI assistant and can be wrong. Never share your recovery key, password or card details.{" "}
+          <a href="/legal/privacy" className="underline hover:text-slate-700">Privacy</a>
+        </p>
       </form>
     </div>
   );
@@ -195,14 +202,6 @@ function Bubble({ author, body }: { author: Message["author"]; body: string }) {
   );
 }
 
-/** Tells the server what broke in a visitor's browser, so it shows up in the logs. */
-export function reportClientError(where: string, error: unknown) {
-  try {
-    const e = error as { name?: string; message?: string; stack?: string };
-    const body = JSON.stringify({ where, name: e?.name, message: String(e?.message ?? error).slice(0, 500), stack: e?.stack?.slice(0, 1500), url: location.pathname, ua: navigator.userAgent });
-    navigator.sendBeacon?.("/api/support/client-error", new Blob([body], { type: "application/json" }));
-  } catch {}
-}
 
 /**
  * Keeps a problem inside the chat (a browser extension rewriting the text box,

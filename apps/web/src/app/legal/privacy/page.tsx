@@ -20,7 +20,7 @@ export default function Page() {
           provider to write a summary. It&rsquo;s off unless the business turns it on.
         </li>
         <li>We collect only what we need to run your account, bill you and help you.</li>
-        <li>We don&rsquo;t sell personal information, show ads or use advertising trackers.</li>
+        <li>We don&rsquo;t sell personal information, show third-party ads or use advertising trackers. Clients of businesses on the Free plan see a short SureFrame introduction before videos.</li>
       </ul>
 
       <h2>What we collect</h2>
@@ -37,10 +37,13 @@ export default function Page() {
           they reach us, and the keys stay with you and your clients, so we hold only scrambled copies of them. Some details aren&rsquo;t encrypted, because we need to
           read them to show your library and send reminders: video titles, client names and email addresses, the names shown on replies, to-do due dates, repeat and
           reminder settings, and the reminder message a business writes. We also keep basic information about content, such as when it was created, its size and
-          length, and who it was sent to.
+          length, and who it was sent to, and we record when a client first opens their personal link and how many times each video sent to them is played,
+          which the business can see.
         </li>
         <li>
-          <strong>Billing:</strong> your plan and subscription status. Card details go straight to our payment provider, Stripe, and we never see or store them.
+          <strong>Billing:</strong> your plan and subscription status, and the customer and subscription references from our payment provider. Subscriptions are
+          sold through Link, Stripe&rsquo;s merchant-of-record service: Link collects your card, billing address and tax details at checkout and handles them under
+          its own privacy policy, and we never see or store your card. We give Stripe your email address and business name to set up your account there.
         </li>
         <li>
           <strong>Support conversations:</strong> what you type into our help chat, and the email address you give us there.
@@ -71,7 +74,7 @@ export default function Page() {
         </li>
         <li>
           <strong>Names:</strong> everyone on a team can see the others&rsquo; names, email addresses and roles. If a team member has set their name, clients see it on
-          the videos that person sends, as &ldquo;Name from Business&rdquo;, but never their email address.
+          the videos that person sends, as &ldquo;Name from Business&rdquo;, but never their email address. Without a name set, clients see the business&rsquo;s name.
         </li>
         <li>
           <strong>Team overview:</strong> owners and admins can see how the team is keeping up with clients, worked out from dates and who sent what: for example
@@ -92,8 +95,8 @@ export default function Page() {
 
       <h2>AI transcripts and summaries (optional)</h2>
       <p>
-        Businesses can choose to add AI transcripts and summaries to their videos. It&rsquo;s off by default; only the workspace owner can switch it on, and
-        they can switch it off again at any time in Settings &gt; Billing. When it&rsquo;s on:
+        Businesses can choose to add AI transcripts and summaries to their videos. It&rsquo;s off by default; only the workspace owner can switch it on (or ask
+        us to), and they can switch it off again at any time in Settings &gt; Billing. When it&rsquo;s on:
       </p>
       <ul>
         <li>
@@ -112,7 +115,7 @@ export default function Page() {
         </li>
         <li>
           <strong>Removing them:</strong> the team can remove a video&rsquo;s transcript and summary at any time. They&rsquo;re also deleted when the video is
-          deleted or the account is closed.
+          deleted, when its copy on our servers is deleted, or when the account is closed.
         </li>
         <li>
           <strong>Clients:</strong> clients of a business using the add-on see a note saying so. The business is responsible for telling its clients and getting any
@@ -128,14 +131,18 @@ export default function Page() {
         <li>Neon (our database, which holds account data).</li>
         <li>Cloudflare R2 (storage for encrypted videos and replies).</li>
         <li>Resend (email delivery: sign-in links, client links, reminders and team emails).</li>
-        <li>Stripe (payments and subscription management).</li>
+        <li>
+          Stripe (payments and subscription management), and Link, Stripe&rsquo;s merchant-of-record service, which sells subscriptions, collects tax and sends
+          receipts under its own terms and privacy policy.
+        </li>
         <li>Anthropic (the help chat, and optional AI summaries for businesses that switch them on).</li>
         <li>Google Workspace (our support email).</li>
         <li>Google, if you choose Continue with Google to sign in. Google tells us your name and email address.</li>
       </ul>
       <p>
         We may also disclose information if the law requires it, or to protect the rights and safety of our users or others. Because content is end-to-end encrypted,
-        we can only ever hand over account details and information about content, never the content itself.
+        we can&rsquo;t hand over encrypted content (videos, replies, to-dos, notes, transcripts and summaries). We can only disclose what we hold in readable form,
+        such as account details, video titles, client names, reminder and staff-reminder messages, and support chats.
       </p>
       <p>If our business is sold or transferred, your information may pass to the new owner, who must keep handling it in line with this policy.</p>
 
@@ -150,13 +157,15 @@ export default function Page() {
       <ul>
         <li>
           Without cloud backup, the encrypted copy of a video on our servers is deleted {LEGAL.retentionDays} days after it&rsquo;s recorded, and after that it
-          can&rsquo;t be watched from its link. A recording stays on the device it was made on only until its upload finishes; to keep your own copy, open the video
-          and choose Save to device. We try to email the person who recorded it about a day before, but please don&rsquo;t rely on that email alone.
+          can&rsquo;t be watched from its link. Video and voice replies follow the same rule. A recording stays on the device it was made on only until its upload
+          finishes; to keep your own copy, open the video and choose Save to device. We try to email the person who recorded a video about a day before, but please
+          don&rsquo;t rely on that email alone.
         </li>
         <li>
           With cloud backup, encrypted content is kept until you delete it or close your account. If cloud backup ends (you switch it off, cancel, or your paid plan
           ends), our copies are deleted {LEGAL.retentionDays} days later.
         </li>
+        <li>Text replies, to-dos and notes are kept until they&rsquo;re deleted or the account is closed.</li>
         <li>Support chats are kept for as long as we need them to help you, and we delete them if you ask.</li>
         <li>
           Records of team emails (who was told about which reply or video) are deleted about 30 days after the email is sent. Reminders sent to staff are kept
@@ -189,8 +198,9 @@ export default function Page() {
       </ul>
       <p>
         We also use your browser&rsquo;s storage to hold your encryption keys and recordings that haven&rsquo;t finished uploading, a link back to your help chat so
-        you can return to it, a team invite you&rsquo;ve opened but not yet accepted, and, for businesses using AI transcripts, a copy of the speech model so it
-        doesn&rsquo;t download again. We don&rsquo;t use advertising or tracking cookies.
+        you can return to it, a team invite you&rsquo;ve opened but not yet accepted, for businesses using AI transcripts a copy of the speech model so it
+        doesn&rsquo;t download again, and small settings such as a prompt you&rsquo;ve dismissed, which replies you&rsquo;ve seen, and whether you&rsquo;ve already
+        seen the SureFrame introduction before a video. We don&rsquo;t use advertising or tracking cookies.
       </p>
 
       <h2>Your choices and rights</h2>
@@ -198,7 +208,7 @@ export default function Page() {
         <li>You can view and update your account details in Settings.</li>
         <li>You can export your data, or delete your account, from Settings &gt; Account.</li>
         <li>You can ask us for a copy of the personal information we hold about you, or ask us to correct it, by emailing {mail}.</li>
-        <li>Clients can turn off reminder emails from the link in any reminder.</li>
+        <li>Clients can turn off emails from a business (reminders and new-video emails) from the link in any of them.</li>
       </ul>
 
       <h2>Clients of businesses using {LEGAL.product}</h2>

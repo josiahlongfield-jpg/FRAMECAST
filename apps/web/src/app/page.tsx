@@ -171,7 +171,7 @@ export default function Home() {
             <h2 className="text-3xl font-semibold tracking-tight text-slate-900">Ready for your whole team</h2>
             <p className="mt-3 text-lg font-medium text-slate-800">Know who&apos;s waiting on a reply. See your whole team&apos;s client follow-up at a glance.</p>
             <p className="mt-4 text-slate-600">
-              Studio includes 3 staff logins and Agency includes 10. Assign clients to staff, choose what each person can see and do, see how the team is keeping up with clients, and keep billing with the owner. Clients never need an account.
+              Studio includes 3 staff logins and Agency includes 10, the ownerStudio includes 3 staff logins and Agency includes 10. Assignrsquo;s own login included. Assign clients to staff, choose what each person can see and do, see how the team is keeping up with clients, and keep billing with the owner. Clients never need an account.
             </p>
             <p className="mt-6 font-medium text-slate-900">Free for 3 clients. Paid plans from US$15 a month.</p>
             <Link href="/pricing" className="mt-6 inline-block rounded-xl bg-slate-900 px-6 py-3 font-semibold text-white hover:bg-slate-800">

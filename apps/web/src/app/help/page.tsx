@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { auth } from "@/auth";
+import SiteFooter from "@/components/SiteFooter";
 import SiteHeader from "@/components/SiteHeader";
 import { ChatBoundary, SupportChat } from "@/components/SupportChat";
 
@@ -25,6 +26,7 @@ export default async function Help() {
           </ChatBoundary>
         </div>
       </main>
+      <SiteFooter widget={false} />
     </>
   );
 }

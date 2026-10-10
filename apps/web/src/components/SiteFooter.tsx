@@ -4,7 +4,8 @@ import { BRAND } from "@/lib/brand";
 import { LEGAL } from "@/lib/legal";
 import SupportWidget from "./SupportChat";
 
-export default async function SiteFooter() {
+/** `widget={false}` leaves out the floating help chat, for pages that already show the chat. */
+export default async function SiteFooter({ widget = true }: { widget?: boolean } = {}) {
   const signedIn = !!(await auth())?.user;
   return (
     <footer className="border-t border-slate-100 py-10 text-sm text-slate-500">
@@ -17,7 +18,7 @@ export default async function SiteFooter() {
           <Link href="/legal/terms" className="hover:text-slate-900">Terms</Link>
         </nav>
       </div>
-      <SupportWidget signedIn={signedIn} />
+      {widget && <SupportWidget signedIn={signedIn} />}
     </footer>
   );
 }

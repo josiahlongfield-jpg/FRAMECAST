@@ -15,6 +15,8 @@ export const metadata: Metadata = {
     title: `${BRAND.name}: ${BRAND.tagline}`,
     description,
   },
+  // The preview image is app/opengraph-image.png (and twitter-image.png).
+  twitter: { card: "summary_large_image", title: `${BRAND.name}: ${BRAND.tagline}`, description },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

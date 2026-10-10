@@ -22,7 +22,7 @@ export async function reply(ticketId: string, form: FormData) {
 
 export async function setStatus(ticketId: string, status: "CLOSED" | "OPEN") {
   await requireAgent();
-  await db.supportTicket.update({ where: { id: ticketId }, data: { status } });
+  await db.supportTicket.update({ where: { id: ticketId }, data: { status, ...(status === "CLOSED" ? { urgent: false } : {}) } });
   revalidatePath(`/support/${ticketId}`);
   revalidatePath("/support");
 }
