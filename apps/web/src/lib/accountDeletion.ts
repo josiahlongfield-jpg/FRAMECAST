@@ -393,7 +393,7 @@ function keptEmail(o: { workspace: string | null; planEnded: boolean }) {
   });
 }
 
-function deletedEmail(email: string, workspace: string | null, o: { closed?: boolean; blocked?: boolean } = {}) {
+export function deletedEmail(email: string, workspace: string | null, o: { closed?: boolean; blocked?: boolean } = {}) {
   return teamEmail({
     business: BRAND.name,
     subject: `Your ${BRAND.name} account has been deleted`,

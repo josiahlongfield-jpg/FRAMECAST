@@ -132,23 +132,23 @@ function noteOf(note: string | null | undefined) {
 }
 
 /** Support can't lock itself out, or act on its own business. */
-function guard(actor: SupportAdmin, t: { userId?: string | null; workspaceId?: string | null }) {
+export function guard(actor: SupportAdmin, t: { userId?: string | null; workspaceId?: string | null }) {
   if (t.userId && t.userId === actor.userId) throw new HttpError(403, "You can't use this on your own login.");
   if (t.workspaceId && actor.workspaceIds.includes(t.workspaceId)) throw new HttpError(403, "You can't use this on a workspace you belong to.");
 }
 
-const owner = (workspaceId: string) =>
+export const owner = (workspaceId: string) =>
   db.membership.findFirst({ where: { workspaceId, role: "OWNER" }, include: { user: { select: { id: true, email: true, name: true } } } });
 
-const wsLabel = (w: Pick<Workspace, "name">, ownerEmail?: string | null) => (ownerEmail ? `${w.name} (${ownerEmail})` : w.name);
+export const wsLabel = (w: Pick<Workspace, "name">, ownerEmail?: string | null) => (ownerEmail ? `${w.name} (${ownerEmail})` : w.name);
 
-async function loadWorkspace(workspaceId: string) {
+export async function loadWorkspace(workspaceId: string) {
   const w = await db.workspace.findUnique({ where: { id: workspaceId } });
   if (!w) throw new HttpError(404, "Workspace not found");
   return w;
 }
 
-async function loadUser(userId: string) {
+export async function loadUser(userId: string) {
   const u = await db.user.findUnique({ where: { id: userId } });
   if (!u) throw new HttpError(404, "Account not found");
   return u;
@@ -156,11 +156,11 @@ async function loadUser(userId: string) {
 
 // ---- Notices: plain SureFrame emails (not branded as the business), replies go to the support inbox ----
 
-const REVIEW = `If you think this is a mistake, reply to this email or email ${LEGAL.email} within 30 days and we'll review it.`;
-const QUESTIONS = `Questions? Reply to this email or contact ${LEGAL.email}.`;
-const termsLine = () => ({ text: "Our Terms of Service", link: appUrl("/legal/terms") });
+export const REVIEW = `If you think this is a mistake, reply to this email or email ${LEGAL.email} within 30 days and we'll review it.`;
+export const QUESTIONS = `Questions? Reply to this email or contact ${LEGAL.email}.`;
+export const termsLine = () => ({ text: "Our Terms of Service", link: appUrl("/legal/terms") });
 
-function notice(o: { subject: string; lead: string; lines?: { text: string; link?: string }[]; note?: string | null; footer: string; button?: { label: string; link: string } }) {
+export function notice(o: { subject: string; lead: string; lines?: { text: string; link?: string }[]; note?: string | null; footer: string; button?: { label: string; link: string } }) {
   return teamEmail({
     business: BRAND.name,
     subject: o.subject,
@@ -173,7 +173,7 @@ function notice(o: { subject: string; lead: string; lines?: { text: string; link
 }
 
 /** Sends a notice and records on the action whether it went. Never throws: the change has been made. */
-async function sendNotice(actionId: string, to: string | null | undefined, mail: ReturnType<typeof notice>) {
+export async function sendNotice(actionId: string, to: string | null | undefined, mail: ReturnType<typeof notice>) {
   let emailed = false;
   if (to) {
     emailed = await sendMail({ to, ...mail, replyTo: supportInbox() ?? LEGAL.email }).then(
