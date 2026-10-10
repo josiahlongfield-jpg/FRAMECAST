@@ -12,6 +12,8 @@ export type PendingSession = {
   startedAt: number;
   /** Next multipart part number to send (parts before it are confirmed). */
   nextPart: number;
+  /** Bytes at the start of the first stored chunk that already went up in a confirmed part. */
+  skip?: number;
   durationMs: number;
   stopped: boolean;
   /** Guest replies upload with a one-time token instead of a session. */
@@ -89,13 +91,16 @@ export async function getChunks(videoId: string): Promise<ChunkRow[]> {
   return request(tx.objectStore("chunks").getAll(range(videoId)));
 }
 
-/** Atomically drop confirmed chunks and advance the part counter. */
-export async function confirmPart(videoId: string, upToSeq: number, nextPart: number) {
+/**
+ * Atomically drop confirmed chunks and advance the part counter. A chunk split
+ * across two parts stays, with `skip` saying how much of it is already up.
+ */
+export async function confirmPart(videoId: string, upToSeq: number, nextPart: number, skip = 0) {
   const tx = (await open()).transaction(["chunks", "sessions"], "readwrite");
-  tx.objectStore("chunks").delete(range(videoId, 0, upToSeq));
+  if (upToSeq >= 0) tx.objectStore("chunks").delete(range(videoId, 0, upToSeq));
   const sessions = tx.objectStore("sessions");
   const cur = await request(sessions.get(videoId));
-  if (cur) sessions.put({ ...cur, nextPart });
+  if (cur) sessions.put({ ...cur, nextPart, skip });
   await done(tx);
 }
 

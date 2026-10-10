@@ -24,8 +24,10 @@ export function newUploadToken() {
 }
 
 /**
- * Who may upload parts to a video: team members who can see it, or a guest holding
- * the one-time upload token issued when they started a reply.
+ * Who may upload parts to a video: the team member recording it, or whoever
+ * holds the one-time upload token issued when a reply was started (replies
+ * always use one, a team member's too). Seeing a video isn't enough: a
+ * colleague could otherwise overwrite or cut short someone else's recording.
  */
 export async function uploadableVideo(req: Request, id: string) {
   const token = req.headers.get("x-upload-token");
@@ -38,7 +40,10 @@ export async function uploadableVideo(req: Request, id: string) {
     }
     return video;
   }
-  return visibleVideo(accessOf(await requireUser()), id);
+  const me = await requireUser();
+  const video = await visibleVideo(accessOf(me), id);
+  if (video.replyToId || video.ownerId !== me.user.id) throw new HttpError(403, "Only the person recording this can upload it");
+  return video;
 }
 
 /** Public projection used by the watch page and API (BigInt is not JSON-safe). */
@@ -78,13 +83,30 @@ export function publicVideo(v: {
 }
 
 const GB = 1024 ** 3;
+const REPLY_BUDGET = 0.7 * GB;
+
+/**
+ * Most bytes of video and voice replies one conversation may take in a day.
+ * Plenty for a real back-and-forth, but a ceiling on storage someone with a
+ * link could fill.
+ */
+export async function replyBytesToday(conversationId: string) {
+  const since = new Date(Date.now() - 86_400_000);
+  const [done, open] = await Promise.all([
+    db.video.aggregate({ where: { replyToId: conversationId, createdAt: { gt: since }, status: { not: "RECORDING" } }, _sum: { sizeBytes: true } }),
+    db.uploadPart.aggregate({ where: { video: { replyToId: conversationId, status: "RECORDING", createdAt: { gt: since } } }, _sum: { sizeBytes: true } }),
+  ]);
+  return Number(done._sum.sizeBytes ?? 0) + Number(open._sum.sizeBytes ?? 0);
+}
+export const REPLY_DAILY_BYTES = 3 * GB;
 
 /**
  * Most bytes one upload may hold: generous for real recordings at the plan's
  * longest length and best quality, but a ceiling against filling storage.
  */
 export async function uploadBudget(video: { replyToId: string | null; workspaceId: string }) {
-  if (video.replyToId) return 2 * GB; // replies are capped at 15 minutes
+  // Replies are capped at 15 minutes: about 560 MB at the reply recorder's 1080p rate.
+  if (video.replyToId) return REPLY_BUDGET;
   const w = await db.workspace.findUnique({ where: { id: video.workspaceId }, select: { plan: true } });
   // Free records 5 minutes at 720p (about 100 MB), so 300 MB leaves plenty of room.
   return w?.plan === "FREE" ? 0.3 * GB : 40 * GB;

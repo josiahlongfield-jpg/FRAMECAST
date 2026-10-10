@@ -33,6 +33,7 @@ export default function ScheduleFields({
   clientEmail,
   clientOptedOut,
   canShareReminders,
+  teamLabel = "Email me",
 }: {
   value: Schedule;
   onChange: (s: Schedule) => void;
@@ -41,6 +42,8 @@ export default function ScheduleFields({
   clientOptedOut?: boolean;
   /** The to-do is shared with a client, so the client can be reminded. */
   canShareReminders: boolean;
+  /** What the team reminder checkbox says: "Email me", "Email the team"... */
+  teamLabel?: string;
 }) {
   const set = (patch: Partial<Schedule>) => onChange({ ...value, ...patch });
   const first = clientName?.split(" ")[0] ?? "client";
@@ -52,7 +55,7 @@ export default function ScheduleFields({
         <input
           type="datetime-local"
           value={value.due}
-          onChange={(e) => set({ due: e.target.value, repeat: e.target.value ? value.repeat : null })}
+          onChange={(e) => set({ due: e.target.value, repeat: e.target.value ? follow(value.repeat, value.due, e.target.value) : null })}
           aria-label="Due date"
           className="rounded-lg border border-slate-300 px-2 py-1 text-sm"
         />
@@ -75,19 +78,19 @@ export default function ScheduleFields({
                     <label className="flex items-center gap-2">
                       <input
                         type="checkbox"
-                        checked={value.remindClient && !!clientEmail && !clientOptedOut}
-                        disabled={!clientEmail || clientOptedOut}
+                        checked={value.remindClient && !!clientEmail}
+                        disabled={!clientEmail}
                         onChange={(e) => set({ remindClient: e.target.checked })}
                         className="accent-brand-600"
                       />
                       Email {first}
                       {!clientEmail && <span className="text-xs text-amber-700">(add {first}&apos;s email first)</span>}
-                      {clientEmail && clientOptedOut && <span className="text-xs text-amber-700">({first} turned reminders off)</span>}
+                      {clientEmail && clientOptedOut && <span className="text-xs text-amber-700">({first} has emails turned off, so none go until they turn them back on)</span>}
                     </label>
                   )}
                   <label className="flex items-center gap-2">
                     <input type="checkbox" checked={value.remindTeam} onChange={(e) => set({ remindTeam: e.target.checked })} className="accent-brand-600" />
-                    Email me
+                    {teamLabel}
                   </label>
                 </div>
               )}
@@ -101,14 +104,28 @@ export default function ScheduleFields({
 
 type RepeatChoice = "none" | "day" | "weekdays" | "week" | "2week" | "month" | "custom";
 
-function choiceFor(r: Repeat | null, dueDay: number): RepeatChoice {
+/**
+ * Moving the due date moves a repeat that was tied to it ("every month on the
+ * 5th" becomes "on the 20th"), so the saved rule matches what the picker shows.
+ */
+function follow(r: Repeat | null, oldDue: string, newDue: string): Repeat | null {
+  if (!r) return r;
+  const was = oldDue ? new Date(oldDue) : null;
+  const now = new Date(newDue);
+  if (Number.isNaN(now.getTime())) return r;
+  if (r.unit === "month" && (!was || r.monthDay === undefined || r.monthDay === was.getDate())) return { ...r, monthDay: now.getDate() };
+  if (r.unit === "week" && was && r.weekdays?.length === 1 && r.weekdays[0] === was.getDay()) return { ...r, weekdays: [now.getDay()] };
+  return r;
+}
+
+function choiceFor(r: Repeat | null, dueDay: number, dueDate: number): RepeatChoice {
   if (!r) return "none";
   const wd = r.weekdays ?? [];
   if (r.until) return "custom";
   if (r.unit === "day" && r.every === 1) return "day";
   if (r.unit === "week" && r.every === 1 && wd.join() === "1,2,3,4,5") return "weekdays";
   if (r.unit === "week" && (wd.length === 0 || (wd.length === 1 && wd[0] === dueDay))) return r.every === 1 ? "week" : r.every === 2 ? "2week" : "custom";
-  if (r.unit === "month" && r.every === 1) return "month";
+  if (r.unit === "month" && r.every === 1 && (r.monthDay ?? dueDate) === dueDate) return "month";
   return "custom";
 }
 
@@ -116,8 +133,8 @@ function RepeatPicker({ due, value, onChange }: { due: string; value: Repeat | n
   const d = new Date(due);
   const dueDay = d.getDay();
   const dueDate = d.getDate();
-  const [custom, setCustom] = useState(choiceFor(value, dueDay) === "custom");
-  const choice = custom ? "custom" : choiceFor(value, dueDay);
+  const [custom, setCustom] = useState(choiceFor(value, dueDay, dueDate) === "custom");
+  const choice = custom ? "custom" : choiceFor(value, dueDay, dueDate);
 
   function pick(c: RepeatChoice) {
     setCustom(c === "custom");

@@ -4,6 +4,7 @@ import { brandOf } from "@/lib/branding";
 import { sendMail } from "@/lib/mail";
 import { teamEmail } from "@/lib/teamEmail";
 import { appUrl } from "@/lib/stripe";
+import { teamPath } from "@/lib/teamLink";
 
 /**
  * Team emails about client replies and videos sent by staff. Each event is
@@ -58,7 +59,8 @@ export async function notifyClientReply(conversationId: string) {
   try {
     const video = await db.video.findUnique({ where: { id: conversationId }, include: { client: true } });
     if (!video || video.replyToId || !video.client) return;
-    const members = await db.membership.findMany({ where: { workspaceId: video.workspaceId }, orderBy: { id: "asc" } });
+    // Paused staff can't sign in: their clients' replies go to whoever else would hear (the owner at least).
+    const members = await db.membership.findMany({ where: { workspaceId: video.workspaceId, pausedAt: null }, orderBy: { id: "asc" } });
     const to = replyRecipients(members, { assignedToId: video.client.assignedToId, recorderId: video.ownerId });
     if (!to.length) return;
     await db.teamNotification.createMany({
@@ -75,7 +77,7 @@ export async function notifyVideosSent(workspaceId: string, actorId: string, sen
   try {
     if (!sends.length) return;
     const [members, clients] = await Promise.all([
-      db.membership.findMany({ where: { workspaceId }, orderBy: { id: "asc" } }),
+      db.membership.findMany({ where: { workspaceId, pausedAt: null }, orderBy: { id: "asc" } }),
       db.client.findMany({ where: { id: { in: sends.map((s) => s.clientId) } }, select: { id: true, assignedToId: true } }),
     ]);
     const assigned = new Map(clients.map((c) => [c.id, c.assignedToId]));
@@ -115,7 +117,7 @@ export async function flushGroup(userId: string, kind: TeamNotificationKind, gro
     db.user.findUnique({ where: { id: userId }, select: { email: true } }),
     db.membership.findFirst({ where: { userId, workspaceId: pending[0].workspaceId } }),
   ]);
-  if (!ws || !user || !membership) return false; // left the team since
+  if (!ws || !user || !membership || membership.pausedAt) return false; // left the team, or paused, since
   const brand = brandOf(ws, appUrl(""));
   const clients = new Map((await db.client.findMany({ where: { id: { in: pending.map((p) => p.clientId!).filter(Boolean) } }, select: { id: true, name: true } })).map((c) => [c.id, c.name]));
   const clientName = (id: string | null) => (id && clients.get(id)) || "A client";
@@ -126,7 +128,8 @@ export async function flushGroup(userId: string, kind: TeamNotificationKind, gro
     const n = pending.length;
     mail = teamEmail({
       business: ws.name,
-      subject: n === 1 ? `${name} replied to your video` : `${name} sent ${n} replies`,
+      // Owners and admins following along get these too, so not "your video".
+      subject: n === 1 ? `${name} replied` : `${name} sent ${n} replies`,
       lead: n === 1 ? `${name} replied to a video from ${ws.name}.` : `${name} sent ${n} replies to a video from ${ws.name}.`,
       button: { label: "Open the conversation", link: appUrl(`/v/${groupKey}?team=1`) },
       footer: "For privacy, replies are only shown in the app.",
@@ -142,7 +145,7 @@ export async function flushGroup(userId: string, kind: TeamNotificationKind, gro
       subject: `${who} sent ${n === 1 ? "a video" : `${n} videos`} to clients`,
       lead: `${who} sent ${n === 1 ? "a video" : `${n} videos`} to clients:`,
       lines: pending.map((p) => ({ text: clientName(p.clientId), link: p.videoId ? appUrl(`/v/${p.videoId}?team=1`) : undefined })),
-      button: { label: "Open the Team overview", link: appUrl("/team") },
+      button: { label: "Open the Team overview", link: appUrl(teamPath("/team", ws.id)) },
       footer: "Change which emails you get on the Team overview page.",
       logoUrl: brand.logoUrl,
       color: brand.color,

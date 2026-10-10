@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import MicLevel from "./MicLevel";
 import * as store from "@/lib/recorder/store";
 import { encryptFrame, fingerprint, generateKey, wrapKey } from "@/lib/e2e/crypto";
-import { ChunkedUploader, lockName, recoverInterrupted, type UploadState } from "@/lib/recorder/uploader";
+import { browserTimeZone } from "@/lib/schedule";
+import { ChunkedUploader, FatalUploadError, lockName, mayRecover, recoverInterrupted, type UploadState } from "@/lib/recorder/uploader";
 import {
   bitrateFor,
   getCamera,
@@ -84,6 +85,10 @@ export default function Recorder({
     [frameRef],
   );
   const camStream = useRef<MediaStream | null>(null);
+  /** Why a recording ended on its own, if it did. */
+  const failure = useRef<string>(undefined);
+  /** Cancel pressed during the countdown. */
+  const cancelled = useRef(false);
   const live = useRef<{
     recorder: MediaRecorder;
     uploader: ChunkedUploader;
@@ -188,7 +193,11 @@ export default function Recorder({
 
   async function start() {
     setError(undefined);
+    failure.current = undefined;
+    cancelled.current = false;
     const streams: MediaStream[] = [];
+    // Set once the server has a video for this take, so a failed start can remove it again.
+    let made: { videoId: string; releaseLock: () => void } | undefined;
     try {
       let video: MediaStreamTrack;
       if (mode === "camera") {
@@ -216,12 +225,20 @@ export default function Recorder({
       const res = await fetch("/api/videos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mimeType, teamKeyWrap: await wrapKey(videoKey, teamKey), keyFingerprint: await fingerprint(teamKey) }),
+        body: JSON.stringify({
+          mimeType,
+          // Named in the recorder's own time, not the server's.
+          title: `Recording ${new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}`,
+          timeZone: browserTimeZone(),
+          teamKeyWrap: await wrapKey(videoKey, teamKey),
+          keyFingerprint: await fingerprint(teamKey),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not start recording");
       const videoId: string = data.video.id;
 
+      made = { videoId, releaseLock: () => {} };
       await store.putSession({ videoId, title: data.video.title, mimeType, startedAt: Date.now(), nextPart: 1, durationMs: 0, stopped: false });
 
       let releaseLock = () => {};
@@ -231,6 +248,7 @@ export default function Recorder({
           held();
         }));
       });
+      made.releaseLock = releaseLock;
 
       let closeBubble = () => {};
       if (mode === "screen+camera" && camStream.current) {
@@ -247,7 +265,13 @@ export default function Recorder({
         l.sealing = l.sealing
           .then(() => encryptFrame(e.data, videoKey))
           .then((frame) => uploader.push(new Blob([frame as BlobPart])))
-          .then(() => store.updateSession(videoId, { durationMs: durationNow() }));
+          .then(() => store.updateSession(videoId, { durationMs: durationNow() }).catch(() => {}))
+          .catch((err) => {
+            // A chunk that can't be sealed would leave a gap, so the recording ends here and what came before is kept.
+            console.error("Recording chunk failed", err);
+            failure.current = "This browser hit a problem, so the recording stopped. What was recorded before that has been kept.";
+            void stop();
+          });
       };
       recorder.onerror = () => setError("The browser stopped the recorder. Your recording so far has been saved.");
 
@@ -257,14 +281,24 @@ export default function Recorder({
       for (let n = 3; n > 0; n--) {
         setCount(n);
         await new Promise((r) => setTimeout(r, 1000));
+        if (cancelled.current) throw new DOMException("Cancelled during the countdown", "AbortError");
       }
       recorder.start(2000);
       live.current.startedAt = performance.now();
       setPhase("recording");
     } catch (err) {
       stopAll(...streams);
+      cleanup();
+      live.current = null;
+      // Nothing was recorded: don't leave an empty "Incomplete upload" behind.
+      if (made) {
+        await store.removeSession(made.videoId).catch(() => {});
+        await fetch(`/api/videos/${made.videoId}`, { method: "DELETE" }).catch(() => {});
+        made.releaseLock();
+      }
       setPhase("setup");
-      if ((err as Error).name !== "NotAllowedError") setError((err as Error).message);
+      const name = (err as Error).name;
+      if (name !== "NotAllowedError" && name !== "AbortError") setError((err as Error).message);
     }
   }
 
@@ -295,11 +329,18 @@ export default function Recorder({
     await l.sealing;
     cleanup();
     try {
-      await store.updateSession(l.videoId, { durationMs, stopped: true });
+      await store.updateSession(l.videoId, { durationMs, stopped: true }).catch(() => {});
       await l.uploader.finish(durationMs);
-      router.push(`/v/${l.videoId}?new=1`);
+      if (failure.current) {
+        setError(`${failure.current} You'll find it in your library.`);
+        setPhase("setup");
+      } else router.push(`/v/${l.videoId}?new=1`);
     } catch (err) {
-      setError(`${(err as Error).message}. Your recording is saved on this device and will finish uploading next time you open the recorder.`);
+      setError(
+        err instanceof FatalUploadError && !mayRecover(err)
+          ? (err as Error).message
+          : `${(err as Error).message}. Your recording is kept in this browser and will finish uploading next time you open SureFrame here.`,
+      );
       setPhase("setup");
     } finally {
       l.releaseLock();
@@ -354,7 +395,10 @@ export default function Recorder({
           </div>
         )}
         {phase === "countdown" && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-8xl font-semibold text-white">{count}</div>
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 bg-black/60 text-white">
+            <span className="text-8xl font-semibold">{count}</span>
+            <button onClick={() => (cancelled.current = true)} className="rounded-lg bg-white/15 px-4 py-2 text-sm font-medium hover:bg-white/25">Cancel</button>
+          </div>
         )}
         {recordingish && (
           <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full bg-black/70 px-3 py-1.5 text-sm font-medium text-white">
@@ -367,8 +411,8 @@ export default function Recorder({
       <aside className="flex flex-col gap-5">
         {recovered.length > 0 && (
           <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
-            We recovered {recovered.length === 1 ? "a recording" : `${recovered.length} recordings`} that was interrupted.{" "}
-            <a className="font-medium underline" href={`/v/${recovered[0]}`}>View it</a>
+            {recovered.length === 1 ? "We finished uploading a recording that was interrupted." : `We finished uploading ${recovered.length} recordings that were interrupted.`}{" "}
+            <a className="font-medium underline" href={recovered.length === 1 ? `/v/${recovered[0]}` : "/library"}>{recovered.length === 1 ? "View it" : "See your library"}</a>
           </div>
         )}
         {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div>}
@@ -412,7 +456,7 @@ export default function Recorder({
                 <select className="rounded-lg border border-slate-300 bg-white px-3 py-2" value={quality} onChange={(e) => setQuality(Number(e.target.value) as Quality)}>
                   {allowedQualities.map((q) => <option key={q} value={q}>{q === 2160 ? "4K" : `${q}p`}</option>)}
                 </select>
-                {maxResolution < 1080 && <span className="text-xs text-slate-500">Upgrade to a paid plan for 1080p and 4K.</span>}
+                {maxResolution < 1080 && <span className="text-xs text-slate-500"><a href="/pricing" className="font-medium text-brand-700 hover:underline">Upgrade to a paid plan</a> for 1080p and 4K.</span>}
               </label>
             </div>
 
@@ -420,7 +464,7 @@ export default function Recorder({
               Start recording
             </button>
             <p className="text-xs text-slate-500">
-              Your recording uploads while you talk and is backed up on this device, so a crash or dropped connection won&rsquo;t cost you your take.
+              Your recording uploads while you talk. Until it&rsquo;s safely up, a copy is kept in this browser, so after a crash or dropped connection it picks up where it left off.
             </p>
           </>
         )}
@@ -440,7 +484,9 @@ export default function Recorder({
             )}
             <button onClick={discard} className="text-sm text-slate-500 underline-offset-2 hover:underline">Discard and start over</button>
             <UploadBadge s={upload} />
-            <p className="text-xs text-slate-500">Limit on your plan: {maxDurationMin} minutes.</p>
+            <p className="text-xs text-slate-500">
+              Limit on your plan: {maxDurationMin % 60 === 0 && maxDurationMin >= 60 ? `${maxDurationMin / 60} hour${maxDurationMin === 60 ? "" : "s"}` : `${maxDurationMin} minutes`}.
+            </p>
           </>
         )}
 
@@ -458,7 +504,13 @@ export default function Recorder({
 function UploadBadge({ s }: { s: UploadState }) {
   if (s.error) return <p className="text-sm text-red-700">{s.error}</p>;
   if (s.retrying)
-    return <p className="text-sm text-amber-700">Connection lost. Still recording and saving locally; upload resumes automatically.</p>;
+    return (
+      <p className="text-sm text-amber-700">
+        {s.unsaved
+          ? "Connection lost and this browser's storage is full. Keep this page open; the upload resumes when you're back online."
+          : "Connection lost. Still recording and saving locally; upload resumes automatically."}
+      </p>
+    );
   return (
     <p className="text-sm text-emerald-700">
       Saved to cloud: {(s.uploadedBytes / 1024 / 1024).toFixed(1)} MB

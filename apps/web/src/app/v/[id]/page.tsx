@@ -44,7 +44,7 @@ export default async function Watch({ params, searchParams }: Props) {
   if ((await searchParams).team && viewer?.kind !== "member") {
     const me = await currentUser();
     if (!me) redirect(`/login?next=${encodeURIComponent(`/v/${id}?team=1`)}`);
-    if (me.workspace.id !== video.workspaceId && me.user.memberships.some((m) => m.workspaceId === video.workspaceId)) {
+    if (me.workspace.id !== video.workspaceId && me.user.memberships.some((m) => m.workspaceId === video.workspaceId && !m.pausedAt)) {
       await db.user.update({ where: { id: me.user.id }, data: { activeWorkspaceId: video.workspaceId } });
       redirect(`/v/${id}`);
     }
@@ -91,6 +91,13 @@ export default async function Watch({ params, searchParams }: Props) {
   // Clients see the business's branding; the team sees the normal app.
   const brand = isMember ? null : brandOf(workspace);
   const memberEmail = viewer.kind === "member" ? (await db.user.findUnique({ where: { id: viewer.userId }, select: { email: true } }))?.email : null;
+  // The team sees reactions, and on an original sent to several clients, everyone's views.
+  const [reactions, copyViews] = isMember
+    ? await Promise.all([
+        db.reaction.findMany({ where: { videoId: id }, orderBy: { createdAt: "asc" }, take: 500, select: { emoji: true, timestampMs: true } }),
+        video.sourceId ? Promise.resolve(0) : db.video.aggregate({ where: { sourceId: video.id }, _sum: { viewCount: true } }).then((a) => a._sum.viewCount ?? 0),
+      ])
+    : [undefined, 0];
 
   return (
     <div className="min-h-screen bg-slate-50" style={brandStyle(brand?.color ?? null)}>
@@ -107,7 +114,7 @@ export default async function Watch({ params, searchParams }: Props) {
           <>
           {!isMember && PLANS[workspace.plan].showsPromo && <SureFramePromo videoId={video.id} />}
           <WatchView
-            video={publicVideo(video)}
+            video={{ ...publicVideo(video), viewCount: video.viewCount + copyViews }}
             ownerName={
               // Clients see "Sam from Business" (never an email); the team sees the name or email.
               isMember ? (video.owner.name ?? video.owner.email.split("@")[0]) : video.owner.name ? `${video.owner.name} from ${workspace.name}` : workspace.name
@@ -119,7 +126,7 @@ export default async function Watch({ params, searchParams }: Props) {
                 : { kind: "client", clientId: viewer.client.id }
             }
             clients={[
-              ...clients.map((c) => ({ id: c.id, name: c.name, link: clientLink(c.token, video.id), teamKeyWrap: c.teamKeyWrap, assignedToId: c.assignedToId, hasLink: !!(c.linkOpenedAt || c.linkSentAt), emailable: !!c.email && !c.remindersOff })),
+              ...clients.map((c) => ({ id: c.id, name: c.name, link: clientLink(c.token, video.id), teamKeyWrap: c.teamKeyWrap, assignedToId: c.assignedToId, hasLink: !!(c.linkOpenedAt || c.linkSentAt), emailable: !!c.email && !c.remindersOff, emailsOff: !!c.email && c.remindersOff })),
               ...(recipient ? [{ id: recipient.id, name: recipient.name, link: "", teamKeyWrap: null, assignedToId: null }] : []),
             ]}
             sendMany={
@@ -135,6 +142,7 @@ export default async function Watch({ params, searchParams }: Props) {
             sentToId={video.clientId}
             ai={aiOn || insight ? { insight, canMake: isMember && aiOn, notice: !isMember } : undefined}
             initialReplies={replies.map((r) => replyDTO(r, video.ownerId))}
+            reactions={reactions}
           />
           </>
         )}

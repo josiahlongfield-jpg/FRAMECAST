@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
-import { Prisma, type Item, type Membership, type Workspace } from "@prisma/client";
-import { db } from "@/lib/db";
+import { Prisma, type Item, type Membership } from "@prisma/client";
+import { db, type Workspace } from "@/lib/db";
 import { appUrl } from "@/lib/stripe";
 import { sendMail } from "@/lib/mail";
 import { reminderEmail } from "@/lib/reminderEmail";
@@ -10,6 +10,7 @@ import { rateLimit } from "@/lib/rateLimit";
 import { clientTeam } from "@/lib/permissions";
 import { DEFAULT_REMINDERS, isTimeZone, nextOccurrence, reminderTime, type ReminderRule } from "@/lib/schedule";
 import { Repeat, ReminderRules } from "@/lib/scheduleSchema";
+import { teamPath } from "@/lib/teamLink";
 
 export const workspaceTz = (w: Pick<Workspace, "timezone">) => w.timezone ?? "UTC";
 
@@ -53,8 +54,9 @@ export function reminderDefaultsFor(w: Workspace, m?: OwnSettings | null) {
  * videos): those of the staff member assigned to the client, where they set
  * their own, else the business's. Owners and admins use the business's.
  */
-export function clientMailSettings(w: Pick<Workspace, "reminderMessage" | "reminderReplyTo">, assigned?: OwnSettings | null) {
-  const own = assigned?.role === "MEMBER" ? assigned : null;
+export function clientMailSettings(w: Pick<Workspace, "reminderMessage" | "reminderReplyTo">, assigned?: (OwnSettings & { pausedAt?: Date | null }) | null) {
+  // A paused staff member can't answer, so their clients' emails go back to the business's settings.
+  const own = assigned?.role === "MEMBER" && !assigned.pausedAt ? assigned : null;
   return { message: own?.myReminderMessage ?? w.reminderMessage, replyTo: own?.myReminderReplyTo ?? w.reminderReplyTo };
 }
 
@@ -89,7 +91,10 @@ export async function spawnNext(item: Item, tz: string) {
   if (!repeat || !item.dueAt || item.spawnedNext) return null;
   const claimed = await db.item.updateMany({ where: { id: item.id, spawnedNext: false }, data: { spawnedNext: true } });
   if (claimed.count === 0) return null;
-  const due = nextOccurrence(item.dueAt, repeat, tz);
+  // The next one still to come: a to-do missed for days (or ticked late) doesn't create a backlog of past ones.
+  const now = new Date();
+  let due = nextOccurrence(item.dueAt, repeat, tz);
+  for (let i = 0; due && due <= now && i < 1000; i++) due = nextOccurrence(due, repeat, tz);
   if (!due) return null;
   const next = await db.item.create({
     data: {
@@ -125,7 +130,8 @@ export const validUnsubscribe = (clientId: string, sig: string) => {
 export async function runReminders(now = new Date()) {
   // A repeating to-do whose time has passed gets its next occurrence even if nobody ticked it.
   const overdue = await db.item.findMany({
-    where: { spawnedNext: false, done: false, dueAt: { lte: now }, NOT: { repeat: { equals: Prisma.AnyNull } } },
+    // Not for a client who has been removed: their to-dos stop with them.
+    where: { spawnedNext: false, done: false, dueAt: { lte: now }, NOT: { repeat: { equals: Prisma.AnyNull } }, OR: [{ clientId: null }, { client: { removedAt: null } }] },
     include: { workspace: { select: { timezone: true } } },
     take: 500,
   });
@@ -138,7 +144,8 @@ export async function runReminders(now = new Date()) {
       item: {
         include: {
           client: true,
-          workspace: { include: { members: { include: { user: { select: { email: true } } }, orderBy: { id: "asc" } } } },
+          // Paused staff (over the plan's limit) aren't sent anything; their clients' reminders go to the owner and admins.
+          workspace: { include: { members: { where: { pausedAt: null }, include: { user: { select: { email: true } } }, orderBy: { id: "asc" } } } },
         },
       },
     },
@@ -156,6 +163,7 @@ export async function runReminders(now = new Date()) {
       await db.reminder.update({ where: { id: r.id }, data: { sentAt: now, error: why } });
     };
     if (item.done) { await skip("done"); continue; }
+    if (item.client?.removedAt) { await skip("client removed"); continue; }
     if (!item.dueAt || item.dueAt.getTime() < now.getTime() - 3_600_000) { await skip("late"); continue; }
 
     const base = { business: ws.name, due: item.dueAt, now, tz: workspaceTz(ws) };
@@ -168,10 +176,10 @@ export async function runReminders(now = new Date()) {
       mails.push({
         to: c.email,
         replyTo: own.replyTo,
-        m: reminderEmail({ ...base, ...brandOf(ws, appUrl("")), message: own.message, link: appUrl(`/c/${c.token}`), unsubscribe: unsubscribeUrl(c.id) }),
+        m: reminderEmail({ ...base, ...brandOf(ws, appUrl("")), message: own.message, link: appUrl(`/c/${c.token}`), unsubscribe: unsubscribeUrl(c.id), noReply: !own.replyTo }),
       });
     } else {
-      const link = appUrl(item.clientId ? `/clients/${item.clientId}` : "/library");
+      const link = appUrl(teamPath(item.clientId ? `/clients/${item.clientId}` : "/library", ws.id));
       // A client's to-do goes to the staff member looking after that client
       // (or, when nobody is, to those who can see unassigned clients); general
       // to-dos go to the whole team.
@@ -186,15 +194,26 @@ export async function runReminders(now = new Date()) {
       await skip("daily email limit");
       continue;
     }
-    try {
-      for (const { to, m, replyTo } of mails) {
+    // Claim it first, so a run that overlaps this one can't send it again.
+    const claimed = await db.reminder.updateMany({ where: { id: r.id, sentAt: null }, data: { sentAt: now } });
+    if (claimed.count === 0) continue;
+    const failed: string[] = [];
+    let delivered = 0;
+    for (const { to, m, replyTo } of mails) {
+      try {
         await sendMail({ to, subject: m.subject, text: m.text, html: m.html, fromName: ws.name, replyTo });
+        delivered++;
+      } catch (e) {
+        failed.push(String(e).slice(0, 200));
       }
-      await db.reminder.update({ where: { id: r.id }, data: { sentAt: now } });
+    }
+    if (!mails.length || delivered > 0) {
       sent++;
-    } catch (e) {
-      // Leave it unsent so the next run retries; record why.
-      await db.reminder.update({ where: { id: r.id }, data: { error: String(e).slice(0, 300) } });
+      // Some went: don't resend to those who already have it.
+      if (failed.length) await db.reminder.update({ where: { id: r.id }, data: { error: failed.join("; ").slice(0, 300) } });
+    } else {
+      // Nothing went: release it so the next run retries; record why.
+      await db.reminder.update({ where: { id: r.id }, data: { sentAt: null, error: failed.join("; ").slice(0, 300) } });
     }
   }
   return { sent, skipped, spawned };

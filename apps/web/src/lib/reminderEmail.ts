@@ -20,21 +20,27 @@ export function reminderEmail(o: {
   /** The business's logo (absolute URL) and accent colour, on paid plans. */
   logoUrl?: string | null;
   color?: string | null;
+  /** No reply-to is set, so replies would go nowhere: say so. */
+  noReply?: boolean;
 }) {
   const when = dueText(o.due, o.now ?? new Date(), o.tz);
+  // The time is the business's; say whose, since a client or staff member may be in another zone.
+  const zone = new Intl.DateTimeFormat("en-US", { timeZone: o.tz, timeZoneName: "short" }).formatToParts(o.due).find((p) => p.type === "timeZoneName")?.value;
+  const whenZoned = zone ? `${when} (${zone})` : when;
   const subject = !o.team
     ? `Reminder from ${o.business}: a to-do is due ${when}`
     : o.clientName ? `${o.clientName}: a to-do is due ${when}` : `A to-do on your list is due ${when}`;
   const lead = !o.team
-    ? `You have a to-do from ${o.business} due ${when}.`
-    : o.clientName ? `A to-do on ${o.clientName}'s list is due ${when}.` : `A to-do on your list is due ${when}.`;
+    ? `You have a to-do from ${o.business} due ${whenZoned}.`
+    : o.clientName ? `A to-do on ${o.clientName}'s list is due ${whenZoned}.` : `A to-do on your list is due ${whenZoned}.`;
   const message = o.team ? "" : o.message?.trim();
   const text = [
     lead,
     message ? `\n${message}` : "",
     `\nOpen your list: ${o.link}`,
     "\nFor privacy, the details are only shown in the app.",
-    o.unsubscribe ? `\nStop these reminders: ${o.unsubscribe}` : "",
+    o.noReply ? `\nPlease don't reply to this email; contact ${o.business} directly.` : "",
+    o.unsubscribe ? `\nStop emails from ${o.business}: ${o.unsubscribe}` : "",
     "\nSent with SureFrame",
   ].join("\n");
   const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
@@ -45,7 +51,8 @@ ${o.logoUrl ? `<p style="margin:0 0 20px"><img src="${esc(o.logoUrl)}" alt="${es
 ${message ? `<p style="font-size:15px;white-space:pre-wrap;margin:0 0 16px;color:#334155">${esc(message)}</p>` : ""}
 <p style="margin:24px 0"><a href="${esc(o.link)}" style="background:${accent};color:#fff;text-decoration:none;padding:10px 18px;border-radius:10px;font-weight:600;display:inline-block">Open your list</a></p>
 <p style="font-size:12px;color:#64748b;margin:0">For privacy, the details are only shown in the app.</p>
-${o.unsubscribe ? `<p style="font-size:12px;color:#64748b;margin:8px 0 0"><a href="${esc(o.unsubscribe)}" style="color:#64748b">Stop these reminders</a></p>` : ""}
+${o.noReply ? `<p style="font-size:12px;color:#64748b;margin:8px 0 0">Please don&#39;t reply to this email; contact ${esc(o.business)} directly.</p>` : ""}
+${o.unsubscribe ? `<p style="font-size:12px;color:#64748b;margin:8px 0 0"><a href="${esc(o.unsubscribe)}" style="color:#64748b">Stop emails from ${esc(o.business)}</a></p>` : ""}
 <p style="font-size:11px;color:#94a3b8;margin:24px 0 0">Sent with SureFrame</p>
 </div>`;
   return { subject, text, html, when };

@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { useVideoFrame } from "@/lib/videoFrame";
 
 /**
@@ -28,11 +28,21 @@ const MediaPlayer = forwardRef<HTMLMediaElement | null, Props>(function MediaPla
   const frame = useVideoFrame("60vh");
   const frameRef = frame.ref;
   useEffect(() => frameRef(el.current), [frameRef, src]);
-  if (kind === "AUDIO") return <audio ref={el} src={src} controls preload="metadata" className={className ?? "w-full"} />;
-  if (className) return <video ref={el} src={src} controls playsInline preload="metadata" className={className} />;
+  // The file arrived but this device can't decode its format (an older iPhone and a WebM recording).
+  const [unplayable, setUnplayable] = useState(false);
+  const onError = (e: React.SyntheticEvent<HTMLMediaElement>) => e.currentTarget.error?.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED && setUnplayable(true);
+  if (unplayable) {
+    return (
+      <p data-testid="unplayable" className="rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-600">
+        This device can&apos;t play this recording&apos;s format. Try another browser or a computer.
+      </p>
+    );
+  }
+  if (kind === "AUDIO") return <audio ref={el} src={src} controls preload="metadata" onError={onError} className={className ?? "w-full"} />;
+  if (className) return <video ref={el} src={src} controls playsInline preload="metadata" onError={onError} className={className} />;
   return (
     <div style={frame.style} className="relative mx-auto overflow-hidden rounded-lg bg-black">
-      <video ref={el} src={src} controls playsInline preload="metadata" className="absolute inset-0 h-full w-full object-contain" />
+      <video ref={el} src={src} controls playsInline preload="metadata" onError={onError} className="absolute inset-0 h-full w-full object-contain" />
     </div>
   );
 });

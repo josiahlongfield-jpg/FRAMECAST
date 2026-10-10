@@ -90,7 +90,7 @@ export default function ReminderSettings({ initial }: { initial: Settings }) {
           </label>
           <label className="grid gap-1 text-sm">
             <span className="font-medium text-slate-700">Reply-to email</span>
-            <span className="text-xs text-slate-500">If a client replies to a reminder, it goes here. Leave blank to not accept replies.</span>
+            <span className="text-xs text-slate-500">If a client replies to a reminder or new-video email, it goes here. Left blank, those emails ask clients not to reply.</span>
             <input type="email" value={s.reminderReplyTo} onChange={(e) => set({ reminderReplyTo: e.target.value })} placeholder="you@yourbusiness.com" aria-label="Reply-to email" className={field} />
           </label>
         </section>

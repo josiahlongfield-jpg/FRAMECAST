@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as store from "@/lib/recorder/store";
-import { ChunkedUploader, lockName, type UploadState } from "@/lib/recorder/uploader";
+import { ChunkedUploader, FatalUploadError, lockName, mayRecover, type UploadState } from "@/lib/recorder/uploader";
 import { bitrateFor, pickMimeType, stopAll } from "@/lib/recorder/media";
 import { encryptFrame, encryptText, generateKey, wrapKey } from "@/lib/e2e/crypto";
 import type { ReplyDTO } from "@/lib/replies";
@@ -12,7 +12,8 @@ import { useVideoFrame } from "@/lib/videoFrame";
 type Mode = "TEXT" | "VIDEO" | "AUDIO";
 type Phase = "idle" | "preview" | "recording" | "sending";
 
-const AUDIO_TYPES = ["audio/webm;codecs=opus", "audio/mp4", "audio/webm"];
+/** AAC first, as it plays everywhere (see CANDIDATE_TYPES in media.ts). */
+const AUDIO_TYPES = ["audio/mp4;codecs=mp4a.40.2", "audio/webm;codecs=opus", "audio/mp4", "audio/webm"];
 
 function pickAudioType() {
   return AUDIO_TYPES.find((t) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(t)) ?? "audio/webm";
@@ -189,7 +190,14 @@ export default function ReplyComposer({
       const l = live.current;
       if (!l || e.data.size === 0) return;
       // Encrypted on this device, in order, before it is saved or sent.
-      l.sealing = l.sealing.then(() => encryptFrame(e.data, mediaKey)).then((frame) => uploader.push(new Blob([frame as BlobPart])));
+      l.sealing = l.sealing
+        .then(() => encryptFrame(e.data, mediaKey))
+        .then((frame) => uploader.push(new Blob([frame as BlobPart])))
+        .catch((err) => {
+          // A gap would spoil the recording, so it ends here and what came before is sent.
+          console.error("Reply chunk failed", err);
+          void stop();
+        });
     };
     live.current = { recorder, uploader, mediaId, startedAt: performance.now(), release, sealing: Promise.resolve() };
     recorder.start(2000);
@@ -209,7 +217,7 @@ export default function ReplyComposer({
     stopAll(stream.current);
     stream.current = null;
     try {
-      await store.updateSession(l.mediaId, { durationMs, stopped: true });
+      await store.updateSession(l.mediaId, { durationMs, stopped: true }).catch(() => {});
       await l.uploader.finish(durationMs);
       const res = await fetch(`/api/videos/${videoId}/replies`);
       const { replies } = (await res.json()) as { replies: ReplyDTO[] };
@@ -217,7 +225,11 @@ export default function ReplyComposer({
       if (mine) onReplied(mine);
       setMode("TEXT");
     } catch (err) {
-      setError(`${(err as Error).message}. Your reply is saved on this device and will finish sending next time you open this page.`);
+      setError(
+        err instanceof FatalUploadError && !mayRecover(err)
+          ? (err as Error).message
+          : `${(err as Error).message}. Your reply is kept in this browser and will finish sending next time you open this page here.`,
+      );
     } finally {
       l.release();
       live.current = null;
@@ -302,7 +314,13 @@ export default function ReplyComposer({
               {phase === "sending" ? "Sending…" : `Record ${mode === "VIDEO" ? "video" : "voice"} reply`}
             </button>
           )}
-          {upload?.retrying && <p className="mt-2 text-xs text-amber-700">Connection lost. Still saving on this device; sending resumes automatically.</p>}
+          {upload?.retrying && (
+            <p className="mt-2 text-xs text-amber-700">
+              {upload.unsaved
+                ? "Connection lost and this browser's storage is full. Keep this page open; sending resumes when you're back online."
+                : "Connection lost. Still saving on this device; sending resumes automatically."}
+            </p>
+          )}
         </div>
       )}
       {error && <p role="alert" className="mt-2 text-sm text-red-700">{error}</p>}

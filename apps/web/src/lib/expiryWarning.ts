@@ -4,13 +4,12 @@ import { sendMail } from "@/lib/mail";
 import { brandOf } from "@/lib/branding";
 import { teamEmail } from "@/lib/teamEmail";
 import { BRAND } from "@/lib/brand";
+import { zoned } from "@/lib/dates";
+import { teamPath } from "@/lib/teamLink";
 
 /** How far ahead of the scheduled deletion the recorder is emailed. */
 export const WARN_BEFORE_MS = 24 * 3_600_000;
 
-const utc = (d: Date) =>
-  new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }).format(d) + " UTC";
-const day = (d: Date) => new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: "UTC" }).format(d);
 
 /**
  * Email each recorder once, about 24 hours before our encrypted copy of their
@@ -52,12 +51,22 @@ export async function warnExpiring(now = new Date()) {
     const mine = videos.filter((v) => claimed.has(v.id));
     if (!mine.length) continue;
 
-    const [ws, user, membership] = await Promise.all([
+    const [ws, user, recorderMembership] = await Promise.all([
       db.workspace.findUnique({ where: { id: workspaceId } }),
       db.user.findUnique({ where: { id: ownerId }, select: { email: true } }),
       db.membership.findFirst({ where: { userId: ownerId, workspaceId } }),
     ]);
-    if (!ws || !user || !membership) continue; // left the team since; nobody to tell
+    if (!ws) continue;
+    // Someone who has left the team (or is paused) isn't told; the owner is, since the recordings are the business's.
+    const left = !user || !recorderMembership || !!recorderMembership.pausedAt;
+    const owner = left ? await db.membership.findFirst({ where: { workspaceId, role: "OWNER" }, include: { user: { select: { email: true } } } }) : null;
+    const to = left ? owner?.user.email : user!.email;
+    const membership = left ? owner : recorderMembership;
+    if (!to || !membership) {
+      await db.video.updateMany({ where: { id: { in: mine.map((v) => v.id) }, expiryWarnedAt: stamp }, data: { expiryWarnedAt: null } });
+      continue;
+    }
+    const dates = zoned(ws.timezone);
 
     // A recording sent to several clients is one recording: list it once.
     const recordings = new Map<string, { link: string; recorded: Date; purgeAt: Date; clients: string[] }>();
@@ -84,23 +93,23 @@ export async function warnExpiring(now = new Date()) {
       subject: n === 1 ? `A recording is deleted from ${BRAND.name} in 24 hours` : `${n} recordings are deleted from ${BRAND.name} in 24 hours`,
       lead:
         n === 1
-          ? `Our encrypted copy of a recording you made is scheduled to be deleted from our servers in about 24 hours.`
-          : `Our encrypted copies of ${n} recordings you made are scheduled to be deleted from our servers in about 24 hours.`,
+          ? `Our encrypted copy of a recording ${left ? "made by someone no longer on your team" : "you made"} is scheduled to be deleted from our servers in about 24 hours.`
+          : `Our encrypted copies of ${n} recordings ${left ? "made by someone no longer on your team" : "you made"} are scheduled to be deleted from our servers in about 24 hours.`,
       lines: list.map((r) => ({
-        text: `Recorded ${day(r.recorded)}${r.clients.length ? `, sent to ${r.clients.join(", ")}` : ""}. Deleted after ${utc(r.purgeAt)}`,
+        text: `Recorded ${dates.day(r.recorded)}${r.clients.length ? `, sent to ${r.clients.join(", ")}` : ""}. Deleted after ${dates.dayTime(r.purgeAt)} ${dates.zoneName(r.purgeAt)}`,
         link: r.link,
       })),
       note:
         `If you or your clients still need ${n === 1 ? "it" : "them"}, open ${n === 1 ? "the recording" : "each recording"} and choose Save to device before then. ` +
         `After that, ${n === 1 ? "it" : "they"} can no longer be watched from the link.` +
         backup,
-      button: n === 1 ? { label: "Open the recording", link: list[0].link } : { label: "See recordings deleting soon", link: appUrl("/library?filter=soon") },
-      footer: `Times are in UTC. Your library shows them in your own time zone.`,
+      button: n === 1 ? { label: "Open the recording", link: list[0].link } : { label: "See recordings deleting soon", link: appUrl(teamPath("/library?filter=soon", ws.id)) },
+      footer: ws.timezone ? `Times are in your business's time zone (${dates.zone}).` : `Times are in UTC. Set your time zone in Settings > Reminders.`,
       logoUrl: brand.logoUrl,
       color: brand.color,
     });
     try {
-      await sendMail({ to: user.email, ...mail, fromName: ws.name });
+      await sendMail({ to, ...mail, fromName: ws.name });
       sent++;
     } catch (err) {
       // Release them so the next run tries again.

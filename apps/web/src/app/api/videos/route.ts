@@ -7,10 +7,13 @@ import { ALLOWED_MIME, extensionFor, newVideoId, publicVideo } from "@/lib/video
 import { limitByIp } from "@/lib/rateLimit";
 import { KeyFingerprint, requireCurrentKey } from "@/lib/keys";
 import { accessOf, libraryWhere } from "@/lib/permissions";
+import { ensureTimezone } from "@/lib/reminders";
 
 const CreateBody = z.object({
-  mimeType: z.string().regex(ALLOWED_MIME),
+  mimeType: z.string().max(120).regex(ALLOWED_MIME),
   title: z.string().trim().min(1).max(200).optional(),
+  /** The recorder's time zone, adopted by a workspace that hasn't got one yet (dates in emails and pages). */
+  timeZone: z.string().max(64).optional(),
   /** Recordings must be end-to-end encrypted; this is the video key wrapped with the team key. */
   teamKeyWrap: z.string().min(40).max(200),
   keyFingerprint: KeyFingerprint,
@@ -25,28 +28,33 @@ export const POST = handle(async (req: Request) => {
   if (!workspace.keyFingerprint) throw new HttpError(409, "Set up your encryption key before recording");
   await requireCurrentKey(workspace, body.data.keyFingerprint);
 
-  const limit = PLANS[workspace.plan].maxVideos;
-  if (limit !== null) {
-    const count = await db.video.count({ where: { workspaceId: workspace.id, replyToId: null, sourceId: null } });
-    if (count >= limit) throw new HttpError(402, `The ${PLANS[workspace.plan].name} plan allows ${limit} videos. Upgrade to record more.`);
-  }
+  const tz = await ensureTimezone(workspace.id, body.data.timeZone);
 
   const id = newVideoId();
   const storageKey = `videos/${workspace.id}/${id}/source.${extensionFor(body.data.mimeType)}`;
-  const uploadId = await storage().begin(storageKey, body.data.mimeType);
-  const video = await db.video.create({
-    data: {
-      id,
-      title: body.data.title ?? `Recording ${new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}`,
-      mimeType: body.data.mimeType,
-      encrypted: true,
-      teamKeyWrap: body.data.teamKeyWrap,
-      storageKey,
-      uploadId,
-      ownerId: user.id,
-      workspaceId: workspace.id,
-    },
-  });
+  const limit = PLANS[workspace.plan].maxVideos;
+  const video = await db.$transaction(async (tx) => {
+    if (limit !== null) {
+      // Counted under a lock so two recordings started at once can't both take the last place.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"videos:" + workspace.id}))`;
+      const count = await tx.video.count({ where: { workspaceId: workspace.id, replyToId: null, sourceId: null } });
+      if (count >= limit) throw new HttpError(402, `The ${PLANS[workspace.plan].name} plan allows ${limit} videos. Upgrade to record more.`);
+    }
+    const uploadId = await storage().begin(storageKey, body.data.mimeType);
+    return tx.video.create({
+      data: {
+        id,
+        title: body.data.title ?? `Recording ${new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: tz })}`,
+        mimeType: body.data.mimeType,
+        encrypted: true,
+        teamKeyWrap: body.data.teamKeyWrap,
+        storageKey,
+        uploadId,
+        ownerId: user.id,
+        workspaceId: workspace.id,
+      },
+    });
+  }, { timeout: 20_000 });
   return Response.json(
     { video: publicVideo(video), maxDurationMin: PLANS[workspace.plan].maxDurationMin, maxResolution: PLANS[workspace.plan].maxResolution },
     { status: 201 },

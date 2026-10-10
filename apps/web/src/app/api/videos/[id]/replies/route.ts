@@ -5,7 +5,7 @@ import { storage } from "@/lib/storage";
 import { replyDTO, visibleReplies } from "@/lib/replies";
 import { handle, HttpError } from "@/lib/session";
 import { viewableVideo } from "@/lib/access";
-import { ALLOWED_MIME, extensionFor, newUploadToken, newVideoId } from "@/lib/videos";
+import { ALLOWED_MIME, extensionFor, newUploadToken, newVideoId, REPLY_DAILY_BYTES, replyBytesToday } from "@/lib/videos";
 import { limitByIp } from "@/lib/rateLimit";
 import { notifyClientReply } from "@/lib/teamNotify";
 
@@ -15,7 +15,7 @@ const Body = z.discriminatedUnion("kind", [
   // Text arrives already sealed with the conversation's video key.
   z.object({ kind: z.literal("TEXT"), body: z.string().min(1).max(8000), encrypted: z.literal(true), timestampMs: z.number().int().min(0).optional() }),
   // Media key wrapped with the conversation's video key.
-  z.object({ kind: z.enum(["VIDEO", "AUDIO"]), mimeType: z.string().regex(ALLOWED_MIME), parentKeyWrap: z.string().min(40).max(200) }),
+  z.object({ kind: z.enum(["VIDEO", "AUDIO"]), mimeType: z.string().max(120).regex(ALLOWED_MIME), parentKeyWrap: z.string().min(40).max(200) }),
 ]);
 
 export const GET = handle(async (_req: Request, ctx: { params: Promise<{ id: string }> }) => {
@@ -60,6 +60,9 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
   // A conversation can't hold endless unfinished uploads.
   const open = await db.video.count({ where: { replyToId: id, status: "RECORDING", createdAt: { gt: new Date(Date.now() - 86_400_000) } } });
   if (open >= 5) throw new HttpError(429, "Finish or cancel your other replies first.");
+  if ((await replyBytesToday(id)) >= REPLY_DAILY_BYTES) {
+    throw new HttpError(429, "This conversation has reached today's limit for video and voice replies. Send a text reply, or try again tomorrow.");
+  }
 
   const mediaId = newVideoId();
   const storageKey = `videos/${root.workspaceId}/${root.id}/replies/${mediaId}.${extensionFor(body.mimeType)}`;

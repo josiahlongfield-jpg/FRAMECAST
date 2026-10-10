@@ -34,6 +34,8 @@ export async function loadKey(name: string) {
 
 export async function saveKey(name: string, key: CryptoKey) {
   set(name, await exportKey(key));
+  // Ask the browser not to clear this site's storage on its own (Safari otherwise can after a week without a visit).
+  void navigator.storage?.persist?.().catch(() => {});
 }
 
 export const teamKeyName = (workspaceId: string) => `team:${workspaceId}`;

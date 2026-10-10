@@ -64,7 +64,8 @@ export const POST = handle(async (req: Request) => {
       remindTeam: isTask && !!d.remindTeam,
       clientId: d.clientId ?? null,
       workspaceId: who.workspaceId,
-      authorName: who.me.user.name ?? who.me.user.email.split("@")[0],
+      // Shared items show this to the client: the business name rather than part of an email address.
+      authorName: who.me.user.name || who.me.workspace.name,
     },
   });
   await scheduleReminders(item, tz);

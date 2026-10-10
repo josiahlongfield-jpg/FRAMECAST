@@ -44,6 +44,9 @@ export const PATCH = handle(async (req: Request, ctx: { params: Promise<{ id: st
       throw new HttpError(409, "This client has already replied, so the video stays with them. Use Send to more clients to share it with someone else.");
     }
   }
+  if (body.data.clientId && body.data.clientId !== current.clientId && (current.status === "EXPIRED" || current.status === "FAILED")) {
+    throw new HttpError(409, "This recording has been deleted from our servers, so it can't be sent");
+  }
   if (body.data.clientId) {
     const client = await db.client.findFirst({ where: { id: body.data.clientId, workspaceId: workspace.id, removedAt: null, pausedAt: null } });
     if (!client || !canSeeClient(access, client)) throw new HttpError(400, "Unknown client");
@@ -57,6 +60,7 @@ export const PATCH = handle(async (req: Request, ctx: { params: Promise<{ id: st
       title: body.data.title,
       clientId: body.data.clientId,
       ...(body.data.clientId !== undefined ? { clientKeyWrap: body.data.clientId ? body.data.clientKeyWrap : null, emailClientWhenReady: false } : {}),
+      ...(body.data.clientId !== undefined && body.data.clientId !== current.clientId ? { sentAt: body.data.clientId ? new Date() : null } : {}),
     },
   });
   // Tell the client by email, now or once the upload has finished.
@@ -91,11 +95,17 @@ export const DELETE = handle(async (_req: Request, ctx: { params: Promise<{ id: 
   const conversations = [id, ...copies.map((c) => c.id)];
   // Remove each conversation's reply media along with the video itself.
   const media = await db.video.findMany({ where: { replyToId: { in: conversations } } });
-  // A copy shares the original's file, so only the original's deletion removes it.
-  for (const v of video.sourceId ? media : [video, ...media]) {
-    if (v.status === "RECORDING") await storage().abort(v.storageKey, v.uploadId);
-    else await storage().delete(v.storageKey);
-  }
   await db.video.deleteMany({ where: { id: { in: [...conversations, ...media.map((m) => m.id)] } } });
+  // The rows go first so a storage hiccup can't leave a video that looks deleted but isn't. A file left
+  // behind is logged, and it can't be read without the key that went with the row.
+  // A copy shares the original's file, so only the original's deletion removes it.
+  await Promise.allSettled(
+    (video.sourceId ? media : [video, ...media]).map((v) =>
+      v.status === "RECORDING" ? storage().abort(v.storageKey, v.uploadId) : storage().delete(v.storageKey),
+    ),
+  ).then((results) => {
+    const failed = results.filter((r) => r.status === "rejected").length;
+    if (failed) console.error(JSON.stringify({ level: "error", message: "[videos] files left after delete", video: id, failed }));
+  });
   return new Response(null, { status: 204 });
 });

@@ -2,29 +2,79 @@ import { db } from "@/lib/db";
 import { storage } from "@/lib/storage";
 
 /** How long the server keeps an encrypted relay copy when cloud backup is off. */
-export const RETENTION_DAYS = Number(process.env.RELAY_RETENTION_DAYS ?? 30);
+const configuredDays = Number(process.env.RELAY_RETENTION_DAYS);
+/** Days the server keeps a copy without cloud backup (a bad RELAY_RETENTION_DAYS falls back to 30). */
+export const RETENTION_DAYS = Number.isInteger(configuredDays) && configuredDays > 0 ? configuredDays : 30;
 
 export function purgeDate(cloudBackup: boolean, from = new Date()) {
   return cloudBackup ? null : new Date(from.getTime() + RETENTION_DAYS * 86_400_000);
 }
 
-/** Delete relay copies whose window has passed. Originals stay on people's devices. */
-export async function purgeExpired(now = new Date()) {
-  const due = await db.video.findMany({
-    where: { purgeAt: { lte: now }, status: { notIn: ["EXPIRED", "RECORDING"] } },
-    take: 500,
-  });
-  for (const v of due) {
-    await storage().delete(v.storageKey);
-    await db.video.update({ where: { id: v.id }, data: { status: "EXPIRED", playbackUrl: null, thumbnailUrl: null } });
+/**
+ * Delete server copies whose window has passed. Nothing is kept on devices
+ * unless someone saved it. Works through the backlog in batches until done or
+ * out of time. Copies sent to several clients share one file, which is
+ * deleted once, when every row using it is due; one file that fails to delete
+ * is retried on the next run without holding up the rest. The video's
+ * transcript and summary go with it.
+ */
+export async function purgeExpired(now = new Date(), budgetMs = 40_000) {
+  const until = Date.now() + budgetMs;
+  const failed = new Set<string>();
+  let purged = 0;
+  while (Date.now() < until) {
+    const due = await db.video.findMany({
+      // Never a backed-up workspace's video, even if a stale date slipped through.
+      where: { purgeAt: { lte: now }, status: { notIn: ["EXPIRED", "RECORDING"] }, workspace: { cloudBackup: false }, id: { notIn: [...failed] } },
+      select: { id: true, sourceId: true, storageKey: true },
+      take: 200,
+    });
+    if (!due.length) break;
+    const byKey = new Map<string, typeof due>();
+    for (const v of due) byKey.set(v.storageKey, [...(byKey.get(v.storageKey) ?? []), v]);
+    const groups = [...byKey];
+    // A few at a time: each delete is a round trip to the bucket.
+    for (let i = 0; i < groups.length; i += 8) {
+      await Promise.all(
+        groups.slice(i, i + 8).map(async ([key, rows]) => {
+          const ids = rows.map((r) => r.id);
+          try {
+            // Another row still using this file and not yet due keeps it for now.
+            const inUse = await db.video.count({ where: { storageKey: key, id: { notIn: ids }, status: { not: "EXPIRED" }, OR: [{ purgeAt: null }, { purgeAt: { gt: now } }] } });
+            if (!inUse) await storage().delete(key);
+            await db.video.updateMany({ where: { id: { in: ids } }, data: { status: "EXPIRED", playbackUrl: null, thumbnailUrl: null } });
+            await db.videoInsight.deleteMany({ where: { videoId: { in: [...ids, ...rows.flatMap((r) => (r.sourceId ? [r.sourceId] : []))] } } });
+            purged += ids.length;
+          } catch (err) {
+            for (const id of ids) failed.add(id);
+            console.error("[purge] couldn't delete", key, err);
+          }
+        }),
+      );
+    }
   }
-  return due.length;
+  return purged;
+}
+
+/**
+ * Rows nothing needs any more: sign-in links that have expired (they hold an
+ * email address) and invites that ended over a month ago.
+ */
+export async function pruneLeftovers(now = new Date()) {
+  const monthAgo = new Date(now.getTime() - 30 * 86_400_000);
+  const [tokens, invites] = await Promise.all([
+    db.verificationToken.deleteMany({ where: { expires: { lt: now } } }),
+    db.invite.deleteMany({ where: { OR: [{ expiresAt: { lt: monthAgo } }, { revokedAt: { lt: monthAgo } }, { acceptedAt: { lt: monthAgo } }] } }),
+  ]);
+  return { tokens: tokens.count, invites: invites.count };
 }
 
 /**
  * Uploads that never finished (a recording abandoned for good) are aborted
- * after a week so their parts stop costing storage. Recovery after a crash
- * normally happens within minutes, the next time the app is opened.
+ * after a week so their parts stop costing storage, and removed: an abandoned
+ * reply would otherwise show up in the conversation, and an abandoned
+ * recording in the library. Recovery after a crash normally happens the next
+ * time the app is opened.
  */
 export async function abortStaleUploads(now = new Date()) {
   const stale = await db.video.findMany({
@@ -33,8 +83,8 @@ export async function abortStaleUploads(now = new Date()) {
   });
   for (const v of stale) {
     await storage().abort(v.storageKey, v.uploadId).catch(() => {});
-    await db.uploadPart.deleteMany({ where: { videoId: v.id } });
-    await db.video.update({ where: { id: v.id }, data: { status: "EXPIRED", uploadTokenHash: null } });
+    // Deleting a reply's media deletes its Reply row too (onDelete: Cascade).
+    await db.video.delete({ where: { id: v.id } }).catch((err) => console.error("[purge] couldn't remove stale upload", v.id, err));
   }
   return stale.length;
 }

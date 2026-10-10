@@ -1,11 +1,18 @@
 export type Mode = "screen+camera" | "screen" | "camera";
 export type Quality = 720 | 1080 | 2160;
 
+/**
+ * H.264/AAC MP4 first (Safari, and Chrome and Edge on most computers): it plays
+ * everywhere, including iPhones that can't play WebM. Recordings are encrypted
+ * end to end, so the server can never convert them later. Then WebM (Firefox,
+ * and Chrome without an H.264 encoder), then any MP4.
+ */
 const CANDIDATE_TYPES = [
+  "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+  "video/mp4;codecs=avc1,mp4a",
   "video/webm;codecs=vp9,opus",
   "video/webm;codecs=vp8,opus",
   "video/webm",
-  "video/mp4;codecs=avc1,mp4a", // Safari
   "video/mp4",
 ];
 

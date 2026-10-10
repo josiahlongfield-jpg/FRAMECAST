@@ -10,6 +10,7 @@ import ClientKeyCapture from "@/components/ClientKeyCapture";
 import ClientPlanner from "@/components/ClientPlanner";
 import { db } from "@/lib/db";
 import { unsubscribeUrl } from "@/lib/reminders";
+import { zoned } from "@/lib/dates";
 
 export const metadata: Metadata = { title: "Your videos" };
 
@@ -20,15 +21,22 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
     .getAll()
     .filter((c) => c.name.startsWith("fc_client_"))
     .map((c) => c.value);
-  const clients = tokens.length
-    ? await db.client.findMany({
-        where: { token: { in: tokens }, removedAt: null, pausedAt: null },
+  const [clients, pausedBy] = tokens.length
+    ? await Promise.all([
+        db.client.findMany({
+          where: { token: { in: tokens }, removedAt: null, pausedAt: null },
         include: {
-          workspace: { select: { id: true, name: true, plan: true, brandColor: true, brandLogoType: true, brandVersion: true, aiAssist: true } },
+          workspace: { select: { id: true, name: true, plan: true, brandColor: true, brandLogoType: true, brandVersion: true, aiAssist: true, timezone: true } },
           videos: { where: { replyToId: null, status: { not: "RECORDING" } }, orderBy: { createdAt: "desc" }, include: { owner: { select: { name: true } } } },
-        },
-      })
-    : [];
+          },
+        }),
+        // Businesses that paused this person's access, so a bookmark doesn't just say "open your link".
+        db.client.findMany({ where: { token: { in: tokens }, removedAt: null, pausedAt: { not: null } }, select: { workspace: { select: { name: true } } } }),
+      ])
+    : [[], []];
+  // Newest first by when each video reached the client, not when it was recorded.
+  for (const c of clients) c.videos.sort((a, b) => +(b.sentAt ?? b.createdAt) - +(a.sentAt ?? a.createdAt));
+  const pausedNames = [...new Set(pausedBy.map((p) => p.workspace.name))];
 
   // With one business, the whole page wears its branding.
   const brand = clients.length === 1 ? brandOf(clients[0].workspace) : null;
@@ -44,12 +52,15 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
             That link is no longer active. Ask the person who sent it for a new one.
           </p>
         )}
-        {paused && (
+        {(paused || pausedNames.length > 0) && (
           <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800" data-testid="client-paused">
-            Your access is paused because this business changed its SureFrame plan. Nothing has been deleted. Please contact them to have it restored.
+            Your access {pausedNames.length > 0 ? <>to videos from {pausedNames.join(", ")} </> : ""}is paused because{" "}
+            {pausedNames.length > 1 ? "these businesses changed their" : "this business changed its"} SureFrame plan. The pause doesn&rsquo;t delete anything, but videos are only kept for a limited time, so please contact{" "}
+            them soon to have it restored.
           </p>
         )}
         {clients.length === 0 ? (
+          pausedNames.length > 0 ? null : 
           <p className="mt-6 text-slate-600">Open the personal link you were sent to see your videos here.</p>
         ) : (
           clients.map((c) => (
@@ -68,7 +79,7 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
                           {/* Who sent it, never their email: "Sam from Business". */}
                           {v.owner.name && <span className="block text-xs text-slate-500">{v.owner.name} from {c.workspace.name}</span>}
                         </span>
-                        <span className="shrink-0 pl-3 text-sm text-slate-500">{v.createdAt.toLocaleDateString("en-US", { dateStyle: "medium" })}</span>
+                        <span className="shrink-0 pl-3 text-sm text-slate-500">{zoned(c.workspace.timezone).day(v.sentAt ?? v.createdAt)}</span>
                       </Link>
                     </li>
                   ))}
@@ -79,7 +90,7 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
               </div>
               {c.email && (
                 <p className="mt-2 text-xs text-slate-500">
-                  Reminder emails to {c.email} are {c.remindersOff ? "off" : "on"}.{" "}
+                  Reminder and new-video emails to {c.email} are {c.remindersOff ? "off" : "on"}.{" "}
                   <a href={unsubscribeUrl(c.id)} className="font-medium text-brand-700 hover:underline">
                     {c.remindersOff ? "Turn on" : "Turn off"}
                   </a>

@@ -8,6 +8,7 @@ import {
   AbortMultipartUploadCommand,
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   ListPartsCommand,
   NoSuchKey,
   PutObjectCommand,
@@ -39,6 +40,8 @@ export interface StorageDriver {
   presignPart?(key: string, uploadId: string | null, partNumber: number, size: number): Promise<string>;
   /** Object storage only: the parts actually stored, as the source of truth at completion. */
   listParts?(key: string, uploadId: string | null): Promise<{ partNumber: number; etag: string | null; sizeBytes: number }[]>;
+  /** Object storage only: the size of a finished object, or null when there's none. */
+  storedSize?(key: string): Promise<number | null>;
   /** Local driver only: open a byte range of the finished file. */
   open?(key: string, range?: { start: number; end: number }): Promise<{ stream: ReadableStream; size: number }>;
 }
@@ -136,6 +139,10 @@ class S3Driver implements StorageDriver {
       region: process.env.S3_REGION ?? "auto",
       endpoint: process.env.S3_ENDPOINT || undefined, // set for Cloudflare R2
       forcePathStyle: !!process.env.S3_ENDPOINT,
+      // Otherwise the SDK signs a checksum of an empty body into every presigned
+      // part URL, which a bucket that checks it would refuse for the real part.
+      requestChecksumCalculation: "WHEN_REQUIRED",
+      responseChecksumValidation: "WHEN_REQUIRED",
     });
   }
 
@@ -186,6 +193,16 @@ class S3Driver implements StorageDriver {
       marker = res.IsTruncated ? res.NextPartNumberMarker : undefined;
     } while (marker);
     return out;
+  }
+
+  async storedSize(key: string) {
+    try {
+      const res = await this.s3.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }));
+      return Number(res.ContentLength ?? 0);
+    } catch (err) {
+      if ((err as { name?: string })?.name === "NotFound" || err instanceof NoSuchKey) return null;
+      throw err;
+    }
   }
 
   async abort(key: string, uploadId: string | null) {

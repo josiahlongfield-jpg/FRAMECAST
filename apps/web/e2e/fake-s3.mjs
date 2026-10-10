@@ -5,9 +5,10 @@
 // Handles objects, multipart uploads (including presigned part uploads from
 // the browser), ranges, and the bucket CORS rule from the README (only the
 // app's own origin; no CORS headers for anyone else). Signatures aren't
-// checked. Objects live in memory; `log` records every request in order.
+// checked, but a part's x-amz-checksum-crc32 is, as AWS does. Objects live in memory; `log` records every request in order.
 import { createServer } from "node:http";
 import { createHash } from "node:crypto";
+import { crc32 } from "node:zlib";
 
 export const objects = new Map(); // key -> { body, type }
 export const log = []; // { method, key, query }
@@ -66,6 +67,12 @@ export function startFakeS3({ port = 12114, bucket = "fc-test", origins = ["http
         const up = uploads.get(q.get("uploadId"));
         if (!up) return error(res, 404, "NoSuchUpload");
         if (req.method === "PUT") {
+          const sum = q.get("x-amz-checksum-crc32") ?? req.headers["x-amz-checksum-crc32"];
+          if (sum) {
+            const actual = Buffer.alloc(4);
+            actual.writeUInt32BE(crc32(body));
+            if (actual.toString("base64") !== sum) return xml(res, 400, "<Error><Code>BadDigest</Code><Message>The CRC32 you specified did not match the calculated checksum.</Message></Error>");
+          }
           up.parts.set(Number(q.get("partNumber")), body);
           res.writeHead(200, { ...res.cors, ETag: etag(body) });
           return res.end();

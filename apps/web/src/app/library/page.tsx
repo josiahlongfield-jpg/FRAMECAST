@@ -5,10 +5,11 @@ import MemberPlanner from "@/components/MemberPlanner";
 import StorageStatus from "@/components/StorageStatus";
 import { db } from "@/lib/db";
 import { PLANS } from "@/lib/plans";
-import { requirePageUser } from "@/lib/session";
+import { followTeamLink, requirePageUser } from "@/lib/session";
 import { reminderDefaultsFor } from "@/lib/reminders";
 import { accessOf, isManager, libraryWhere, seesAllClients } from "@/lib/permissions";
 import type { Prisma } from "@prisma/client";
+import { zoned } from "@/lib/dates";
 
 export const metadata: Metadata = { title: "Library" };
 
@@ -18,23 +19,26 @@ const fmt = (ms: number | null) => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 };
 
-export default async function Library({ searchParams }: { searchParams: Promise<{ show?: string; filter?: string }> }) {
+export default async function Library({ searchParams }: { searchParams: Promise<{ show?: string; filter?: string; ws?: string }> }) {
+  const { show, filter, ws } = await searchParams;
+  await followTeamLink(ws, filter ? `/library?filter=${encodeURIComponent(filter)}` : "/library");
   const me = await requirePageUser("/library");
   const { user, workspace } = me;
   const access = accessOf(me);
   const plan = PLANS[workspace.plan];
   // Staff who only see their own clients have nothing else to switch to.
-  const team = seesAllClients(access) && (await db.membership.count({ where: { workspaceId: workspace.id } })) > 1;
+  const teamSize = await db.membership.count({ where: { workspaceId: workspace.id, pausedAt: null } });
+  const team = seesAllClients(access) && teamSize > 1;
   // On a team, "Mine" is what I recorded plus anything for the clients I look after.
   // Staff start on "Mine"; owners and admins on everything.
-  const { show, filter } = await searchParams;
   const mine = team && (show === "mine" || (!isManager(access) && show !== "all"));
   const scope: Prisma.VideoWhereInput = { ...libraryWhere(access), ...(mine ? { OR: [{ ownerId: user.id }, { client: { assignedToId: user.id } }, { copies: { some: { client: { assignedToId: user.id } } } }] } : {}) };
   // "Deleting soon": server copies deleted within a week (no cloud backup), soonest first.
   const soonWhere: Prisma.VideoWhereInput = { ...scope, AND: [{ purgeAt: { not: null, lte: new Date(Date.now() + 7 * 86_400_000) } }, { status: { notIn: ["EXPIRED", "RECORDING"] } }] };
   const soon = filter === "soon";
   const [videos, soonCount] = await Promise.all([
-    db.video.findMany({ where: soon ? soonWhere : scope, orderBy: soon ? { purgeAt: "asc" } : { createdAt: "desc" } }),
+    // Copies sent to other clients count their views towards the original.
+    db.video.findMany({ where: soon ? soonWhere : scope, orderBy: soon ? { purgeAt: "asc" } : { createdAt: "desc" }, include: { copies: { select: { viewCount: true } } } }),
     db.video.count({ where: soonWhere }),
   ]);
   const withParams = (p: Record<string, string | undefined>) => {
@@ -50,6 +54,8 @@ export default async function Library({ searchParams }: { searchParams: Promise<
     { href: withParams({ show: team ? showParam(mine) : undefined }), label: "All videos", active: !soon },
     { href: withParams({ show: team ? showParam(mine) : undefined, filter: "soon" }), label: `Deleting soon${soonCount ? ` (${soonCount})` : ""}`, active: soon },
   ];
+  const dates = zoned(workspace.timezone);
+  const views = (v: (typeof videos)[number]) => v.viewCount + v.copies.reduce((n, c) => n + c.viewCount, 0);
   const pill = (active: boolean) => `rounded-md px-3 py-1.5 ${active ? "bg-white font-medium text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`;
 
   return (
@@ -137,7 +143,7 @@ export default async function Library({ searchParams }: { searchParams: Promise<
                   </div>
                   <h3 className="mt-3 truncate font-medium text-slate-900 group-hover:text-brand-700">{v.title}</h3>
                   <p className="text-xs text-slate-500">
-                    {v.createdAt.toLocaleDateString("en-US", { dateStyle: "medium" })} · {v.viewCount} {v.viewCount === 1 ? "view" : "views"}
+                    {dates.day(v.createdAt)} · {views(v)} {views(v) === 1 ? "view" : "views"}
                   </p>
                   <StorageStatus status={v.status} purgeAt={v.purgeAt?.toISOString() ?? null} cloudBackup={workspace.cloudBackup} />
                 </Link>
@@ -146,7 +152,15 @@ export default async function Library({ searchParams }: { searchParams: Promise<
           </ul>
         )}
         <div className="mt-12 max-w-2xl">
-          <MemberPlanner workspaceId={workspace.id} fingerprint={workspace.keyFingerprint} defaults={{ ...reminderDefaultsFor(workspace, me.membership), remindTeam: true }} title="My to-dos & notes" />
+          {/* Items not about a client are one list for the whole team; say so when there is a team. */}
+          <MemberPlanner
+            workspaceId={workspace.id}
+            fingerprint={workspace.keyFingerprint}
+            defaults={{ ...reminderDefaultsFor(workspace, me.membership), remindTeam: true }}
+            {...(teamSize > 1
+              ? { title: "Team to-dos & notes", note: "Everyone on your team can see and change these. Keep client to-dos on each client's page.", teamWho: { label: "Email the team", tag: "the team" } }
+              : { title: "My to-dos & notes" })}
+          />
         </div>
       </main>
     </>

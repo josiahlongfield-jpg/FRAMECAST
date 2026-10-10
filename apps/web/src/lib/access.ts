@@ -25,7 +25,8 @@ export async function viewerFor(video: Video): Promise<Viewer | null> {
   if (me && !me.paused && me.workspace.id === root.workspaceId) {
     const access = accessOf(me);
     if (await canSeeVideo(access, root)) {
-      return { kind: "member", userId: me.user.id, name: me.user.name ?? me.user.email.split("@")[0], access };
+      // Clients see this on replies: the business name rather than part of an email address.
+      return { kind: "member", userId: me.user.id, name: me.user.name || me.workspace.name, access };
     }
   }
 

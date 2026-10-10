@@ -7,7 +7,10 @@ import { handle, HttpError, requireUser } from "@/lib/session";
 import { newVideoId } from "@/lib/videos";
 import { accessOf, clientScopeWhere, requirePerm, visibleVideo } from "@/lib/permissions";
 import { notifyVideosSent } from "@/lib/teamNotify";
-import { emailClientVideo } from "@/lib/emailClientVideo";
+import { emailClientVideos } from "@/lib/emailClientVideo";
+
+// Copies and emails for every chosen client.
+export const maxDuration = 120;
 
 const Body = z.object({
   /** Each client, with this video's key wrapped with their key on the sender's device. */
@@ -35,6 +38,7 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
   const video = await visibleVideo(access, id);
   if (video.replyToId || video.sourceId) throw new HttpError(400, "Send the original video instead");
   if (video.status === "RECORDING") throw new HttpError(409, "Wait for the upload to finish before sending it to more clients");
+  if (video.status === "EXPIRED" || video.status === "FAILED") throw new HttpError(409, "This recording has been deleted from our servers, so it can't be sent");
   if (!video.encrypted) throw new HttpError(400, "This video can't be sent to more clients");
 
   const wanted = [...new Map(body.data.recipients.map((r) => [r.clientId, r])).values()];
@@ -67,12 +71,12 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
     clientId: r.clientId,
     clientKeyWrap: r.clientKeyWrap,
     createdAt: video.createdAt,
+    sentAt: new Date(),
   }));
   if (copies.length) await db.video.createMany({ data: copies });
   const sends = copies.map((c) => ({ videoId: c.id, clientId: c.clientId }));
   after(() => notifyVideosSent(workspace.id, me.user.id, sends));
 
-  let emailed = 0;
-  if (body.data.notify) for (const copy of copies) if (await emailClientVideo(copy.id)) emailed++;
+  const emailed = body.data.notify ? await emailClientVideos(copies.map((c) => c.id)) : 0;
   return Response.json({ sent: copies.map((c) => ({ id: c.id, clientId: c.clientId })), skipped: wanted.length - fresh.length, emailed }, { status: 201 });
 });

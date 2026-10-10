@@ -16,7 +16,7 @@ const a = Buffer.alloc(1000, 97), b = Buffer.alloc(500, 98), c = Buffer.alloc(20
 console.log("part2", (await r.put(`${BASE}/api/videos/${video.id}/parts/2`, { data: b })).status());
 console.log("part1", (await r.put(`${BASE}/api/videos/${video.id}/parts/1`, { data: Buffer.alloc(10, 120) })).status());
 console.log("part1 retry", (await r.put(`${BASE}/api/videos/${video.id}/parts/1`, { data: a })).status());
-const missing = await r.post(`${BASE}/api/videos/${video.id}/complete`, { data: { partCount: 3 } });
+const missing = await r.post(`${BASE}/api/videos/${video.id}/complete`, { data: { partCount: 3, durationMs: 1234 } });
 console.log("complete w/ missing", missing.status(), await missing.text());
 await r.put(`${BASE}/api/videos/${video.id}/parts/3`, { data: c });
 const done = await r.post(`${BASE}/api/videos/${video.id}/complete`, { data: { partCount: 3, durationMs: 1234 } });

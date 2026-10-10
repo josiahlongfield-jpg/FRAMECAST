@@ -42,6 +42,8 @@ type ClientOption = {
   hasLink?: boolean;
   /** Has an email address and hasn't turned emails off. */
   emailable?: boolean;
+  /** Has an email address but turned emails off. */
+  emailsOff?: boolean;
   /** For a copy sent to another client: that client's own conversation. */
   copyId?: string;
 };
@@ -71,6 +73,8 @@ type Props = {
   sendMany?: SendMany;
   /** AI summaries add-on: the encrypted transcript/summary, whether this viewer may make one, and whether to tell a client AI is used. */
   ai?: { insight: SealedInsight; canMake: boolean; notice: boolean };
+  /** Members only: reactions left on this conversation, with the moment in the video if there was one. */
+  reactions?: { emoji: string; timestampMs: number | null }[];
 };
 
 /**
@@ -122,9 +126,38 @@ function ClientUnlock({ clientId, ...props }: Props & { clientId: string }) {
       setRootKey(await unwrapKey(props.video.clientKeyWrap, clientKey));
     })().catch(() => setMissing(true));
   }, [clientId, props.video.clientKeyWrap]);
-  if (missing) return <Locked text="Open this video from the personal link you were sent to unlock it on this device." />;
+  if (missing) return <LostKey clientId={clientId} />;
   if (!rootKey) return <Locked text="Unlocking…" />;
   return <WatchBody {...props} canEdit={false} rootKey={rootKey} />;
+}
+
+/**
+ * A client this browser recognises but whose key is gone (Safari clears site
+ * data after a week or so without a visit). Only the business can make the
+ * personal link again, so this asks them to.
+ */
+function LostKey({ clientId }: { clientId: string }) {
+  const [state, setState] = useState<"idle" | "busy" | "asked" | "failed">("idle");
+  async function ask() {
+    setState("busy");
+    const res = await fetch(`/api/clients/${clientId}/lost-key`, { method: "POST" }).catch(() => null);
+    const body = res?.ok ? ((await res.json().catch(() => ({}))) as { asked?: boolean }) : null;
+    setState(body?.asked ? "asked" : "failed");
+  }
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-600 sm:p-16" data-testid="lost-key">
+      <p>Open this video from the personal link you were sent to unlock it on this device.</p>
+      <p className="mt-2 text-sm text-slate-500">Can&rsquo;t find the link, or this browser forgot it? We&rsquo;ll ask them to send it again.</p>
+      {state === "asked" ? (
+        <p className="mt-4 text-sm font-medium text-emerald-700" role="status">Done. They&rsquo;ve been asked to send your personal link again.</p>
+      ) : (
+        <button onClick={ask} disabled={state === "busy"} className="mt-4 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
+          {state === "busy" ? "Asking…" : "Ask for my link again"}
+        </button>
+      )}
+      {state === "failed" && <p role="alert" className="mt-2 text-sm text-red-700">That didn&rsquo;t go through. Please contact them directly.</p>}
+    </div>
+  );
 }
 
 /**
@@ -222,6 +255,7 @@ function WatchBody({
   initialReplies,
   sendMany,
   ai,
+  reactions: initialReactions,
   rootKey,
   teamKey,
 }: Props & { canEdit: boolean; rootKey: CryptoKey; teamKey?: CryptoKey }) {
@@ -246,6 +280,7 @@ function WatchBody({
     setLinked((cur) => new Set(cur).add(clientId));
   }, []);
   const [replies, setReplies] = useState(initialReplies);
+  const [reactions, setReactions] = useState(initialReactions);
   const listEnd = useRef<HTMLLIElement>(null);
   const reactionsRow = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLElement>(null);
@@ -370,6 +405,8 @@ function WatchBody({
     video.mimeType,
   );
   const playable = video.encrypted ? src : video.rawUrl;
+  // The recording downloaded fine but this device can't decode its format.
+  const [unplayable, setUnplayable] = useState(false);
   useEffect(() => {
     const el = player.current;
     if (!el || !playable) return;
@@ -399,12 +436,15 @@ function WatchBody({
     const id = Date.now() + Math.random();
     setBurst((b) => [...b, { id, emoji }]);
     setTimeout(() => setBurst((b) => b.filter((x) => x.id !== id)), 1200);
-    await fetch(`/api/videos/${video.id}/reactions`, {
+    const timestampMs = momentMs();
+    const res = await fetch(`/api/videos/${video.id}/reactions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ emoji, timestampMs: momentMs() }),
-    });
+      body: JSON.stringify({ emoji, timestampMs }),
+    }).catch(() => null);
+    if (res?.ok) setReactions((r) => r && [...r, { emoji, timestampMs: timestampMs ?? null }]);
   }
+
 
   // Finish sending any reply that a crash or closed tab interrupted.
   useEffect(() => {
@@ -419,7 +459,7 @@ function WatchBody({
   useEffect(() => {
     const t = setInterval(async () => {
       if (document.hidden) return;
-      const res = await fetch(`/api/videos/${video.id}/replies`).catch(() => null);
+      const res = await fetch(`/api/videos/${video.id}/replies`, { headers: { "x-sf-background": "1" } }).catch(() => null);
       if (!res?.ok) return;
       const { replies } = (await res.json()) as { replies: ReplyDTO[] };
       setReplies((cur) => (replies.length !== cur.length ? replies : cur));
@@ -434,18 +474,20 @@ function WatchBody({
 
   async function saveTitle() {
     if (title.trim() && title !== video.title) {
-      await fetch(`/api/videos/${video.id}`, {
+      const res = await fetch(`/api/videos/${video.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title }),
-      });
+      }).catch(() => null);
+      if (!res?.ok) alert((await res?.json().catch(() => ({})))?.error ?? "Couldn't save the new title. Check your connection and try again.");
     }
   }
 
   async function remove() {
     const others = sendMany && !sendMany.sourceId && sendMany.copies.length ? " The copies sent to other clients are deleted too." : "";
     if (!confirm(`Delete this video?${others} This can't be undone.`)) return;
-    await fetch(`/api/videos/${video.id}`, { method: "DELETE" });
+    const res = await fetch(`/api/videos/${video.id}`, { method: "DELETE" }).catch(() => null);
+    if (!res?.ok) return alert((await res?.json().catch(() => ({})))?.error ?? "Couldn't delete the video. Check your connection and try again.");
     router.push("/library");
   }
 
@@ -495,12 +537,12 @@ function WatchBody({
     setTimeout(() => setCopied(false), 2000);
   }
 
-  const showPlayer = video.status !== "RECORDING" && !expired && !playError;
+  const showPlayer = video.status !== "RECORDING" && !expired && !playError && !unplayable;
 
   const seek = (ms: number | null) => {
     if (ms === null || !player.current) return;
     player.current.currentTime = ms / 1000;
-    void player.current.play();
+    void player.current.play().catch(() => {});
   };
 
   return (
@@ -511,12 +553,23 @@ function WatchBody({
             <div className="grid aspect-video place-items-center text-slate-300">This recording is still uploading. Refresh in a moment.</div>
           ) : expired ? (
             <div className="grid aspect-video place-items-center px-6 text-center text-slate-300">
-              This copy has expired from our servers. The original is saved on the sender&apos;s device.
+              This recording has been deleted from our servers. Ask the sender if they kept a copy.
             </div>
           ) : playError ? (
             <div className="grid aspect-video place-items-center text-slate-300">Couldn&apos;t unlock this recording on this device.</div>
+          ) : unplayable ? (
+            <div data-testid="unplayable" className="grid aspect-video place-items-center px-6 text-center text-slate-300">
+              This device can&apos;t play this recording&apos;s format. Try another browser or a computer, or ask the sender to record it again.
+            </div>
           ) : (
-            <video ref={playerRef} controls playsInline onPlay={onPlay} className="absolute inset-0 h-full w-full bg-black object-contain" />
+            <video
+              ref={playerRef}
+              controls
+              playsInline
+              onPlay={onPlay}
+              onError={(e) => e.currentTarget.error?.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED && setUnplayable(true)}
+              className="absolute inset-0 h-full w-full bg-black object-contain"
+            />
           )}
           <div className="pointer-events-none absolute bottom-16 right-6 flex flex-col items-center">
             {burst.map((b) => (
@@ -539,11 +592,11 @@ function WatchBody({
               <h1 className="text-2xl font-semibold text-slate-900">{title}</h1>
             )}
             <p className="mt-1 px-1 text-sm text-slate-500">
-              {ownerName} · {new Date(video.createdAt).toLocaleDateString("en-US", { dateStyle: "medium" })} · {video.viewCount} views
+              {ownerName} · {new Date(video.createdAt).toLocaleDateString("en-US", { dateStyle: "medium" })} · {video.viewCount} {video.viewCount === 1 ? "view" : "views"}
             </p>
           </div>
           <div className="flex flex-wrap gap-2 sm:shrink-0">
-            {canEdit && recipient?.link && (recipient.hasLink && recipient.emailable ? (
+            {canEdit && !expired && recipient?.link && (recipient.hasLink && recipient.emailable ? (
               <>
                 <button
                   onClick={send}
@@ -591,7 +644,7 @@ function WatchBody({
             <Link href={`/v/${sendMany.sourceId}`} className="font-medium text-brand-700 hover:underline">See the original</Link>
           </p>
         )}
-        {canEdit && !sendMany?.sourceId && (
+        {canEdit && !sendMany?.sourceId && !expired && (
           <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
             <label className="flex flex-wrap items-center gap-3 text-sm">
               <span className="font-medium text-slate-900">Send to</span>
@@ -626,7 +679,9 @@ function WatchBody({
                       ? `Only your team and ${recipient.name} can watch this. We'll email ${recipient.name} as soon as the upload finishes.`
                       : recipient.emailable
                         ? `Only your team and ${recipient.name} can watch this. Press Send to email ${recipient.name} that it's waiting.`
-                        : `Only your team and ${recipient.name} can watch this. ${recipient.name} has no email address saved, so send them the link yourself.`}
+                        : recipient.emailsOff
+                          ? `Only your team and ${recipient.name} can watch this. ${recipient.name} has turned off emails from you, so send them the link yourself.`
+                          : `Only your team and ${recipient.name} can watch this. ${recipient.name} has no email address saved, so send them the link yourself.`}
             </p>
             {sendMany && teamKey && video.encrypted && video.status !== "RECORDING" && (
               <SendToMany videoId={video.id} clients={clients} primaryId={sentTo} sendMany={sendMany} rootKey={rootKey} teamKey={teamKey} onFirstLink={setFirstLink} onLinkCopied={linkCopied} />
@@ -644,6 +699,7 @@ function WatchBody({
             </button>
           ))}
         </div>
+        {reactions && reactions.length > 0 && <ReactionSummary reactions={reactions} onSeek={seek} />}
 
         {ai && !expired && (
           <AiInsight
@@ -661,7 +717,6 @@ function WatchBody({
         {ai?.notice && !canEdit && <AiNotice className="mt-4" />}
       </section>
 
-      {expanded && <div className="fixed inset-0 z-40 bg-slate-900/50" onClick={() => setExpanded(false)} aria-hidden />}
       {!sheet && (
         <button
           type="button"
@@ -936,6 +991,32 @@ function SendToMany({
         </div>
       )}
       {note && <p role="status" className="mt-2 text-slate-700">{note}</p>}
+    </div>
+  );
+}
+
+/** For the team: how the client reacted, and the moments they reacted to (tap one to jump there). */
+function ReactionSummary({ reactions, onSeek }: { reactions: { emoji: string; timestampMs: number | null }[]; onSeek: (ms: number) => void }) {
+  const byEmoji = new Map<string, (number | null)[]>();
+  for (const r of reactions) byEmoji.set(r.emoji, [...(byEmoji.get(r.emoji) ?? []), r.timestampMs]);
+  return (
+    <div data-testid="reaction-summary" className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-600">
+      <span>Reactions:</span>
+      {[...byEmoji].map(([emoji, moments]) => {
+        const at = [...new Set(moments.filter((m): m is number => m !== null).sort((a, b) => a - b))];
+        return (
+          <span key={emoji} className="inline-flex flex-wrap items-center gap-1.5">
+            <span aria-hidden>{emoji}</span>
+            <span>{moments.length}</span>
+            {at.slice(0, 6).map((ms) => (
+              <button key={ms} type="button" onClick={() => onSeek(ms)} className="rounded bg-slate-100 px-1.5 text-xs text-slate-700 hover:bg-slate-200" aria-label={`Play from ${fmt(ms)}`}>
+                {fmt(ms)}
+              </button>
+            ))}
+            {at.length > 6 && <span className="text-xs text-slate-400">+{at.length - 6} more</span>}
+          </span>
+        );
+      })}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { exportKey, fingerprint as keyFingerprint, generateKey, importKey } from "@/lib/e2e/crypto";
 import { followRotations, loadKey, saveKey, teamKeyName } from "@/lib/e2e/keystore";
 
@@ -36,6 +36,8 @@ function createTeamKey(workspaceId: string) {
   return pending;
 }
 
+const UNLOCKED = "sureframe-team-key-unlocked";
+
 /**
  * If the team's keys were reset (someone left), bring a key this device or
  * this person holds up to date. Only current members are given the chain.
@@ -64,6 +66,16 @@ export default function TeamKeyGate({
 }) {
   const [state, setState] = useState<State>({ kind: "loading" });
   const [input, setInput] = useState("");
+  // Bumped when another gate on the page unlocks, so every gate opens together.
+  const [unlockedElsewhere, setUnlockedElsewhere] = useState(0);
+  const locked = useRef(false);
+  locked.current = state.kind === "recover";
+
+  useEffect(() => {
+    const onUnlock = (e: Event) => locked.current && (e as CustomEvent<string>).detail === workspaceId && setUnlockedElsewhere((n) => n + 1);
+    window.addEventListener(UNLOCKED, onUnlock);
+    return () => window.removeEventListener(UNLOCKED, onUnlock);
+  }, [workspaceId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -85,7 +97,7 @@ export default function TeamKeyGate({
     return () => {
       cancelled = true;
     };
-  }, [workspaceId, fingerprint]);
+  }, [workspaceId, fingerprint, unlockedElsewhere]);
 
   async function recover(e: React.FormEvent) {
     e.preventDefault();
@@ -99,6 +111,7 @@ export default function TeamKeyGate({
       }
       await saveKey(teamKeyName(workspaceId), key);
       setState({ kind: "ready", key });
+      window.dispatchEvent(new CustomEvent(UNLOCKED, { detail: workspaceId }));
     } catch (err) {
       setState({ kind: "recover", error: (err as Error).message });
     }

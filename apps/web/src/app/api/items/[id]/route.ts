@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { memberOrClient } from "@/lib/access";
 import { KeyFingerprint, requireCurrentKey } from "@/lib/keys";
 import { itemDTO } from "@/lib/items";
-import { ensureTimezone, scheduleReminders, spawnNext } from "@/lib/reminders";
+import { ensureTimezone, scheduleReminders, spawnNext, workspaceTz } from "@/lib/reminders";
 import { Repeat, ReminderRules } from "@/lib/scheduleSchema";
 import { handle, HttpError } from "@/lib/session";
 
@@ -83,8 +83,13 @@ export const PATCH = handle(async (req: Request, ctx: { params: Promise<{ id: st
 
 export const DELETE = handle(async (_req: Request, ctx: { params: Promise<{ id: string }> }) => {
   const { id } = await ctx.params;
-  const { who } = await load(id);
+  const { item, who } = await load(id);
   if (who.kind !== "member") throw new HttpError(403, "Not allowed");
+  // Deleting one occurrence of a repeating to-do skips it: the series carries on.
+  if (item.repeat && !item.done) {
+    const ws = await db.workspace.findUniqueOrThrow({ where: { id: item.workspaceId }, select: { timezone: true } });
+    await spawnNext(item, workspaceTz(ws));
+  }
   await db.item.delete({ where: { id } });
   return new Response(null, { status: 204 });
 });

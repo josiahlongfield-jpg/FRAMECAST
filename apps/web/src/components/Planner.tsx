@@ -10,6 +10,9 @@ type Decrypted = ItemDTO & { text: string };
 
 export type PlannerDefaults = { reminders: ReminderRule[]; remindClient: boolean; remindTeam: boolean };
 export type PlannerClient = { email: string | null; remindersOff: boolean };
+/** Who "remind the team" emails, as the checkbox says it ("Email me") and as the list shows it ("you"). */
+export type TeamWho = { label: string; tag: string };
+const ME: TeamWho = { label: "Email me", tag: "you" };
 
 const RepeatIcon = () => (
   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden><path d="M17 2l4 4-4 4" /><path d="M3 11v-1a4 4 0 0 1 4-4h14" /><path d="M7 22l-4-4 4-4" /><path d="M21 13v1a4 4 0 0 1-4 4H3" /></svg>
@@ -35,6 +38,8 @@ export default function Planner({
   privateKey,
   sharedKey,
   title = "Tasks & notes",
+  note,
+  teamWho = ME,
 }: {
   role: "member" | "client";
   clientId: string | null;
@@ -44,6 +49,9 @@ export default function Planner({
   privateKey: CryptoKey | null;
   sharedKey: CryptoKey | null;
   title?: string;
+  /** A line under the title, e.g. who else can see the list. */
+  note?: string;
+  teamWho?: TeamWho;
 }) {
   const fresh = useCallback(
     (): Schedule => ({
@@ -101,7 +109,8 @@ export default function Planner({
     dueAt: s.due ? new Date(s.due).toISOString() : null,
     repeat: s.due ? s.repeat : null,
     reminders: s.due ? s.reminders : [],
-    remindClient: shared && s.remindClient && !!client?.email && !client.remindersOff,
+    // Kept even while the client has emails off: they're checked when sent, so reminders resume if the client turns emails back on.
+    remindClient: shared && s.remindClient && !!client?.email,
     remindTeam: s.remindTeam,
     tz: browserTimeZone(),
   });
@@ -159,7 +168,11 @@ export default function Planner({
   }
 
   async function remove(i: Decrypted) {
-    if (i.repeat && !confirm("Delete this to-do? Earlier and later repeats stay on the list.")) return;
+    const what = i.kind === "NOTE" ? "note" : "to-do";
+    const ask = i.repeat
+      ? "Delete this to-do? Only this one goes: the next repeat still comes round. To stop it repeating, edit it and turn off Repeat."
+      : `Delete this ${what}? This can't be undone.`;
+    if (!confirm(ask)) return;
     const res = await fetch(`/api/items/${i.id}`, { method: "DELETE" });
     if (res.ok) setItems((cur) => cur.filter((x) => x.id !== i.id));
   }
@@ -176,6 +189,7 @@ export default function Planner({
     editing === i.id ? (
       <li key={i.id} className="py-2.5">
         <ItemEditor
+          teamLabel={teamWho.label}
           item={i}
           clientName={clientName}
           client={client}
@@ -221,7 +235,7 @@ export default function Planner({
                 {role === "member" && (
                   <span className="text-slate-400">
                     {" "}
-                    · {[i.remindClient && first, i.remindTeam && "you"].filter(Boolean).join(" and ")}
+                    · {[i.remindClient && first, i.remindTeam && teamWho.tag].filter(Boolean).join(" and ")}
                   </span>
                 )}
               </span>
@@ -234,7 +248,8 @@ export default function Planner({
           </div>
         </div>
         {role === "member" && (
-          <div className="flex gap-2 text-xs text-slate-400 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+          // Always visible on touch screens, which have no hover.
+          <div className="flex gap-2 text-xs text-slate-400 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-within:opacity-100">
             <button onClick={() => setEditing(i.id)} aria-label={`Edit "${i.text}"`} className="hover:text-slate-800">
               Edit
             </button>
@@ -249,6 +264,7 @@ export default function Planner({
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5">
       <h2 className="font-semibold text-slate-900">{title}</h2>
+      {note && <p className="mt-1 text-xs text-slate-500">{note}</p>}
       {role === "member" && (
         <form onSubmit={add} className="mt-4 grid gap-3">
           <div role="tablist" aria-label="Item type" className="grid w-48 grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1 text-xs">
@@ -288,6 +304,7 @@ export default function Planner({
               clientEmail={client?.email}
               clientOptedOut={client?.remindersOff}
               canShareReminders={!!clientId && share}
+              teamLabel={teamWho.label}
             />
           )}
           <div className="flex flex-wrap items-center gap-3 text-sm">
@@ -337,7 +354,9 @@ function ItemEditor({
   client,
   onSave,
   onCancel,
+  teamLabel,
 }: {
+  teamLabel: string;
   item: Decrypted;
   clientName?: string;
   client?: PlannerClient;
@@ -366,7 +385,7 @@ function ItemEditor({
     >
       <textarea value={text} onChange={(e) => setText(e.target.value)} rows={item.kind === "NOTE" ? 3 : 1} aria-label="Edit text" className="resize-none rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" />
       {item.kind === "TASK" && (
-        <ScheduleFields value={s} onChange={setS} clientName={clientName} clientEmail={client?.email} clientOptedOut={client?.remindersOff} canShareReminders={item.shared} />
+        <ScheduleFields value={s} onChange={setS} clientName={clientName} clientEmail={client?.email} clientOptedOut={client?.remindersOff} canShareReminders={item.shared} teamLabel={teamLabel} />
       )}
       <div className="flex justify-end gap-2 text-sm">
         <button type="button" onClick={onCancel} className="rounded-lg px-3 py-1.5 text-slate-600 hover:bg-slate-100">Cancel</button>
