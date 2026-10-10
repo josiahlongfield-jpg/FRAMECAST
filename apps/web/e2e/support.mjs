@@ -44,7 +44,9 @@ await visitor.fill('input[aria-label="Your email"]', "visitor@example.com");
 const a1 = await ask(visitor, "How do I add a client?");
 ok("assistant answers", a1.includes("Clients page"), a1);
 const call = requests.at(-1);
-ok("uses the Claude API with the guide cached", call.body.model === "claude-opus-5-5" && call.body.system.includes("help guide") && call.body.cache_control?.type === "ephemeral");
+const system = [].concat(call.body.system);
+const lastBlock = [].concat(call.body.messages.findLast((m) => m.role === "user").content).at(-1);
+ok("uses the Claude API with the guide cached", call.body.model === "claude-opus-5-5" && system.some((b) => b.text?.includes("help guide") && b.cache_control?.type === "ephemeral") && lastBlock?.cache_control?.type === "ephemeral", JSON.stringify({ system: system.map((b) => b.cache_control), lastBlock: lastBlock?.cache_control }));
 ok("tells the assistant the visitor isn't signed in", call.body.messages.some((m) => m.role === "system" && m.content.includes("not signed in")));
 
 // 2. A refund is handed to a person

@@ -149,7 +149,7 @@ ok("owner with staff can't delete their account", !!(await prisma.user.findUniqu
 for (const i of await prisma.invite.findMany({ where: { workspaceId, acceptedAt: null, revokedAt: null } })) await owner.request.delete(`${BASE}/api/team/invites/${i.id}`);
 await owner.goto(BASE + "/settings/team");
 owner.once("dialog", (d) => d.accept());
-await owner.click("button:has-text('Remove')");
+await owner.click("[data-testid=remove-member]");
 ok("owner removes the staff member", !!(await owner.waitForSelector("[data-testid=key-reset]", { timeout: 20000 }).catch(() => null)));
 ok("their client goes back to shared", (await prisma.client.findUnique({ where: { id: avery.id } })).assignedToId === null);
 await staff.goto(BASE + "/clients");

@@ -171,7 +171,7 @@ const purge = await strangerCtx.request.get(`${BASE}/api/cron/purge`, { headers:
 console.log("purge job:", purge.status(), await purge.text());
 console.log("purge without secret:", (await strangerCtx.request.get(`${BASE}/api/cron/purge`)).status());
 await client2.reload();
-await client2.waitForSelector("text=expired from our servers");
+await client2.waitForSelector("text=deleted from our servers");
 const onDisk = (() => { try { statSync(join(".data/uploads", keyPath)); return true; } catch { return false; } })();
 const inDb = sql(`select count(*) from "StoredPart" where key='${keyPath}'`) !== "0";
 console.log("client sees expiry notice; file on server:", onDisk || inDb ? "still there" : "deleted");

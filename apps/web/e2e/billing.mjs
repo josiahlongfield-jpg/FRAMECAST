@@ -84,8 +84,11 @@ ok("add-ons are charged today, not at the next renewal", sub.lastUpdate?.prorati
 control.declineNext = true;
 res = await api("/api/billing/seats", { extraSeats: 5 });
 ok("a declined card adds nothing and links to the invoice", res.status() === 402 && !!(await res.json()).url && seatItem.quantity === 3);
+const lastBefore = sub.lastUpdate;
 res = await api("/api/billing/seats", { extraSeats: 3 });
-ok("removing seats credits the next bill instead", res.ok() && sub.lastUpdate?.proration_behavior === "create_prorations");
+ok("asking for the seats already there changes nothing in Stripe", res.ok() && sub.lastUpdate === lastBefore && seatItem.quantity === 3);
+res = await api("/api/billing/seats", { extraSeats: 2 });
+ok("removing seats credits the next bill instead", res.ok() && sub.lastUpdate?.proration_behavior === "create_prorations" && seatItem.quantity === 2);
 await webhook("customer.subscription.updated", sub);
 
 // 4) Upgrading switches the plan in place, after the owner confirms what's charged and to which card.
@@ -99,9 +102,9 @@ const confirmText = await dialog.textContent();
 ok("nothing changes before confirming", sub.items.data.some((i) => i.price.lookup_key === "sureframe_solo_monthly") && sub.lastUpdate === updateBefore);
 ok("confirm shows the card on file", /Visa ending 4242/.test(confirmText));
 ok("confirm shows full price, credit and amount due", /Studio, from today/.test(confirmText) && /Unused time on your current plan/.test(confirmText) && /Due today/.test(confirmText), confirmText);
-ok("confirm lists add-ons and tax on their own rows", /Studio, from today\s*\$49\.00/.test(confirmText) && /Extra clients and add-ons, from today/.test(confirmText) && /Tax/.test(confirmText));
+ok("confirm lists add-ons and tax on their own rows", /Studio, from today\s*US\$49\.00/.test(confirmText) && /Extra clients and add-ons, from today/.test(confirmText) && /Tax/.test(confirmText));
 {
-  const amounts = [...confirmText.matchAll(/(−?)\$([\d,]+\.\d\d)/g)].map((m) => (m[1] ? -1 : 1) * Number(m[2].replace(/,/g, "")));
+  const amounts = [...confirmText.matchAll(/(−?)US\$([\d,]+\.\d\d)/g)].map((m) => (m[1] ? -1 : 1) * Number(m[2].replace(/,/g, "")));
   const due = amounts.at(-2) ?? amounts.at(-1); // the Pay button repeats the amount
   ok("the confirm's rows add up to the amount due", Math.abs(amounts.slice(0, amounts.length - 2).reduce((t, a) => t + a, 0) - due) < 0.011, amounts.join(" "));
 }
@@ -119,7 +122,7 @@ ok("upgrade goes straight back to billing, no second checkout", state.sessions.l
 ok("upgrade charges now and restarts the billing date", sub.lastUpdate.billing_cycle_anchor?.type === "now" && sub.lastUpdate.proration_behavior === "always_invoice");
 ok("upgrade only applies once paid", sub.lastUpdate.payment_behavior === "pending_if_incomplete");
 ok("plan item switched to Studio", sub.items.data.some((i) => i.price.lookup_key === "sureframe_studio_monthly") && !sub.items.data.some((i) => i.price.lookup_key === "sureframe_solo_monthly"));
-ok("seats kept through the upgrade", sub.items.data.find((i) => i.price.lookup_key === "sureframe_client_seat_monthly")?.quantity === 3);
+ok("seats kept through the upgrade", sub.items.data.find((i) => i.price.lookup_key === "sureframe_client_seat_monthly")?.quantity === 2);
 await webhook("customer.subscription.updated", sub);
 ok("billing page shows Studio", /Studio plan/.test(await planText()));
 await page.goto(BASE + "/pricing");
@@ -203,6 +206,27 @@ const forgotten = await prisma.workspace.findUnique({ where: { id: workspaceId }
 ok("and its paid features end", forgotten.plan === "FREE" && !forgotten.stripeSubscriptionId && !forgotten.cloudBackup && forgotten.extraClientSeats === 0 && forgotten.stripeCustomerId === session.customer);
 await webhook("customer.subscription.updated", sub2);
 ok("the real subscription is picked up again", /Solo plan/.test(await planText()));
+// The daily clean-up does the same for subscriptions nobody opens Billing for, and fills in
+// the billing interval for workspaces from before it was stored.
+const daily = () => page.request.get(BASE + "/api/cron/purge", { headers: { authorization: `Bearer ${process.env.CRON_SECRET ?? "test-cron-secret"}` } });
+// It runs after the job's response, so wait for it.
+const settle = async (done) => {
+  for (let i = 0; i < 180; i++) {
+    const w = await prisma.workspace.findUnique({ where: { id: workspaceId } });
+    if (done(w)) return w;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return prisma.workspace.findUnique({ where: { id: workspaceId } });
+};
+await prisma.workspace.update({ where: { id: workspaceId }, data: { billingInterval: null } });
+res = await daily();
+ok("the daily check fills in a missing billing interval", res.ok() && (await settle((w) => w.billingInterval)).billingInterval === "month");
+await prisma.workspace.update({ where: { id: workspaceId }, data: { stripeSubscriptionId: "sub_from_test_mode", plan: "STUDIO" } });
+res = await daily();
+const checked = await settle((w) => !w.stripeSubscriptionId);
+ok("and forgets a subscription Stripe doesn't have", res.ok() && checked.plan === "FREE" && !checked.stripeSubscriptionId);
+await webhook("customer.subscription.updated", sub2);
+ok("which comes back with the next webhook for a real one", /Solo plan/.test(await planText()));
 
 // 7) Data export.
 res = await page.request.get(BASE + "/api/account/export");
@@ -219,7 +243,7 @@ ok("wrong confirmation refused", !!(await page.waitForSelector("text=doesn't mat
 await page.fill('input[name="confirm"]', email);
 await page.click("text=Delete my account");
 await page.waitForURL((u) => u.pathname === "/login");
-ok("after deleting: told the account is gone", await page.isVisible("[data-testid=deleted-note]"));
+ok("after deleting: told the account is gone", !!(await page.waitForSelector("[data-testid=deleted-note]", { timeout: 10000 }).catch(() => null)));
 ok("deleting cancels billing in Stripe", state.deletedCustomers.includes(session.customer) && state.subs.filter((s) => s.customer === session.customer).every((s) => s.status === "canceled"));
 await page.goto(BASE + "/settings/billing");
 // Pages stream behind a loading state, so the sign-in redirect can land just after the load.

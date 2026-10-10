@@ -65,8 +65,11 @@ await owner.waitForTimeout(3000);
 await owner.click("button:has-text('Stop')");
 await owner.waitForURL("**/v/**", { timeout: 30000 });
 const videoUrl = owner.url().split("?")[0];
-await owner.selectOption("select:near(:text('Send to'))", avery.id);
-await owner.waitForTimeout(800);
+// Wait for the choice to be saved before leaving the page.
+await Promise.all([
+  owner.waitForResponse((r) => r.request().method() === "PATCH" && r.url().includes("/api/videos/"), { timeout: 30000 }),
+  owner.selectOption("select:near(:text('Send to'))", avery.id),
+]);
 
 await owner.goto(`${BASE}/clients/${avery.id}`);
 await owner.fill('textarea[aria-label="New to-do"]', "Log your sleep");
@@ -122,7 +125,7 @@ const before = await prisma.workspace.findUnique({ where: { id: workspaceId } })
 const outboxBefore = new Set(readdirSync(".data/outbox"));
 await owner.goto(BASE + "/settings/team");
 owner.once("dialog", (d) => d.accept());
-await owner.click("button:has-text('Remove')");
+await owner.click("[data-testid=remove-member]");
 await owner.waitForSelector("[data-testid=key-reset]", { timeout: 20000 });
 await owner.screenshot({ path: `${shots}/key-reset.png`, fullPage: true });
 const after = await prisma.workspace.findUnique({ where: { id: workspaceId } });
@@ -199,7 +202,7 @@ await leaver.waitForURL((u) => u.pathname === "/library");
 await leaver.goto(BASE + "/settings/account");
 await leaver.fill('input[name="confirm"]', `rk-leaver${stamp}@example.com`);
 await leaver.click("text=Delete my account");
-await leaver.waitForURL((u) => u.pathname === "/");
+await leaver.waitForURL((u) => u.pathname === "/login");
 await owner.goto(BASE + "/settings/team");
 ok("owner asked to reset after a self-deletion", !!(await owner.waitForSelector("text=left the team and still holds its keys", { timeout: 10000 }).catch(() => null)));
 const fp2 = (await prisma.workspace.findUnique({ where: { id: workspaceId } })).keyFingerprint;

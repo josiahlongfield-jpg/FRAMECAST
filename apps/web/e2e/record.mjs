@@ -57,7 +57,7 @@ await page.close({ runBeforeUnload: false });
 
 const page2 = await ctx.newPage();
 await page2.goto(BASE + "/record");
-await page2.waitForSelector("text=We recovered", { timeout: 30000 });
+await page2.waitForSelector("text=We finished uploading", { timeout: 30000 });
 console.log("recovery banner shown");
 await page2.screenshot({ path: `${shots}/recovered.png` });
 const recoveredHref = await page2.getAttribute("text=View it", "href");

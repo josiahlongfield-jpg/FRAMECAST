@@ -290,7 +290,7 @@ ok("staff can't bulk-assign clients", (await status(amy.request.post(BASE + "/ap
 // Monitoring. Known state: videos to clients by owner (Ben, Sha), Bob (Ben), Amy (Ana, a copy to Ana, Sha);
 // Zed has no video; Sha's replies to Amy's and the owner's videos are unanswered; Bob answered Ben.
 await prisma.item.update({ where: { id: ids[0] }, data: { dueAt: new Date(Date.now() - 86_400_000) } }); // Ben's to-do is now overdue
-await prisma.video.update({ where: { id: vOwnerSha }, data: { createdAt: new Date(Date.now() - 40 * 86_400_000) } });
+await prisma.video.update({ where: { id: vOwnerSha }, data: { createdAt: new Date(Date.now() - 40 * 86_400_000), sentAt: new Date(Date.now() - 40 * 86_400_000) } });
 await owner.goto(BASE + "/team?days=30");
 await owner.waitForSelector("[data-testid=team-stats]");
 ok("owner has an Overview link", await owner.isVisible("nav >> a[href='/team']"));

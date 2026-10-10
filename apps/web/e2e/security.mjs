@@ -56,8 +56,12 @@ const good = await ex({ code: fresh, verifier });
 const sess = await good.json();
 ok("right verifier gets a session", good.ok() && sess.token?.length > 50, JSON.stringify(sess));
 ok("code works only once", (await ex({ code: fresh, verifier })).status() === 400);
-const me = await anon.request.get(BASE + "/api/clients", { headers: { cookie: `${sess.cookie}=${sess.token}` } });
-ok("the app's session works on the API", me.ok());
+// Sign-ins end after 8 hours unused, for the app too: it has to send its last-activity time
+// (the sf_active cookie) along with the session, or the API treats it as signed out.
+const bare = await anon.request.get(BASE + "/api/clients", { headers: { cookie: `${sess.cookie}=${sess.token}` } });
+ok("the app's session alone counts as signed out", bare.status() === 401);
+const me = await anon.request.get(BASE + "/api/clients", { headers: { cookie: `${sess.cookie}=${sess.token}; sf_active=${Date.now()}` } });
+ok("the app's session works on the API with its activity time", me.ok());
 ok("handoff without a challenge refuses", await (async () => { await page.goto(`${BASE}/mobile/handoff`); return !!(await page.waitForSelector("text=Update the SureFrame app", { timeout: 10000 }).catch(() => null)); })());
 
 // Upload bounds.

@@ -126,7 +126,7 @@ await phone.screenshot({ path: `${shots}/reminder-client.png`, fullPage: true })
 
 // 6. Client turns reminders off from the email link
 await phone.goto(mail.text.match(/Stop emails from [^:]+: (\S+)/)[1]);
-await phone.click("text=Stop emails");
+await phone.click("button:has-text('Stop emails')");
 await phone.waitForSelector("text=Emails turned off");
 ok("client opted out", sql(`select "remindersOff" from "Client" where id='${clientId}'`) === "t");
 sql(`update "Reminder" set "sendAt" = now() - interval '1 minute' where id = (select r.id from "Reminder" r join "Item" i on i.id=r."itemId" where i."seriesId"='${itemId}' order by "sendAt" limit 1)`);

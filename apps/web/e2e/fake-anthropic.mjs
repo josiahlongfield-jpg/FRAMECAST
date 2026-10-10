@@ -25,7 +25,9 @@ function reply(body) {
     return msg([text(JSON.stringify(summary))], "end_turn");
   }
   const last = msgs[msgs.length - 1];
-  const lastUser = [...msgs].reverse().find((m) => m.role === "user" && typeof m.content === "string")?.content ?? "";
+  // A user's words are a string, or text blocks (the latest carries the cache marker); tool results aren't words.
+  const words = (m) => (typeof m.content === "string" ? m.content : m.content.filter((b) => b.type === "text").map((b) => b.text).join("\n"));
+  const lastUser = words([...msgs].reverse().find((m) => m.role === "user" && words(m)) ?? { content: "" });
   if (Array.isArray(last.content) && last.content[0]?.type === "tool_result") {
     const result = last.content[0].content;
     if (result.startsWith("{")) return msg([text(`You're on the ${JSON.parse(result).plan} plan.`)], "end_turn");
