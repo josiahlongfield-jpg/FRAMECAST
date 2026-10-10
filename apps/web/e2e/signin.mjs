@@ -27,12 +27,23 @@ ok("sign-in email sent", !!mail);
 ok("email is branded", /SureFrame sign-in link/.test(mail?.subject ?? ""));
 const link = mail.text.match(/https?:\/\/\S+/)[0];
 
+// Opening the link (as a mail scanner would) doesn't use it up.
+const scanner = await (await browser.newContext()).newPage();
+await scanner.goto(link);
+ok("the emailed link opens a confirm page", await scanner.isVisible("[data-testid=confirm-sign-in]"));
+ok("a link that isn't ours is refused", await (async () => {
+  await scanner.goto(BASE + "/login/confirm?link=" + encodeURIComponent("https://evil.example/x"));
+  return (await scanner.isVisible("text=This link doesn't work")) && !(await scanner.isVisible("[data-testid=confirm-sign-in]"));
+})());
+
 await page.goto(link);
+await page.click("[data-testid=confirm-sign-in]");
 await page.waitForURL("**/clients");
 ok("link signs in and returns to the page asked for", true);
 
 const other = await (await browser.newContext()).newPage();
 await other.goto(link);
+await other.click("[data-testid=confirm-sign-in]");
 await other.waitForURL("**/login**");
 ok("a used link is refused with a clear message", await other.isVisible("text=expired or was already used"));
 // Five links per address per hour: the sixth request is refused politely.

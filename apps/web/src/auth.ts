@@ -30,7 +30,8 @@ if (emailLinks) {
         await rateLimit(`signin-email:to:${identifier.toLowerCase()}`, 5, 3600);
         const { sendMail } = await import("@/lib/mail");
         const { signInEmail } = await import("@/lib/signInEmail");
-        await sendMail({ to: identifier, ...signInEmail(url, new URL(url).host) });
+        const { confirmLink } = await import("@/lib/signInLink");
+        await sendMail({ to: identifier, ...signInEmail(confirmLink(url), new URL(url).host) });
       },
     }),
   );
