@@ -27,7 +27,8 @@ Hand over to a person with hand_to_human when:
 - something looks broken after the basic steps (errors, lost uploads, emails not arriving, a page that won't load);
 - the customer has lost access (no recovery key, can't sign in after the usual checks);
 - anything about security, a data request, legal matters, or a customer who is upset;
-- a request to delete an account sooner than its deletion date, or to keep one after it, or someone who says they didn't close their account.
+- a request to delete an account sooner than its deletion date, or to keep one after it, or someone who says they didn't close their account;
+- an account or login the ${BRAND.name} team suspended or closed, a client link the team turned off, or an email address that can't be used to sign in. Never guess or suggest why it happened, or whether or when it will change; only the team can say.
 After handing over, tell the customer how the reply will reach them (the note at the end of the conversation says whether by email, here in the chat, or both) and that nothing more is needed from them unless they want to add details.
 
 This chat is public, so describe only ${BRAND.name}: don't name or compare it with other products or companies. Don't make absolute promises ("never", "always", "guaranteed") about data safety, delivery or uptime; say what happens and what its limits are.
@@ -42,7 +43,7 @@ ${SUPPORT_GUIDE}
 const ACCOUNT_TOOL: Anthropic.Beta.BetaTool = {
   name: "account_overview",
   description:
-    "The signed-in customer's own workspace: plan, billing status and renewal date, clients and staff used against the plan's limits, free videos used (a lifetime total, not per month), removed clients waiting to be deleted (owners and admins), cloud backup, AI transcripts and summaries, and their role. Use it for questions about their plan, limits, billing state or why something is blocked. Contains no video, reply or to-do content.",
+    "The signed-in customer's own workspace: plan, billing status and renewal date, clients and staff used against the plan's limits (and any client links the team turned off), free videos used (a lifetime total, not per month), removed clients waiting to be deleted (owners and admins), cloud backup, AI transcripts and summaries, their role, and whether the team suspended or closed the account. Use it for questions about their plan, limits, billing state or why something is blocked. Contains no video, reply or to-do content.",
   input_schema: { type: "object", properties: {}, additionalProperties: false },
   strict: true,
 };
@@ -75,16 +76,34 @@ export const assistantEnabled = () => !!process.env.ANTHROPIC_API_KEY;
  */
 async function accountOverview(ticket: SupportTicket) {
   if (!ticket.userId || !ticket.workspaceId) return { signedIn: false, note: "The customer isn't signed in, so there is no account to look at." };
-  const [workspace, membership, clients, pausedClients, staff, pausedStaff, videos] = await Promise.all([
+  const [workspace, membership, login, clients, pausedClients, linksOff, staff, pausedStaff, videos] = await Promise.all([
     db.workspace.findUnique({ where: { id: ticket.workspaceId } }),
     db.membership.findFirst({ where: { workspaceId: ticket.workspaceId, userId: ticket.userId } }),
+    db.user.findUnique({ where: { id: ticket.userId }, select: { suspendedAt: true, closedAt: true } }),
     db.client.count({ where: { workspaceId: ticket.workspaceId, removedAt: null } }),
     db.client.count({ where: { workspaceId: ticket.workspaceId, removedAt: null, pausedAt: { not: null } } }),
+    db.client.count({ where: { workspaceId: ticket.workspaceId, removedAt: null, linkDisabledAt: { not: null } } }),
     db.membership.count({ where: { workspaceId: ticket.workspaceId } }),
     db.membership.count({ where: { workspaceId: ticket.workspaceId, pausedAt: { not: null } } }),
     videosUsed(ticket.workspaceId),
   ]);
+  // What the team did through the support powers (lib/support/admin.ts) is described only as the customer sees it:
+  // never the team's reason, a legal hold or the support log.
+  if (login?.closedAt || workspace?.closedAt) {
+    return { signedIn: true, suspended: true, closedByTheTeam: true, note: "The SureFrame team closed this account. Only a person on the team can review it: hand over, and don't guess why." };
+  }
+  if (login?.suspendedAt) return { signedIn: true, suspended: true, note: "The SureFrame team suspended this customer's login. Only a person on the team can help: hand over, and don't guess why." };
   if (!workspace || !membership) return { signedIn: true, note: "No workspace found for this customer." };
+  if (workspace.suspendedAt) {
+    return {
+      signedIn: true,
+      role: membership.role,
+      workspaceName: workspace.name,
+      suspended: true,
+      ...(workspace.suspendedNote ? { noteFromTheTeam: workspace.suspendedNote } : {}),
+      note: "The SureFrame team suspended this workspace. Only a person on the team can help: hand over, and don't guess why.",
+    };
+  }
   if (membership.pausedAt) {
     return { signedIn: true, role: membership.role, paused: true, note: `The customer's staff login for ${workspace.name} is paused because the business's plan no longer covers it. Only the owner can restore it, by upgrading or removing others.` };
   }
@@ -101,7 +120,8 @@ async function accountOverview(ticket: SupportTicket) {
     role: membership.role,
     workspaceName: workspace.name,
     plan: p.name,
-    clients: { used: clients, limit: p.clientSeats + workspace.extraClientSeats, paused: pausedClients },
+    // linkTurnedOff: clients whose link the SureFrame team turned off (the Clients page shows "Link off"); they still use a seat.
+    clients: { used: clients, limit: p.clientSeats + workspace.extraClientSeats, paused: pausedClients, ...(linksOff ? { linkTurnedOff: linksOff } : {}) },
     staffLogins: { used: staff, limit: staffSeatLimit(workspace), paused: pausedStaff },
     // Removed clients can be restored (Clients > Removed clients, uses a seat) until they're deleted.
     ...(removed?._count._all
