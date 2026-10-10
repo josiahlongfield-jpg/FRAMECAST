@@ -12,6 +12,7 @@ import { reminderDefaultsFor } from "@/lib/reminders";
 import ClientEmail from "@/components/ClientEmail";
 import { accessOf, canSeeClient } from "@/lib/permissions";
 import { zoned } from "@/lib/dates";
+import { activeMember } from "@/lib/team";
 
 export const metadata: Metadata = { title: "Client" };
 
@@ -28,7 +29,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   // Staff only open the clients they can see (lib/permissions.ts); others look like they don't exist.
   if (!client || client.removedAt || !canSeeClient(accessOf(me), client)) notFound();
   // Team reminders for a client's to-do go to whoever looks after the client (lib/reminders.ts).
-  const team = await db.membership.findMany({ where: { workspaceId: workspace.id, pausedAt: null }, include: { user: { select: { name: true, email: true } } } });
+  const team = await db.membership.findMany({ where: { workspaceId: workspace.id, ...activeMember }, include: { user: { select: { name: true, email: true } } } });
   const assigned = client.assignedToId ? team.find((m) => m.userId === client.assignedToId) : undefined;
   const assignedName = assigned ? (assigned.user.name ?? assigned.user.email.split("@")[0]) : null;
   const teamWho =
@@ -46,8 +47,16 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
             <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{client.name}</h1>
             <ClientEmail clientId={client.id} firstName={client.name.split(" ")[0]} initial={client.email} optedOut={client.remindersOff} />
           </div>
-          <CopyClientLink workspaceId={workspace.id} fingerprint={workspace.keyFingerprint} clientId={client.id} link={clientLink(client.token)} teamKeyWrap={client.teamKeyWrap} />
+          {!client.linkDisabledAt && (
+            <CopyClientLink workspaceId={workspace.id} fingerprint={workspace.keyFingerprint} clientId={client.id} link={clientLink(client.token)} teamKeyWrap={client.teamKeyWrap} />
+          )}
         </div>
+        {client.linkDisabledAt && (
+          <p className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900" data-testid="client-link-off-banner">
+            SureFrame support has turned off {client.name}&apos;s personal link. They can&apos;t open their videos or be sent new ones until it&apos;s turned back on, and they
+            still use a client seat. Contact support@sureframe.app about it.
+          </p>
+        )}
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_1.1fr]">
           <section className="rounded-2xl border border-slate-200 bg-white p-5">

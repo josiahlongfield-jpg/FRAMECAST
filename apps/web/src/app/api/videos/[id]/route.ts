@@ -6,7 +6,7 @@ import { handle, HttpError, requireUser } from "@/lib/session";
 import { publicVideo } from "@/lib/videos";
 import { accessOf, canDeleteVideo, canSeeClient, seesAllClients, visibleVideo } from "@/lib/permissions";
 import { limitByIp } from "@/lib/rateLimit";
-import { viewableVideo } from "@/lib/access";
+import { linkOffMessage, viewableVideo } from "@/lib/access";
 import { KeyFingerprint, requireCurrentKey } from "@/lib/keys";
 import { notifyVideosSent } from "@/lib/teamNotify";
 import { emailClientVideo } from "@/lib/emailClientVideo";
@@ -50,6 +50,8 @@ export const PATCH = handle(async (req: Request, ctx: { params: Promise<{ id: st
   if (body.data.clientId) {
     const client = await db.client.findFirst({ where: { id: body.data.clientId, workspaceId: workspace.id, removedAt: null, pausedAt: null } });
     if (!client || !canSeeClient(access, client)) throw new HttpError(400, "Unknown client");
+    // Turned off by support (lib/support/admin.ts); the team sees why on the Clients page.
+    if (client.linkDisabledAt && body.data.clientId !== current.clientId) throw new HttpError(409, linkOffMessage(client.name));
     if (current.encrypted && !body.data.clientKeyWrap) throw new HttpError(400, "Missing the client's key for this video");
   }
   // Copies sent to other clients keep the same title.

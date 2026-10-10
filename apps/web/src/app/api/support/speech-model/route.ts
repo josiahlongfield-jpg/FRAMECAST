@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { handle, HttpError, requireUser } from "@/lib/session";
+import { currentUser, handle, HttpError } from "@/lib/session";
 import { isSupportAgent } from "@/lib/support/tickets";
 import { canInstall, finishInstall, InstallError, installFile, planInstall } from "@/lib/ai/speechModel";
 
@@ -18,7 +18,9 @@ const Body = z.discriminatedUnion("step", [
  * storage, driven step by step from /support/accounts (plan, each file, finish).
  */
 export const POST = handle(async (req: Request) => {
-  const me = await requireUser();
+  // Not requireUser(): support tools work even while the founder's own workspace is paused or suspended.
+  const me = await currentUser();
+  if (!me) throw new HttpError(401, "Sign in required");
   if (!isSupportAgent(me.user.email)) throw new HttpError(404, "Not found");
   if (!canInstall()) throw new HttpError(400, "Connect the storage bucket (S3_BUCKET) first: the speech model is too big for the database.");
   const body = Body.safeParse(await req.json());

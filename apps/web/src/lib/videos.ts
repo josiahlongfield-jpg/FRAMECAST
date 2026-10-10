@@ -1,7 +1,8 @@
 import crypto from "node:crypto";
 import { customAlphabet } from "nanoid";
 import { db } from "@/lib/db";
-import { HttpError, requireUser } from "@/lib/session";
+import { ACCOUNT_SUSPENDED, HttpError, requireUser } from "@/lib/session";
+import { clientBlock, clientGate } from "@/lib/access";
 import { accessOf, visibleVideo } from "@/lib/permissions";
 
 export const newVideoId = customAlphabet("23456789abcdefghijkmnpqrstuvwxyz", 12);
@@ -38,12 +39,42 @@ export async function uploadableVideo(req: Request, id: string) {
     if (!video || !expected || !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(given))) {
       throw new HttpError(404, "Video not found");
     }
+    await requireReplyerAllowed(video.id);
     return video;
   }
   const me = await requireUser();
   const video = await visibleVideo(accessOf(me), id);
   if (video.replyToId || video.ownerId !== me.user.id) throw new HttpError(403, "Only the person recording this can upload it");
   return video;
+}
+
+/**
+ * A reply upload goes by its token alone, so the conversation is checked here:
+ * nothing more arrives while support has the business's workspace suspended,
+ * the replying client's link is off (or they're removed or paused), or the
+ * replying team member's login is suspended (lib/support/admin.ts). 403, so the
+ * recording stays on their device and carries on if access comes back.
+ */
+async function requireReplyerAllowed(mediaId: string) {
+  const reply = await db.reply.findUnique({
+    where: { mediaId },
+    select: {
+      authorUserId: true,
+      authorUser: { select: { suspendedAt: true } },
+      video: { select: { client: { select: { removedAt: true, pausedAt: true, linkDisabledAt: true, workspace: { select: clientGate } } }, workspace: { select: { name: true, ...clientGate } } } },
+    },
+  });
+  if (!reply) return;
+  const ws = reply.video.workspace;
+  if (reply.authorUserId) {
+    if (reply.authorUser?.suspendedAt || ws.suspendedAt || ws.closedAt) throw new HttpError(403, ACCOUNT_SUSPENDED, "ACCOUNT_SUSPENDED");
+    return;
+  }
+  const c = reply.video.client;
+  const block = c ? clientBlock(c) : "removed";
+  if (block === "unavailable") throw new HttpError(403, `Videos from ${ws.name} are unavailable right now.`);
+  if (block === "off") throw new HttpError(403, "This link has been turned off.");
+  if (block) throw new HttpError(403, "You can't reply to this video right now.");
 }
 
 /** Public projection used by the watch page and API (BigInt is not JSON-safe). */

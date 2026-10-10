@@ -5,6 +5,7 @@ import { sendMail } from "@/lib/mail";
 import { teamEmail } from "@/lib/teamEmail";
 import { appUrl } from "@/lib/stripe";
 import { teamPath } from "@/lib/teamLink";
+import { activeMember } from "@/lib/team";
 
 /**
  * Team emails about client replies and videos sent by staff. Each event is
@@ -59,8 +60,8 @@ export async function notifyClientReply(conversationId: string) {
   try {
     const video = await db.video.findUnique({ where: { id: conversationId }, include: { client: true } });
     if (!video || video.replyToId || !video.client) return;
-    // Paused staff can't sign in: their clients' replies go to whoever else would hear (the owner at least).
-    const members = await db.membership.findMany({ where: { workspaceId: video.workspaceId, pausedAt: null }, orderBy: { id: "asc" } });
+    // Paused or suspended staff can't sign in: their clients' replies go to whoever else would hear (the owner at least).
+    const members = await db.membership.findMany({ where: { workspaceId: video.workspaceId, ...activeMember }, orderBy: { id: "asc" } });
     const to = replyRecipients(members, { assignedToId: video.client.assignedToId, recorderId: video.ownerId });
     if (!to.length) return;
     await db.teamNotification.createMany({
@@ -77,7 +78,7 @@ export async function notifyVideosSent(workspaceId: string, actorId: string, sen
   try {
     if (!sends.length) return;
     const [members, clients] = await Promise.all([
-      db.membership.findMany({ where: { workspaceId, pausedAt: null }, orderBy: { id: "asc" } }),
+      db.membership.findMany({ where: { workspaceId, ...activeMember }, orderBy: { id: "asc" } }),
       db.client.findMany({ where: { id: { in: sends.map((s) => s.clientId) } }, select: { id: true, assignedToId: true } }),
     ]);
     const assigned = new Map(clients.map((c) => [c.id, c.assignedToId]));
@@ -114,11 +115,12 @@ export async function flushGroup(userId: string, kind: TeamNotificationKind, gro
 
   const ws = await db.workspace.findUnique({ where: { id: pending[0].workspaceId } });
   const [user, membership] = await Promise.all([
-    db.user.findUnique({ where: { id: userId }, select: { email: true } }),
+    db.user.findUnique({ where: { id: userId }, select: { email: true, suspendedAt: true } }),
     db.membership.findFirst({ where: { userId, workspaceId: pending[0].workspaceId } }),
   ]);
-  // Left the team or paused since, or the owner closed the account (lib/accountDeletion.ts).
-  if (!ws || !user || !membership || membership.pausedAt || ws.deleteAt) return false;
+  // Left the team or paused since, or the owner closed the account (lib/accountDeletion.ts), or support suspended
+  // the workspace or their login (lib/support/admin.ts): dropped, not sent later.
+  if (!ws || !user || !membership || membership.pausedAt || ws.deleteAt || ws.suspendedAt || ws.closedAt || user.suspendedAt) return false;
   const brand = brandOf(ws, appUrl(""));
   const clients = new Map((await db.client.findMany({ where: { id: { in: pending.map((p) => p.clientId!).filter(Boolean) } }, select: { id: true, name: true } })).map((c) => [c.id, c.name]));
   const clientName = (id: string | null) => (id && clients.get(id)) || "A client";
@@ -179,6 +181,7 @@ export async function flushTeamNotifications(now = new Date()) {
 
 /** Daily: drop old sent notifications and expired throttles. */
 export async function pruneTeamNotifications(now = new Date()) {
-  await db.teamNotification.deleteMany({ where: { sentAt: { lt: new Date(now.getTime() - 30 * 86_400_000) } } });
+  // Kept while the workspace is on legal hold (lib/support/admin.ts).
+  await db.teamNotification.deleteMany({ where: { sentAt: { lt: new Date(now.getTime() - 30 * 86_400_000) }, workspace: { legalHoldAt: null } } });
   await db.notifyThrottle.deleteMany({ where: { lastSentAt: { lt: new Date(now.getTime() - 86_400_000) } } });
 }

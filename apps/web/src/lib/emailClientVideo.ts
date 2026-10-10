@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { clientBlock } from "@/lib/access";
 import { brandOf } from "@/lib/branding";
 import { clientLink } from "@/lib/clients";
 import { type Mail, sendMail, sendMails } from "@/lib/mail";
@@ -47,7 +48,8 @@ async function clientVideoEmail(videoId: string): Promise<Mail | NotSent> {
     include: { client: true, workspace: true, owner: { select: { name: true } } },
   });
   const c = video?.client;
-  if (!video || !c || c.removedAt || c.pausedAt) return "unavailable";
+  // Nothing goes to a client whose link doesn't work: removed, paused, turned off, or the business's account suspended or closed.
+  if (!video || !c || clientBlock({ ...c, workspace: video.workspace })) return "unavailable";
   if (!c.email) return "no-email";
   if (c.remindersOff) return "off";
   // At most a handful of these an hour per client, however often a video is re-sent.

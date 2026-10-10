@@ -8,6 +8,7 @@ import { handle, HttpError, requireRole, requireUser } from "@/lib/session";
 import { appUrl } from "@/lib/stripe";
 import { teamEmail } from "@/lib/teamEmail";
 import { teamPath } from "@/lib/teamLink";
+import { activeMember } from "@/lib/team";
 
 const Body = z.object({
   /** Staff user ids, or "all" for everyone else on the team. */
@@ -28,8 +29,8 @@ export const POST = handle(async (req: Request) => {
   if (!body.success) throw new HttpError(400, "Write a short message and choose who it's for");
   const { workspace } = me;
   await rateLimit(`staff-notice:${workspace.id}`, 100, 86_400);
-  // Paused staff can't sign in, so they aren't sent reminders.
-  const members = await db.membership.findMany({ where: { workspaceId: workspace.id, pausedAt: null }, include: { user: { select: { id: true, email: true, name: true } } } });
+  // Paused or suspended staff can't sign in, so they aren't sent reminders.
+  const members = await db.membership.findMany({ where: { workspaceId: workspace.id, ...activeMember }, include: { user: { select: { id: true, email: true, name: true } } } });
   const wanted = body.data.to === "all" ? members.filter((m) => m.userId !== me.user.id) : members.filter((m) => (body.data.to as string[]).includes(m.userId));
   if (!wanted.length || (body.data.to !== "all" && wanted.length !== new Set(body.data.to).size)) throw new HttpError(400, "Choose people on your team");
 

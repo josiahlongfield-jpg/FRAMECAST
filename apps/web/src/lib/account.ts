@@ -10,6 +10,7 @@ import { teamEmail } from "@/lib/teamEmail";
 import { sendMail } from "@/lib/mail";
 import { BRAND } from "@/lib/brand";
 import { teamPath } from "@/lib/teamLink";
+import { activeMember } from "@/lib/team";
 
 async function deleteVideoFiles(where: { workspaceId: string } | { ownerId: string; workspaceId: string }) {
   const videos = await db.video.findMany({ where, select: { storageKey: true, uploadId: true, status: true } });
@@ -100,7 +101,7 @@ export const leaverName = (user: { name: string | null; email: string } | null) 
  * to reset the keys they held.
  * Does nothing if they've already left.
  */
-export async function leaveTeam(userId: string, w: Workspace, leaver: string) {
+export async function leaveTeam(userId: string, w: Workspace, leaver: string, { closedBySupport = false } = {}) {
   const left = await db.$transaction(async (tx) => {
     const gone = await tx.membership.deleteMany({ where: { workspaceId: w.id, userId, role: { not: "OWNER" } } });
     if (!gone.count) return false;
@@ -122,18 +123,21 @@ export async function leaveTeam(userId: string, w: Workspace, leaver: string) {
   if (!left) return false;
   // The login they freed can lift a colleague's pause.
   await enforceSeatLimits(w.id).catch((err) => console.error("[account] seat check after leaving", w.id, err));
-  await tellManagersAboutLeaver(w, leaver).catch((err) => console.error("[account] leaver email", w.id, err));
+  await tellManagersAboutLeaver(w, leaver, closedBySupport).catch((err) => console.error("[account] leaver email", w.id, err));
   return true;
 }
 
 /** Owners and admins hear at once that someone left with the team's keys, not only when they next open Settings > Team. */
-async function tellManagersAboutLeaver(w: Workspace, leaver: string) {
-  const managers = await db.membership.findMany({ where: { workspaceId: w.id, role: { in: ["OWNER", "ADMIN"] }, pausedAt: null }, include: { user: { select: { email: true } } } });
+async function tellManagersAboutLeaver(w: Workspace, leaver: string, closedBySupport: boolean) {
+  // Nothing is emailed in a suspended workspace's name (lib/support/admin.ts); Settings > Team still asks for the reset.
+  if (w.suspendedAt || w.closedAt) return;
+  const managers = await db.membership.findMany({ where: { workspaceId: w.id, role: { in: ["OWNER", "ADMIN"] }, ...activeMember }, include: { user: { select: { email: true } } } });
   const brand = brandOf(w, appUrl(""));
   const mail = teamEmail({
     business: w.name,
-    subject: `${leaver} closed their ${BRAND.name} account and left ${w.name}`,
-    lead: `${leaver} closed their ${BRAND.name} account, so they're no longer on your team.`,
+    // Closed by SureFrame support (lib/support/admin.ts): the team isn't told why.
+    subject: closedBySupport ? `${leaver}'s ${BRAND.name} account was closed, so they've left ${w.name}` : `${leaver} closed their ${BRAND.name} account and left ${w.name}`,
+    lead: closedBySupport ? `${leaver}'s ${BRAND.name} account was closed, so they're no longer on your team.` : `${leaver} closed their ${BRAND.name} account, so they're no longer on your team.`,
     lines: [{ text: "Their recordings now belong to the owner. They held your team's encryption keys, so reset the keys on Settings > Team now. Every client gets a new personal link; those with an email are sent theirs automatically." }],
     button: { label: "Reset keys on Settings > Team", link: appUrl(teamPath("/settings/team", w.id)) },
     logoUrl: brand.logoUrl,

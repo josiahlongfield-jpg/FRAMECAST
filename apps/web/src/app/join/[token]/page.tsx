@@ -3,8 +3,9 @@ import Logo from "@/components/Logo";
 import JoinTeam from "@/components/JoinTeam";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
-import { ACCOUNT_CLOSED_JOIN, hashToken, TEAM_CLOSED_JOIN } from "@/lib/team";
-import { pendingDeletion } from "@/lib/session";
+import { ACCOUNT_CLOSED_JOIN, hashToken, TEAM_CLOSED_JOIN, TEAM_UNAVAILABLE_JOIN } from "@/lib/team";
+import { ACCOUNT_CLOSED_BY_SUPPORT, ACCOUNT_SUSPENDED, pendingDeletion } from "@/lib/session";
+import { EMAIL_BLOCKED, isEmailBlocked } from "@/lib/blockedEmail";
 
 export const metadata: Metadata = { title: "Join your team", robots: { index: false } };
 
@@ -20,10 +21,17 @@ export default async function Join({ params }: { params: Promise<{ token: string
     pendingDeletion(),
   ]);
   const userId = session?.user?.id;
+  const me = userId ? await db.user.findUnique({ where: { id: userId }, select: { email: true, suspendedAt: true, closedAt: true } }) : null;
+  // Support's actions on this login (lib/support/admin.ts): only support can help, not whoever sent the invite.
+  const bySupport = me?.closedAt ? ACCOUNT_CLOSED_BY_SUPPORT : me?.suspendedAt ? ACCOUNT_SUSPENDED : me && (await isEmailBlocked(me.email)) ? EMAIL_BLOCKED : null;
   const problem = !invite || invite.revokedAt
     ? "This invite was cancelled or doesn't exist."
+    : invite.workspace.suspendedAt || invite.workspace.closedAt
+      ? TEAM_UNAVAILABLE_JOIN
     : invite.workspace.deleteAt
       ? TEAM_CLOSED_JOIN
+      : bySupport
+        ? bySupport
       : closed
         ? ACCOUNT_CLOSED_JOIN
         : invite.acceptedAt && invite.acceptedById !== userId
@@ -43,7 +51,7 @@ export default async function Join({ params }: { params: Promise<{ token: string
               <a href={closed.fresh ? "/account/restore" : "/login?next=/account/restore"} className="mt-4 inline-block text-sm font-medium text-brand-700 hover:underline">
                 Keep my account
               </a>
-            ) : (
+            ) : bySupport && problem === bySupport ? null : (
               <p className="mt-2 text-sm text-slate-600">Ask whoever invited you to send a new link.</p>
             )}
           </>

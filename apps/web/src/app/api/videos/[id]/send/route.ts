@@ -8,6 +8,7 @@ import { newVideoId } from "@/lib/videos";
 import { accessOf, clientScopeWhere, requirePerm, visibleVideo } from "@/lib/permissions";
 import { notifyVideosSent } from "@/lib/teamNotify";
 import { emailClientVideos } from "@/lib/emailClientVideo";
+import { linkOffMessage } from "@/lib/access";
 
 // Copies and emails for every chosen client.
 export const maxDuration = 120;
@@ -43,10 +44,13 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
 
   const wanted = [...new Map(body.data.recipients.map((r) => [r.clientId, r])).values()];
   const [clients, already] = await Promise.all([
-    db.client.findMany({ where: { ...clientScopeWhere(access), id: { in: wanted.map((r) => r.clientId) }, removedAt: null, pausedAt: null }, select: { id: true, name: true, email: true, token: true, remindersOff: true } }),
+    db.client.findMany({ where: { ...clientScopeWhere(access), id: { in: wanted.map((r) => r.clientId) }, removedAt: null, pausedAt: null }, select: { id: true, name: true, email: true, token: true, remindersOff: true, linkDisabledAt: true } }),
     db.video.findMany({ where: { sourceId: id }, select: { clientId: true } }),
   ]);
   if (clients.length !== wanted.length) throw new HttpError(400, "One of those clients isn't in your workspace");
+  // Turned off by support (lib/support/admin.ts): nothing is sent to them.
+  const off = clients.find((c) => c.linkDisabledAt);
+  if (off) throw new HttpError(409, linkOffMessage(off.name));
   // Someone who already has it keeps their existing conversation.
   const has = new Set([video.clientId, ...already.map((c) => c.clientId)].filter(Boolean));
   const fresh = wanted.filter((r) => !has.has(r.clientId));

@@ -24,7 +24,7 @@ export const GET = handle(async () => {
   });
   return Response.json({
     seats: await seatUsage(workspace),
-    clients: clients.map((c) => ({ id: c.id, name: c.name, email: c.email, link: clientLink(c.token), teamKeyWrap: c.teamKeyWrap, videoCount: c._count.videos, assignedToId: c.assignedToId })),
+    clients: clients.map((c) => ({ id: c.id, name: c.name, email: c.email, link: clientLink(c.token), teamKeyWrap: c.teamKeyWrap, videoCount: c._count.videos, assignedToId: c.assignedToId, paused: !!c.pausedAt, linkOff: !!c.linkDisabledAt })),
   });
 });
 

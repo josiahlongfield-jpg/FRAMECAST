@@ -52,6 +52,12 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
             Please let them know about the change.
           </p>
         )}
+        {clients.some((c) => c.linkDisabledAt) && (
+          <p className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900" data-testid="link-off-clients-note">
+            SureFrame support has turned off the personal link of the clients marked Link off. They can&apos;t open their videos or be sent new ones, and they still use a client seat.
+            Contact support@sureframe.app about it.
+          </p>
+        )}
         <ClientsManager
           workspaceId={workspace.id}
           fingerprint={workspace.keyFingerprint}
@@ -64,6 +70,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
             videoCount: c._count.videos,
             assignedToId: c.assignedToId,
             paused: !!c.pausedAt,
+            linkOff: !!c.linkDisabledAt,
           }))}
           initialRemoved={removedClients.map((c) => ({ id: c.id, name: c.name, email: c.email, removedAt: c.removedAt!.toISOString(), purgeAt: c.purgeAt?.toISOString() ?? null }))}
           keepDays={CLIENT_KEEP_DAYS}

@@ -8,7 +8,7 @@ import TeamKeyGate from "./TeamKeyGate";
 import RemoveExtras from "./RemoveExtras";
 
 type Seats = { used: number; limit: number };
-type Client = { id: string; name: string; email: string | null; link: string; teamKeyWrap: string | null; videoCount: number; assignedToId: string | null; paused?: boolean };
+type Client = { id: string; name: string; email: string | null; link: string; teamKeyWrap: string | null; videoCount: number; assignedToId: string | null; paused?: boolean; linkOff?: boolean };
 type Staff = { id: string; name: string };
 /** A removed client the business can still restore. Dates are ISO strings. */
 type Removed = { id: string; name: string; email: string | null; removedAt: string; purgeAt: string | null };
@@ -348,6 +348,11 @@ function Manager({
                       Paused
                     </span>
                   )}
+                  {c.linkOff && (
+                    <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800" data-testid="client-link-off-badge" title="Turned off by SureFrame support">
+                      Link off
+                    </span>
+                  )}
                   <p className="text-xs text-slate-500">
                     {c.email ? `${c.email} · ` : ""}{c.videoCount} {c.videoCount === 1 ? "video" : "videos"}
                     {staff.length > 1 && seesAll && !canManage && ` · ${staffName(c.assignedToId) ?? "Shared"}`}
@@ -361,9 +366,11 @@ function Manager({
                       {staff.map((p) => <option key={p.id} value={p.id}>{p.id === meId ? `${p.name} (you)` : p.name}</option>)}
                     </select>
                   )}
-                  <button onClick={() => copy(c)} className="rounded-lg border border-slate-300 px-3 py-1.5 hover:bg-slate-50">
-                    {copied === c.id ? "Copied" : "Copy personal link"}
-                  </button>
+                  {!c.linkOff && (
+                    <button onClick={() => copy(c)} className="rounded-lg border border-slate-300 px-3 py-1.5 hover:bg-slate-50">
+                      {copied === c.id ? "Copied" : "Copy personal link"}
+                    </button>
+                  )}
                   {canManage && <button onClick={() => askRemove(c)} className="rounded-lg px-3 py-1.5 text-slate-500 hover:bg-slate-50 hover:text-red-700">Remove</button>}
                 </div>
                 {confirming?.id === c.id && (

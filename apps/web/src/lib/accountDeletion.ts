@@ -3,6 +3,7 @@ import { db, type Workspace } from "@/lib/db";
 import { deleteAccount, leaveTeam, leaverName } from "@/lib/account";
 import { BRAND } from "@/lib/brand";
 import { zoned } from "@/lib/dates";
+import { isEmailBlocked } from "@/lib/blockedEmail";
 import { alertFounder } from "@/lib/founderAlert";
 import { LEGAL } from "@/lib/legal";
 import { sendMail } from "@/lib/mail";
@@ -37,7 +38,7 @@ export const OWNER_WITH_STAFF = "You own a team with other staff. Remove them on
 const once = (key: string) => rateLimit(`alert:${key}`, 1, 86_400).then(() => true, () => false);
 
 /** Workspaces the user alone belongs to (deleted with them) and teams they're staff on. */
-async function workspacesOf(userId: string) {
+export async function workspacesOf(userId: string) {
   const memberships = await db.membership.findMany({
     where: { userId },
     include: { workspace: { include: { _count: { select: { members: true } } } } },
@@ -192,6 +193,9 @@ export async function restoreAccount(userId: string, { notify = true } = {}) {
   const user = await db.user.findUnique({ where: { id: userId } });
   if (!user) throw new HttpError(404, "Account not found");
   if (!user.deleteAt) throw new HttpError(409, "This account isn't closed");
+  // Closed or suspended by support (lib/support/admin.ts): only support can change that.
+  if (user.closedAt) throw new HttpError(403, `This account was closed by ${BRAND.name} support, so it can't be kept. Contact ${LEGAL.email}.`);
+  if (user.suspendedAt) throw new HttpError(403, `This login is suspended, so the account can't be kept right now. Contact ${LEGAL.email}.`);
   const own = await db.workspace.findMany({ where: { deleteAt: { not: null }, members: { some: { userId } } } });
   const kept = await db.$transaction(async (tx) => {
     const res = await tx.user.updateMany({ where: { id: userId, deleteAt: { gt: now } }, data: { deleteAt: null, deletionRequestedAt: null, deletionWarnedAt: null } });
@@ -224,6 +228,12 @@ export async function restoreAccount(userId: string, { notify = true } = {}) {
   return { planEnded };
 }
 
+/** Refused while legal hold is on (lib/support/admin.ts setLegalHold). */
+export const LEGAL_HOLD_DELETE = "This account belongs to a workspace on legal hold, so it can't be deleted until the hold is lifted.";
+/** Nothing of a workspace on legal hold is deleted, so neither is an account on it. */
+const notHeld = { memberships: { none: { workspace: { legalHoldAt: { not: null } } } } } as const;
+const onLegalHold = async (userId: string) => (await db.user.count({ where: { id: userId, NOT: notHeld } })) > 0;
+
 /**
  * Deletes an account for good now, without waiting for its date (support, on
  * a verified request from the account holder). Refuses an owner with staff.
@@ -233,8 +243,10 @@ export async function purgeAccountNow(userId: string, { notify = true } = {}) {
   if (!user) throw new HttpError(404, "Account not found");
   const { own, ownsTeam } = await workspacesOf(userId);
   if (ownsTeam) throw new HttpError(409, OWNER_WITH_STAFF);
+  if (await onLegalHold(userId)) throw new HttpError(409, LEGAL_HOLD_DELETE);
+  const mail = deletedEmail(user.email, own[0]?.name ?? null, { closed: !!user.closedAt, blocked: await isEmailBlocked(user.email) });
   const deleted = await deleteAccount(userId);
-  if (deleted && notify) await sendMail({ to: user.email, ...deletedEmail(user.email, own[0]?.name ?? null) }).catch((err) => console.error("[account] deleted email", userId, err));
+  if (deleted && notify) await sendMail({ to: user.email, ...mail }).catch((err) => console.error("[account] deleted email", userId, err));
   return deleted;
 }
 
@@ -245,14 +257,15 @@ export async function purgeAccountNow(userId: string, { notify = true } = {}) {
  */
 export async function purgeScheduledAccounts(now = new Date(), budgetMs = 40_000) {
   const deadline = Date.now() + budgetMs;
-  const due = await db.user.findMany({ where: { deleteAt: { lte: now } }, select: { id: true, email: true, deleteAt: true }, orderBy: { deleteAt: "asc" }, take: 50 });
+  // Accounts on a workspace under legal hold wait until it's lifted (lib/support/admin.ts).
+  const due = await db.user.findMany({ where: { deleteAt: { lte: now }, ...notHeld }, select: { id: true, email: true, deleteAt: true, closedAt: true }, orderBy: { deleteAt: "asc" }, take: 50 });
   let purged = 0;
   for (const u of due) {
     if (Date.now() > deadline) break;
     try {
       // Read again: kept at the last moment, or deleted by another run.
       const user = await db.user.findUnique({ where: { id: u.id }, select: { deleteAt: true } });
-      if (!user?.deleteAt || user.deleteAt > now) continue;
+      if (!user?.deleteAt || user.deleteAt > now || (await onLegalHold(u.id))) continue;
       const { own, ownsTeam } = await workspacesOf(u.id);
       if (ownsTeam) {
         // Shouldn't happen (invites were cancelled): deleting the owner would leave their staff a workspace nobody runs.
@@ -261,9 +274,10 @@ export async function purgeScheduledAccounts(now = new Date(), budgetMs = 40_000
         }
         continue;
       }
+      const mail = deletedEmail(u.email, own[0]?.name ?? null, { closed: !!u.closedAt, blocked: await isEmailBlocked(u.email) });
       if (!(await deleteAccount(u.id))) continue;
       purged++;
-      await sendMail({ to: u.email, ...deletedEmail(u.email, own[0]?.name ?? null) }).catch((err) => console.error("[account] deleted email", u.id, err));
+      await sendMail({ to: u.email, ...mail }).catch((err) => console.error("[account] deleted email", u.id, err));
     } catch (err) {
       console.error(JSON.stringify({ level: "error", message: "[account-purge] failed; retried next run", user: u.id, error: String(err) }));
       if (now.getTime() - u.deleteAt!.getTime() > DELETION_WARN_MS && (await once(`account-purge:${u.id}`))) {
@@ -280,7 +294,8 @@ export async function purgeScheduledAccounts(now = new Date(), budgetMs = 40_000
 /** Emails each closed account about 3 days before it's deleted. A failed send is retried on the next run. */
 export async function warnScheduledDeletions(now = new Date()) {
   const due = await db.user.findMany({
-    where: { deleteAt: { gt: now, lte: new Date(now.getTime() + DELETION_WARN_MS) }, deletionWarnedAt: null },
+    // Not for an account support closed or suspended: it can't be kept by signing in (lib/support/admin.ts).
+    where: { deleteAt: { gt: now, lte: new Date(now.getTime() + DELETION_WARN_MS) }, deletionWarnedAt: null, closedAt: null, suspendedAt: null },
     select: { id: true },
     take: 200,
   });
@@ -378,13 +393,18 @@ function keptEmail(o: { workspace: string | null; planEnded: boolean }) {
   });
 }
 
-function deletedEmail(email: string, workspace: string | null) {
+function deletedEmail(email: string, workspace: string | null, o: { closed?: boolean; blocked?: boolean } = {}) {
   return teamEmail({
     business: BRAND.name,
     subject: `Your ${BRAND.name} account has been deleted`,
     lead: `Your ${BRAND.name} account for ${email} has been deleted` + (workspace ? `, with ${workspace} and its recordings, clients, to-dos and notes.` : "."),
     lines: [{ text: "A few records are kept after deletion where the law requires, such as billing records held by our payment provider. Our Privacy Policy explains what's kept." }],
     button: { label: `Visit ${BRAND.name}`, link: appUrl("/") },
-    footer: "You're welcome back any time. Signing up with the same email starts a new, empty account.",
+    // Closed by support (lib/support/admin.ts): no "welcome back", and a blocked address can't sign up again.
+    footer: o.blocked
+      ? `This email address can't be used with ${BRAND.name} again.`
+      : o.closed
+        ? undefined
+        : "You're welcome back any time. Signing up with the same email starts a new, empty account.",
   });
 }

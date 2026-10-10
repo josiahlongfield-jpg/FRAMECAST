@@ -37,6 +37,14 @@ model User {
   deleteAt            DateTime?
   /// When they were emailed that the deletion is a few days away.
   deletionWarnedAt    DateTime?
+  /// This login suspended by SureFrame support (lib/support/admin.ts): it can't use any workspace until lifted.
+  suspendedAt         DateTime?
+  /// Why, for support only. Never shown to the user or sent to the help chat.
+  suspendedReason     String?
+  /// Sign-ins made before this no longer work ("Sign out everywhere"). Null: no sign-in has been revoked.
+  sessionsValidAfter  DateTime?
+  /// Closed for good by SureFrame support: suspended and deleted on deleteAt, which the account holder can't undo.
+  closedAt            DateTime?
 
   @@index([deleteAt])
 }
@@ -143,6 +151,19 @@ model Workspace {
   /// We stopped the subscription because of that (renewal off, or cancelled if a payment was outstanding).
   /// Keeping the account turns renewal back on while the plan is still running.
   renewalStoppedAt      DateTime?
+  /// Suspended by SureFrame support (lib/support/admin.ts): members can't use it, clients' links show it as
+  /// unavailable and nothing is emailed in its name. Nothing is deleted because of it.
+  suspendedAt           DateTime?
+  /// Why, for support only. Never shown to the business or sent to the help chat.
+  suspendedReason       String?
+  /// Optional note from support shown to its members on the suspended page.
+  suspendedNote         String?
+  /// Closed for good by SureFrame support: stays suspended and is deleted on deleteAt; the owner can't keep it.
+  closedAt              DateTime?
+  /// Legal hold: no automatic clean-up deletes anything of this workspace while set (lib/support/admin.ts).
+  legalHoldAt           DateTime?
+  /// Why, for support only.
+  legalHoldReason       String?
   createdAt             DateTime           @default(now())
   members               Membership[]
   videos                Video[]
@@ -383,46 +404,51 @@ model Reaction {
 /// never pay: each uses one of the workspace's client seats and gets a
 /// private link to watch and reply to the videos sent to them.
 model Client {
-  id             String        @id @default(cuid())
-  name           String
-  email          String?
+  id                 String        @id @default(cuid())
+  name               String
+  email              String?
   /// Secret in the client's personal link. Treat like a password.
-  token          String        @unique
+  token              String        @unique
   /// The client's end-to-end key, wrapped with the team key. The unwrapped key
   /// travels only in the link fragment (#k=…), which browsers never send to servers.
-  teamKeyWrap    String?
+  teamKeyWrap        String?
   /// Fingerprint of the client's current key, set once it has been replaced.
   /// Lets the client's device notice an old key and pick up the new one.
-  keyFingerprint String?
+  keyFingerprint     String?
   /// The client turned reminder emails off (from an email's unsubscribe link or their inbox).
-  remindersOff   Boolean       @default(false)
+  remindersOff       Boolean       @default(false)
   /// First time the client opened their personal link (the one with their key).
   /// Until then a business is reminded to send it themselves.
-  linkOpenedAt   DateTime?
+  linkOpenedAt       DateTime?
   /// First time the business copied the client's personal link (to send it).
   /// From then on new videos are sent with a plain Send, not the link reminder.
-  linkSentAt     DateTime?
+  linkSentAt         DateTime?
   /// Paused because the business's plan no longer covers this many clients
   /// (a subscription ended or lapsed). Lifted automatically when seats free up.
-  pausedAt       DateTime?
+  pausedAt           DateTime?
   /// The staff member who looks after this client (Studio and Agency teams).
-  assignedToId   String?
-  assignedTo     User?         @relation("ClientAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
-  createdAt      DateTime      @default(now())
+  assignedToId       String?
+  assignedTo         User?         @relation("ClientAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdAt          DateTime      @default(now())
   /// Removed by the business: the link stops working and the seat is freed at once.
-  removedAt      DateTime?
+  removedAt          DateTime?
   /// When a removed client is deleted for good (removedAt + 30 days); until then they can be restored.
   /// Null while active. A removed client without a date is never deleted (lib/clientRemoval.ts dates them).
-  purgeAt        DateTime?
+  purgeAt            DateTime?
   /// When the business was warned that this removed client is about to be deleted.
-  purgeWarnedAt  DateTime?
+  purgeWarnedAt      DateTime?
   /// Who removed them. A plain id, no relation, so it survives them leaving the team.
-  removedById    String?
-  workspaceId    String
-  workspace      Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  videos         Video[]
-  items          Item[]
-  keyRotations   KeyRotation[]
+  removedById        String?
+  /// Link turned off by SureFrame support: the client can't open anything and can't be sent anything. Kept
+  /// through key resets (the flag is on the row, not the token). The seat stays in use.
+  linkDisabledAt     DateTime?
+  /// Why, for support only.
+  linkDisabledReason String?
+  workspaceId        String
+  workspace          Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  videos             Video[]
+  items              Item[]
+  keyRotations       KeyRotation[]
 
   @@index([workspaceId, removedAt])
   @@index([assignedToId])
@@ -638,4 +664,41 @@ model StaffNotice {
 
   @@index([toUserId, workspaceId, dismissedAt])
   @@index([workspaceId, createdAt])
+}
+
+/// What SureFrame support did to an account and why (lib/support/admin.ts). Written in the same transaction as
+/// the change. No foreign keys, so the record outlives the account it's about; kept 7 years, then pruned.
+/// Never sent to the help chat.
+model AdminAction {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  actorUserId String?
+  /// The support admin, as they were at the time.
+  actorEmail  String
+  /// What was done, e.g. "workspace.suspend", "client.link_off", "account.close".
+  action      String
+  workspaceId String?
+  userId      String?
+  clientId    String?
+  /// Who or what it was done to, as named at the time (email, workspace name, client name).
+  target      String?
+  reason      String?
+  /// Before and after values, billing changes, whether the owner was emailed.
+  details     Json?
+
+  @@index([workspaceId, createdAt])
+  @@index([userId, createdAt])
+  @@index([createdAt])
+}
+
+/// Email addresses that can't sign in or sign up again (an account closed by support). Only a SHA-256 hash of
+/// the inbox (lower-cased, without +tags, and without dots for Gmail) is kept, never the address itself.
+model BlockedEmail {
+  emailHash  String   @id
+  createdAt  DateTime @default(now())
+  reason     String
+  /// The support admin who blocked it.
+  actorEmail String
+  /// The account it came from, if any. A plain id: the block outlives the account.
+  userId     String?
 }

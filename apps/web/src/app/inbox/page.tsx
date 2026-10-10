@@ -11,13 +11,13 @@ import ClientPlanner from "@/components/ClientPlanner";
 import { db } from "@/lib/db";
 import { unsubscribeUrl } from "@/lib/reminders";
 import { zoned } from "@/lib/dates";
-import { REMOVED_COOKIE } from "@/lib/access";
+import { REMOVED_COOKIE, usableClientWhere } from "@/lib/access";
 
 export const metadata: Metadata = { title: "Your videos" };
 
 /** A client's view: every video their coach (or coaches) sent them. */
-export default async function Inbox({ searchParams }: { searchParams: Promise<{ invalid?: string; paused?: string; removed?: string; closed?: string; c?: string }> }) {
-  const { invalid, paused, removed, closed, c: arrivedAs } = await searchParams;
+export default async function Inbox({ searchParams }: { searchParams: Promise<{ invalid?: string; paused?: string; removed?: string; closed?: string; unavailable?: string; off?: string; c?: string }> }) {
+  const { invalid, paused, removed, closed, unavailable, off, c: arrivedAs } = await searchParams;
   const jar = await cookies();
   const tokens = jar
     .getAll()
@@ -28,25 +28,31 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
   const justOpened = jar.get(REMOVED_COOKIE)?.value;
   const removedTokens = justOpened ? [...tokens, justOpened] : tokens;
   const now = new Date();
-  const [removedBy, closedBy] = removedTokens.length
+  // Support suspended or closed the business's workspace (never called that here), or turned this link off (lib/support/admin.ts).
+  const live = { suspendedAt: null, closedAt: null } as const;
+  const [removedBy, closedBy, unavailableBy, offBy] = removedTokens.length
     ? await Promise.all([
         db.client.findMany({ where: { token: { in: removedTokens }, removedAt: { not: null } }, select: { purgeAt: true, workspace: { select: { name: true, timezone: true } } } }),
-        db.client.findMany({ where: { token: { in: removedTokens }, removedAt: null, workspace: { deleteAt: { not: null } } }, select: { workspace: { select: { name: true } } } }),
+        db.client.findMany({ where: { token: { in: removedTokens }, removedAt: null, workspace: { ...live, deleteAt: { not: null } } }, select: { workspace: { select: { name: true } } } }),
+        db.client.findMany({ where: { token: { in: removedTokens }, removedAt: null, workspace: { OR: [{ suspendedAt: { not: null } }, { closedAt: { not: null } }] } }, select: { workspace: { select: { name: true } } } }),
+        db.client.findMany({ where: { token: { in: removedTokens }, removedAt: null, linkDisabledAt: { not: null }, workspace: { ...live, deleteAt: null } }, select: { workspace: { select: { name: true } } } }),
       ])
-    : [[], []];
+    : [[], [], [], []];
   const ended = [...new Map(removedBy.map((r) => [r.workspace.name, r])).values()];
   const closedNames = [...new Set(closedBy.map((c) => c.workspace.name))];
+  const unavailableNames = [...new Set(unavailableBy.map((c) => c.workspace.name))];
+  const offNames = [...new Set(offBy.map((c) => c.workspace.name))];
   const [clients, pausedBy] = tokens.length
     ? await Promise.all([
         db.client.findMany({
-          where: { token: { in: tokens }, removedAt: null, pausedAt: null },
+          where: { token: { in: tokens }, ...usableClientWhere },
         include: {
           workspace: { select: { id: true, name: true, plan: true, brandColor: true, brandLogoType: true, brandVersion: true, aiAssist: true, timezone: true } },
           videos: { where: { replyToId: null, status: { not: "RECORDING" } }, orderBy: { createdAt: "desc" }, include: { owner: { select: { name: true } } } },
           },
         }),
         // Businesses that paused this person's access, so a bookmark doesn't just say "open your link".
-        db.client.findMany({ where: { token: { in: tokens }, removedAt: null, pausedAt: { not: null }, workspace: { deleteAt: null } }, select: { workspace: { select: { name: true } } } }),
+        db.client.findMany({ where: { token: { in: tokens }, removedAt: null, pausedAt: { not: null }, linkDisabledAt: null, workspace: { ...live, deleteAt: null } }, select: { workspace: { select: { name: true } } } }),
       ])
     : [[], []];
   // Newest first by when each video reached the client, not when it was recorded.
@@ -90,6 +96,26 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
             The business that sent you this link has closed their SureFrame account, so it no longer opens your videos. If you need anything, contact them directly.
           </p>
         )}
+        {unavailableNames.map((name) => (
+          <p key={name} className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800" data-testid="client-unavailable">
+            Videos from {name} are unavailable right now.
+          </p>
+        ))}
+        {unavailable && unavailableNames.length === 0 && (
+          <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800" data-testid="client-unavailable">
+            Videos from the business that sent you this link are unavailable right now.
+          </p>
+        )}
+        {offNames.map((name) => (
+          <p key={name} className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800" data-testid="client-link-off">
+            This link has been turned off, so it no longer opens your videos from {name}.
+          </p>
+        ))}
+        {off && offNames.length === 0 && (
+          <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800" data-testid="client-link-off">
+            This link has been turned off.
+          </p>
+        )}
         {(paused || pausedNames.length > 0) && (
           <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800" data-testid="client-paused">
             Your access {pausedNames.length > 0 ? <>to videos from {pausedNames.join(", ")} </> : ""}is paused because{" "}
@@ -98,7 +124,7 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
           </p>
         )}
         {clients.length === 0 ? (
-          pausedNames.length > 0 || removed || ended.length > 0 || closed || closedNames.length > 0 ? null : 
+          pausedNames.length > 0 || removed || ended.length > 0 || closed || closedNames.length > 0 || unavailable || unavailableNames.length > 0 || off || offNames.length > 0 ? null : 
           <p className="mt-6 text-slate-600">Open the personal link you were sent to see your videos here.</p>
         ) : (
           clients.map((c) => (

@@ -11,6 +11,7 @@ import { clientTeam } from "@/lib/permissions";
 import { DEFAULT_REMINDERS, isTimeZone, nextOccurrence, reminderTime, type ReminderRule } from "@/lib/schedule";
 import { Repeat, ReminderRules } from "@/lib/scheduleSchema";
 import { teamPath } from "@/lib/teamLink";
+import { activeMember } from "@/lib/team";
 
 export const workspaceTz = (w: Pick<Workspace, "timezone">) => w.timezone ?? "UTC";
 
@@ -139,13 +140,15 @@ export async function runReminders(now = new Date()) {
   for (const i of overdue) if (await spawnNext(i, workspaceTz(i.workspace))) spawned++;
 
   const due = await db.reminder.findMany({
-    where: { sentAt: null, sendAt: { lte: now } },
+    // Nothing goes out while support has the workspace suspended (lib/support/admin.ts); the reminders stay unsent and
+    // any more than an hour late by the time it's lifted are skipped below.
+    where: { sentAt: null, sendAt: { lte: now }, item: { workspace: { suspendedAt: null, closedAt: null } } },
     include: {
       item: {
         include: {
           client: true,
-          // Paused staff (over the plan's limit) aren't sent anything; their clients' reminders go to the owner and admins.
-          workspace: { include: { members: { where: { pausedAt: null }, include: { user: { select: { email: true } } }, orderBy: { id: "asc" } } } },
+          // Paused or suspended staff aren't sent anything; their clients' reminders go to the owner and admins.
+          workspace: { include: { members: { where: activeMember, include: { user: { select: { email: true } } }, orderBy: { id: "asc" } } } },
         },
       },
     },
@@ -172,7 +175,7 @@ export async function runReminders(now = new Date()) {
     const mails: { to: string; m: ReturnType<typeof reminderEmail>; replyTo?: string | null }[] = [];
     if (r.to === "CLIENT") {
       const c = item.client;
-      if (!c || c.removedAt || c.pausedAt || c.remindersOff || !c.email || !item.shared) { await skip("client unavailable"); continue; }
+      if (!c || c.removedAt || c.pausedAt || c.linkDisabledAt || c.remindersOff || !c.email || !item.shared) { await skip("client unavailable"); continue; }
       // The staff member looking after the client speaks for themselves when they've set their own message and reply-to.
       const own = clientMailSettings(ws, ws.members.find((m) => m.userId === c.assignedToId));
       mails.push({

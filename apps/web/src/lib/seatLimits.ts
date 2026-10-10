@@ -4,6 +4,7 @@ import { clientSeatLimit, PLANS, staffSeatLimit } from "@/lib/plans";
 import { appUrl } from "@/lib/stripe";
 import { teamEmail } from "@/lib/teamEmail";
 import { teamPath } from "@/lib/teamLink";
+import { activeMember } from "@/lib/team";
 
 /**
  * Keeps a workspace's clients and staff within what its plan pays for.
@@ -51,7 +52,8 @@ export async function enforceSeatLimits(workspaceId: string, { notify = true } =
     db.membership.updateMany({ where: { id: { in: newlyPausedStaff } }, data: { pausedAt: now } }),
   ]);
 
-  if (notify && (newlyPausedClients.length || newlyPausedStaff.length)) {
+  // Nothing is emailed in a suspended workspace's name (lib/support/admin.ts); the pauses still apply.
+  if (notify && !workspace.suspendedAt && !workspace.closedAt && (newlyPausedClients.length || newlyPausedStaff.length)) {
     await emailOwner(workspace.id, workspace.name, PLANS[workspace.plan].name, newlyPausedClients.length, newlyPausedStaff.length).catch((e) =>
       console.error("seat pause email", e),
     );
@@ -60,7 +62,7 @@ export async function enforceSeatLimits(workspaceId: string, { notify = true } =
 }
 
 async function emailOwner(workspaceId: string, business: string, planName: string, clients: number, staff: number) {
-  const owner = await db.membership.findFirst({ where: { workspaceId, role: "OWNER" }, include: { user: { select: { email: true } } } });
+  const owner = await db.membership.findFirst({ where: { workspaceId, role: "OWNER", ...activeMember }, include: { user: { select: { email: true } } } });
   if (!owner) return;
   const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
   const lines = [

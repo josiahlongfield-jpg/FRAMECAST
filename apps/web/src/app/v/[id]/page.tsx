@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import Logo from "@/components/Logo";
 import AppHeader from "@/components/AppHeader";
@@ -10,7 +11,7 @@ import WatchView from "@/components/WatchView";
 import SureFramePromo from "@/components/SureFramePromo";
 import { aiAssistActive, PLANS } from "@/lib/plans";
 import { db } from "@/lib/db";
-import { viewerFor } from "@/lib/access";
+import { clientBlock, clientCookie, clientGate, viewerFor } from "@/lib/access";
 import { currentUser } from "@/lib/session";
 import { clientLink } from "@/lib/clients";
 import { publicVideo } from "@/lib/videos";
@@ -52,6 +53,26 @@ export default async function Watch({ params, searchParams }: Props) {
   }
 
   if (!viewer) {
+    // The team of a suspended workspace (or a suspended login) is told so, not that the video is private.
+    const me = await currentUser();
+    if (me?.suspended && (me.suspended === "user" || me.workspace.id === video.workspaceId)) redirect("/suspended");
+    // The client it was sent to, when support has turned their link off or the business's videos are unavailable.
+    const token = video.clientId ? (await cookies()).get(clientCookie(video.workspaceId))?.value : undefined;
+    const mine = token ? await db.client.findUnique({ where: { token }, include: { workspace: { select: { ...clientGate, name: true } } } }) : null;
+    const block = mine?.id === video.clientId ? clientBlock(mine) : null;
+    if (mine && (block === "unavailable" || block === "off")) {
+      return (
+        <div className="grid min-h-screen place-items-center bg-slate-50 px-4">
+          <div className="max-w-sm rounded-2xl border border-slate-200 bg-white p-8 text-center" data-testid={block === "off" ? "video-link-off" : "video-unavailable"}>
+            <Logo />
+            <h1 className="mt-6 text-lg font-semibold text-slate-900">{block === "off" ? "This link has been turned off" : "Unavailable right now"}</h1>
+            <p className="mt-2 text-sm text-slate-600">
+              {block === "off" ? `It no longer opens your videos from ${mine.workspace.name}.` : `Videos from ${mine.workspace.name} are unavailable right now.`}
+            </p>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="grid min-h-screen place-items-center bg-slate-50 px-4">
         <div className="max-w-sm rounded-2xl border border-slate-200 bg-white p-8 text-center">
@@ -74,16 +95,16 @@ export default async function Watch({ params, searchParams }: Props) {
   const [replies, clients, staff, copies] = await Promise.all([
     db.reply.findMany({ where: { videoId: id, ...visibleReplies }, orderBy: { createdAt: "asc" }, include: { media: true } }),
     // Only the clients this person may see (lib/permissions.ts).
-    access ? db.client.findMany({ where: { ...clientScopeWhere(access), removedAt: null, pausedAt: null }, orderBy: { name: "asc" } }) : Promise.resolve([]),
+    access ? db.client.findMany({ where: { ...clientScopeWhere(access), removedAt: null, pausedAt: null, linkDisabledAt: null }, orderBy: { name: "asc" } }) : Promise.resolve([]),
     // Quick picks by staff member only help someone who can see everyone's clients.
     access && perms?.seeAllClients ? db.membership.findMany({ where: { workspaceId: video.workspaceId }, include: { user: true }, orderBy: { id: "asc" } }) : Promise.resolve([]),
     // The other clients this recording went to, each with their own conversation.
     access && !video.sourceId ? db.video.findMany({ where: { sourceId: video.id, client: clientScopeWhere(access) }, select: { id: true, clientId: true }, orderBy: { createdAt: "asc" } }) : Promise.resolve([]),
   ]);
   // Staff can open a video they recorded that went to someone else's client: show who, nothing more.
-  // So do removed and paused clients, who can't open it.
+  // So do removed and paused clients, and those whose link support turned off, who can't open it.
   const recipient = access && video.clientId && !clients.some((c) => c.id === video.clientId)
-    ? await db.client.findUnique({ where: { id: video.clientId }, select: { id: true, name: true, removedAt: true, purgeAt: true, pausedAt: true } })
+    ? await db.client.findUnique({ where: { id: video.clientId }, select: { id: true, name: true, removedAt: true, purgeAt: true, pausedAt: true, linkDisabledAt: true } })
     : null;
   const expired = !!video.expiresAt && video.expiresAt < new Date();
   const workspace = await db.workspace.findUniqueOrThrow({ where: { id: video.workspaceId } });
@@ -139,7 +160,7 @@ export default async function Watch({ params, searchParams }: Props) {
             }
             clients={[
               ...clients.map((c) => ({ id: c.id, name: c.name, link: clientLink(c.token, video.id), teamKeyWrap: c.teamKeyWrap, assignedToId: c.assignedToId, hasLink: !!(c.linkOpenedAt || c.linkSentAt), emailable: !!c.email && !c.remindersOff, emailsOff: !!c.email && c.remindersOff })),
-              ...(recipient ? [{ id: recipient.id, name: recipient.name, link: "", teamKeyWrap: null, assignedToId: null, removed, paused: !!recipient.pausedAt }] : []),
+              ...(recipient ? [{ id: recipient.id, name: recipient.name, link: "", teamKeyWrap: null, assignedToId: null, removed, paused: !!recipient.pausedAt, linkOff: !!recipient.linkDisabledAt }] : []),
             ]}
             sendMany={
               viewer.kind === "member" && perms?.sendToMany

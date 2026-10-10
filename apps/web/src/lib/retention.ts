@@ -24,8 +24,9 @@ export async function purgeExpired(now = new Date(), budgetMs = 40_000) {
   let purged = 0;
   while (Date.now() < until) {
     const due = await db.video.findMany({
-      // Never a backed-up workspace's video, even if a stale date slipped through.
-      where: { purgeAt: { lte: now }, status: { notIn: ["EXPIRED", "RECORDING"] }, workspace: { cloudBackup: false }, id: { notIn: [...failed] } },
+      // Never a backed-up workspace's video, even if a stale date slipped through, nor one on legal hold
+      // (lib/support/admin.ts): held videos are deleted on the first run after the hold is lifted.
+      where: { purgeAt: { lte: now }, status: { notIn: ["EXPIRED", "RECORDING"] }, workspace: { cloudBackup: false, legalHoldAt: null }, id: { notIn: [...failed] } },
       select: { id: true, sourceId: true, storageKey: true },
       take: 200,
     });
@@ -64,7 +65,8 @@ export async function pruneLeftovers(now = new Date()) {
   const monthAgo = new Date(now.getTime() - 30 * 86_400_000);
   const [tokens, invites] = await Promise.all([
     db.verificationToken.deleteMany({ where: { expires: { lt: now } } }),
-    db.invite.deleteMany({ where: { OR: [{ expiresAt: { lt: monthAgo } }, { revokedAt: { lt: monthAgo } }, { acceptedAt: { lt: monthAgo } }] } }),
+    // Kept while the workspace is on legal hold (lib/support/admin.ts).
+    db.invite.deleteMany({ where: { OR: [{ expiresAt: { lt: monthAgo } }, { revokedAt: { lt: monthAgo } }, { acceptedAt: { lt: monthAgo } }], workspace: { legalHoldAt: null } } }),
   ]);
   return { tokens: tokens.count, invites: invites.count };
 }
@@ -78,7 +80,8 @@ export async function pruneLeftovers(now = new Date()) {
  */
 export async function abortStaleUploads(now = new Date()) {
   const stale = await db.video.findMany({
-    where: { status: "RECORDING", updatedAt: { lt: new Date(now.getTime() - 7 * 86_400_000) } },
+    // Not while the workspace is on legal hold (lib/support/admin.ts).
+    where: { status: "RECORDING", updatedAt: { lt: new Date(now.getTime() - 7 * 86_400_000) }, workspace: { legalHoldAt: null } },
     take: 200,
   });
   for (const v of stale) {

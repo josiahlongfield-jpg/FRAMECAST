@@ -1,13 +1,49 @@
 import { cookies } from "next/headers";
-import type { Client, Video } from "@prisma/client";
-import { db } from "@/lib/db";
-import { currentUser, HttpError, STAFF_PAUSED } from "@/lib/session";
+import type { Client, Prisma, Video } from "@prisma/client";
+import { db, type Workspace } from "@/lib/db";
+import { ACCOUNT_SUSPENDED, currentUser, HttpError, STAFF_PAUSED } from "@/lib/session";
 import { accessOf, canSeeClient, canSeeVideo, type Access } from "@/lib/permissions";
 
 /** Cookie a client's personal link sets, one per workspace they belong to. */
 export const clientCookie = (workspaceId: string) => `fc_client_${workspaceId}`;
-/** Set briefly when a client whose access has ended (removed, or the business closed its account) opens their old link, so their inbox can say who (never grants access). */
+/**
+ * Set briefly when a client whose access has ended (removed, or the business closed its account), or whose
+ * business's videos are unavailable or link turned off, opens their old link, so their inbox can say who
+ * (never grants access).
+ */
 export const REMOVED_COOKIE = "fc_removed";
+
+/** What a client's link needs to know about their business's workspace (include as `workspace: { select: clientGate }`). */
+export const clientGate = { suspendedAt: true, closedAt: true, deleteAt: true } as const;
+type Gated = Pick<Client, "removedAt" | "pausedAt" | "linkDisabledAt"> & { workspace: Pick<Workspace, "suspendedAt" | "closedAt" | "deleteAt"> };
+
+/**
+ * Why a client's personal link opens nothing right now, or null when it works:
+ * - "removed": the business removed them (lib/clientRemoval.ts);
+ * - "unavailable": SureFrame support suspended or closed the business's workspace (clients are never told "suspended");
+ * - "closed": the business closed its own account (lib/accountDeletion.ts);
+ * - "off": SureFrame support turned this client's link off (lib/support/admin.ts);
+ * - "paused": the business's plan no longer covers them (lib/seatLimits.ts).
+ */
+export function clientBlock(c: Gated): "removed" | "unavailable" | "closed" | "off" | "paused" | null {
+  if (c.removedAt) return "removed";
+  if (c.workspace.suspendedAt || c.workspace.closedAt) return "unavailable";
+  if (c.workspace.deleteAt) return "closed";
+  if (c.linkDisabledAt) return "off";
+  if (c.pausedAt) return "paused";
+  return null;
+}
+
+/** The same rule as a query: clients whose link works and who can be sent things. */
+export const usableClientWhere = {
+  removedAt: null,
+  pausedAt: null,
+  linkDisabledAt: null,
+  workspace: { suspendedAt: null, closedAt: null, deleteAt: null },
+} satisfies Prisma.ClientWhereInput;
+
+/** Refused when sending to a client whose link support turned off. */
+export const linkOffMessage = (name: string) => `${name}'s link has been turned off by SureFrame support, so they can't be sent anything. Contact support@sureframe.app.`;
 
 export type Viewer =
   | { kind: "member"; userId: string; name: string; access: Access }
@@ -24,7 +60,7 @@ export async function viewerFor(video: Video): Promise<Viewer | null> {
   if (!root) return null;
 
   const me = await currentUser();
-  if (me && !me.paused && me.workspace.id === root.workspaceId) {
+  if (me && !me.paused && !me.suspended && me.workspace.id === root.workspaceId) {
     const access = accessOf(me);
     if (await canSeeVideo(access, root)) {
       // Clients see this on replies: the business name rather than part of an email address.
@@ -34,9 +70,9 @@ export async function viewerFor(video: Video): Promise<Viewer | null> {
 
   const token = (await cookies()).get(clientCookie(root.workspaceId))?.value;
   if (!token || !root.clientId) return null;
-  const client = await db.client.findUnique({ where: { token } });
-  // Paused clients (over the plan's limits, lib/seatLimits.ts) can't open anything until restored.
-  if (!client || client.removedAt || client.pausedAt || client.id !== root.clientId) return null;
+  const client = await db.client.findUnique({ where: { token }, include: { workspace: { select: clientGate } } });
+  // Removed, paused, turned off, or the business's account unavailable: nothing opens (clientBlock).
+  if (!client || client.id !== root.clientId || clientBlock(client)) return null;
   return { kind: "client", client, name: client.name };
 }
 
@@ -53,8 +89,8 @@ export async function viewableVideo(id: string) {
 export async function clientFromCookie(workspaceId: string) {
   const token = (await cookies()).get(clientCookie(workspaceId))?.value;
   if (!token) return null;
-  const client = await db.client.findUnique({ where: { token } });
-  return client && !client.removedAt && !client.pausedAt && client.workspaceId === workspaceId ? client : null;
+  const client = await db.client.findUnique({ where: { token }, include: { workspace: { select: clientGate } } });
+  return client && !clientBlock(client) && client.workspaceId === workspaceId ? client : null;
 }
 
 /**
@@ -66,7 +102,7 @@ export async function memberOrClient(clientId: string | null) {
   if (clientId) {
     const client = await db.client.findUnique({ where: { id: clientId } });
     if (!client || client.removedAt) throw new HttpError(404, "Not found");
-    if (me && !me.paused && me.workspace.id === client.workspaceId && canSeeClient(accessOf(me), client)) {
+    if (me && !me.paused && !me.suspended && me.workspace.id === client.workspaceId && canSeeClient(accessOf(me), client)) {
       return { kind: "member" as const, me, workspaceId: client.workspaceId };
     }
     const self = await clientFromCookie(client.workspaceId);
@@ -74,6 +110,7 @@ export async function memberOrClient(clientId: string | null) {
     throw new HttpError(404, "Not found");
   }
   if (!me) throw new HttpError(401, "Sign in required");
+  if (me.suspended) throw new HttpError(403, ACCOUNT_SUSPENDED, "ACCOUNT_SUSPENDED");
   if (me.paused) throw new HttpError(403, STAFF_PAUSED);
   return { kind: "member" as const, me, workspaceId: me.workspace.id };
 }

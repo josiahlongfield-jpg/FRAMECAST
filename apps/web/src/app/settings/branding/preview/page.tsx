@@ -15,6 +15,13 @@ export default async function BrandingPreview({ searchParams }: { searchParams: 
   const me = await currentUser();
   // Inside a frame, a redirect would show the sign-in page, which refuses to be
   // framed ("refused to connect"). Say what happened and sign in at the top level.
+  if (me?.suspended) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-slate-50 p-6 text-center">
+        <a href="/suspended" target="_top" className="text-sm font-medium text-brand-700 hover:underline">This account is suspended.</a>
+      </main>
+    );
+  }
   if (!me || me.paused) {
     return (
       <main className="grid min-h-screen place-items-center bg-slate-50 p-6 text-center">

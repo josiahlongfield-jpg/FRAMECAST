@@ -1,3 +1,4 @@
+import { cache } from "react";
 import NextAuth from "next-auth";
 import type { Provider } from "next-auth/providers";
 import Google from "next-auth/providers/google";
@@ -7,6 +8,7 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import type { PrismaClient } from "@prisma/client";
 import { db } from "@/lib/db";
 import { plainEmail } from "@/lib/emailAddress";
+import { isEmailBlocked } from "@/lib/blockedEmail";
 
 const providers: Provider[] = [];
 
@@ -53,6 +55,9 @@ if (emailLinks) {
   );
 }
 
+/** When "Sign out everywhere" was last used on this account (lib/support/admin.ts), once per request. */
+const sessionsValidAfter = cache(async (userId: string) => (await db.user.findUnique({ where: { id: userId }, select: { sessionsValidAfter: true } }))?.sessionsValidAfter ?? null);
+
 /** Shared password that protects a hosted preview's email sign-in. */
 export const previewPassword = process.env.PREVIEW_PASSWORD || null;
 
@@ -80,6 +85,8 @@ if (devLogin) {
           return null;
         }
         if (previewPassword && !safeEqual(String(creds?.password ?? ""), previewPassword)) return null;
+        // Never makes an account for a blocked address (the sign-in page says why before it gets here).
+        if (await isEmailBlocked(email)) return null;
         return db.user.upsert({ where: { email }, update: {}, create: { email, name: email.split("@")[0] } });
       },
     }),
@@ -107,14 +114,27 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
   },
   callbacks: {
-    signIn({ account, profile }) {
-      return account?.provider !== "google" || profile?.email_verified === true;
+    async signIn({ account, profile, user }) {
+      if (account?.provider === "google" && profile?.email_verified !== true) return false;
+      // An address blocked by support (an account closed for breaking the Terms) can't sign in or sign up
+      // again, by any method: Google, the email link (checked before the link is sent, and again when used)
+      // or dev login.
+      if (await isEmailBlocked(user?.email, typeof profile?.email === "string" ? profile.email : null)) return "/login?error=blocked";
+      return true;
     },
-    jwt({ token, user }) {
+    async jwt({ token, user }) {
       if (user?.id) {
         token.sub = user.id;
-        // Only a sign-in after closing an account can keep it (lib/session.ts pendingDeletion).
+        // Only a sign-in after closing an account can keep it (lib/session.ts pendingDeletion), and only one
+        // after "Sign out everywhere" still works.
         token.signedInAt = Date.now();
+        return token;
+      }
+      // "Sign out everywhere": a sign-in from before it counts as signed out (the cookie is cleared where it can be).
+      // Tokens from before signedInAt existed count as older than any such date.
+      if (token.sub) {
+        const validAfter = await sessionsValidAfter(token.sub);
+        if (validAfter && (token.signedInAt ?? 0) <= validAfter.getTime()) return null;
       }
       return token;
     },

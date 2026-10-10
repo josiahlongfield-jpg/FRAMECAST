@@ -10,6 +10,7 @@ import { db } from "@/lib/db";
 import { plainEmail } from "@/lib/emailAddress";
 import { DELETION_GRACE_DAYS } from "@/lib/accountDeletion";
 import { pendingDeletion } from "@/lib/session";
+import { EMAIL_BLOCKED, isEmailBlocked } from "@/lib/blockedEmail";
 
 export const metadata: Metadata = { title: "Sign in" };
 
@@ -69,6 +70,8 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
                 const email = plainEmail(String(fd.get("email") ?? ""));
                 const back = (code: string) => redirect(`/login?error=${code}&next=${encodeURIComponent(redirectTo)}`);
                 if (!email) back("email");
+                // Refused again in src/auth.ts for any way in; checked here so the page says why.
+                if (await isEmailBlocked(email)) back("blocked");
                 // Sending is counted inside the provider (src/auth.ts), so direct API calls are limited too;
                 // this only tells the two kinds of failure apart.
                 const { signInEmailLimited } = await import("@/lib/signInGuard");
@@ -101,6 +104,7 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
               className="grid gap-3"
               action={async (fd: FormData) => {
                 "use server";
+                if (await isEmailBlocked(String(fd.get("email") ?? ""))) redirect(`/login?error=blocked&next=${encodeURIComponent(redirectTo)}`);
                 try {
                   await signIn("dev", { email: fd.get("email"), password: fd.get("password") ?? "", redirectTo });
                 } catch (e) {
@@ -137,6 +141,7 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
 }
 
 function errorText(code: string) {
+  if (code === "blocked") return EMAIL_BLOCKED;
   if (code === "rate") return "Too many sign-in emails were requested for this address. Please wait up to an hour, then try again.";
   if (code === "email") return "That email address doesn't look right. Check it and try again.";
   if (code === "send") return "We couldn't send the sign-in email just now. Please try again in a few minutes, or email support@sureframe.app.";

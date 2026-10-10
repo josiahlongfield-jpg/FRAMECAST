@@ -13,7 +13,7 @@ export const metadata: Metadata = { title: "Free plans" };
 
 /** Founder-only: give a paid plan free of charge, for trials and partners. */
 export default async function Accounts() {
-  const { user } = await requirePageUser("/support/accounts");
+  const { user } = await requirePageUser("/support/accounts", { allowPaused: true, allowSuspended: true });
   if (!isSupportAgent(user.email)) notFound();
   const comped = await db.workspace.findMany({
     where: { complimentaryPlan: { not: null } },

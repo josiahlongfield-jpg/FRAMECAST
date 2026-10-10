@@ -13,7 +13,7 @@ const WHO = { CUSTOMER: "Customer", ASSISTANT: "Assistant", STAFF: "You" } as co
 
 export default async function SupportTicketPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { user } = await requirePageUser(`/support/${id}`);
+  const { user } = await requirePageUser(`/support/${id}`, { allowPaused: true, allowSuspended: true });
   if (!isSupportAgent(user.email)) notFound();
   const ticket = await db.supportTicket.findUnique({ where: { id }, include: { user: true, messages: { orderBy: { createdAt: "asc" } } } });
   if (!ticket) notFound();

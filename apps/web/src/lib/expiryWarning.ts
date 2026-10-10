@@ -6,6 +6,7 @@ import { teamEmail } from "@/lib/teamEmail";
 import { BRAND } from "@/lib/brand";
 import { zoned } from "@/lib/dates";
 import { teamPath } from "@/lib/teamLink";
+import { activeMember } from "@/lib/team";
 
 /** How far ahead of the scheduled deletion the recorder is emailed. */
 export const WARN_BEFORE_MS = 24 * 3_600_000;
@@ -29,8 +30,9 @@ export async function warnExpiring(now = new Date()) {
       expiryWarnedAt: null,
       replyToId: null,
       status: { notIn: ["EXPIRED", "RECORDING"] },
-      // Nothing is emailed while the owner's account is closed (lib/accountDeletion.ts); the recordings still expire.
-      workspace: { cloudBackup: false, deleteAt: null },
+      // Nothing is emailed while the owner's account is closed (lib/accountDeletion.ts) or support has the workspace
+      // suspended (lib/support/admin.ts); the recordings still expire. Under legal hold they don't, so no warning.
+      workspace: { cloudBackup: false, deleteAt: null, suspendedAt: null, closedAt: null, legalHoldAt: null },
     },
     select: { id: true, ownerId: true, workspaceId: true, sourceId: true, createdAt: true, purgeAt: true, client: { select: { name: true } } },
     orderBy: { purgeAt: "asc" },
@@ -54,13 +56,13 @@ export async function warnExpiring(now = new Date()) {
 
     const [ws, user, recorderMembership] = await Promise.all([
       db.workspace.findUnique({ where: { id: workspaceId } }),
-      db.user.findUnique({ where: { id: ownerId }, select: { email: true } }),
+      db.user.findUnique({ where: { id: ownerId }, select: { email: true, suspendedAt: true } }),
       db.membership.findFirst({ where: { userId: ownerId, workspaceId } }),
     ]);
     if (!ws) continue;
-    // Someone who has left the team (or is paused) isn't told; the owner is, since the recordings are the business's.
-    const left = !user || !recorderMembership || !!recorderMembership.pausedAt;
-    const owner = left ? await db.membership.findFirst({ where: { workspaceId, role: "OWNER" }, include: { user: { select: { email: true } } } }) : null;
+    // Someone who has left the team (or is paused or suspended) isn't told; the owner is, since the recordings are the business's.
+    const left = !user || !recorderMembership || !!recorderMembership.pausedAt || !!user.suspendedAt;
+    const owner = left ? await db.membership.findFirst({ where: { workspaceId, role: "OWNER", ...activeMember }, include: { user: { select: { email: true } } } }) : null;
     const to = left ? owner?.user.email : user!.email;
     const membership = left ? owner : recorderMembership;
     if (!to || !membership) {

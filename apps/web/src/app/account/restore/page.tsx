@@ -30,8 +30,8 @@ export default async function Restore() {
     try {
       ({ planEnded } = await restoreAccount(me.id));
     } catch (err) {
-      // Its date passed while the page was open.
-      if (err instanceof HttpError && err.status === 410) redirect("/account/restore");
+      // Its date passed while the page was open, or support closed or suspended it meanwhile.
+      if (err instanceof HttpError && (err.status === 410 || err.status === 403)) redirect("/account/restore");
       throw err;
     }
     redirect(planEnded ? "/library?restored=ended" : "/library?restored=1");
@@ -61,7 +61,22 @@ export default async function Restore() {
   return (
     <main className="mx-auto max-w-md px-4 py-16 sm:px-6">
       <Logo />
-      {!closed.fresh ? (
+      {closed.closedAt || closed.suspendedAt ? (
+        <>
+          <h1 className="mt-10 text-2xl font-semibold tracking-tight text-slate-900">{closed.closedAt ? "Your account has been closed" : "This account is suspended"}</h1>
+          <p className="mt-3 text-slate-600" data-testid="restore-by-support">
+            {closed.closedAt ? (
+              <>SureFrame support closed this account on {dates.longDay(closed.closedAt)}, and it will be deleted for good on {dates.longDay(closed.deleteAt)}, unless the law requires us to keep it longer. It can&apos;t be kept from here.</>
+            ) : (
+              <>Your SureFrame login has been suspended, so this account can&apos;t be kept from here. It is scheduled for deletion on {dates.longDay(closed.deleteAt)}.</>
+            )}{" "}
+            If you think this is a mistake, email{" "}
+            <a href={`mailto:${LEGAL.email}`} className="font-medium text-brand-700 hover:underline">{LEGAL.email}</a>
+            {closed.closedAt ? " within 30 days of the closure to ask for a review." : "."}
+          </p>
+          <div className="mt-6">{signOutButton("Sign out")}</div>
+        </>
+      ) : !closed.fresh ? (
         <>
           <h1 className="mt-10 text-2xl font-semibold tracking-tight text-slate-900">Sign in again to keep your account</h1>
           <p className="mt-3 text-slate-600">

@@ -6,6 +6,7 @@ import { purgeDate } from "@/lib/retention";
 import { appUrl } from "@/lib/stripe";
 import { teamEmail } from "@/lib/teamEmail";
 import { teamPath } from "@/lib/teamLink";
+import { activeMember } from "@/lib/team";
 
 /**
  * Cloud backup ended without the owner switching it off (the plan was
@@ -14,9 +15,10 @@ import { teamPath } from "@/lib/teamLink";
  */
 export async function tellOwnerBackupEnded(workspaceId: string) {
   const workspace = await db.workspace.findUnique({ where: { id: workspaceId } });
-  const owner = await db.membership.findFirst({ where: { workspaceId, role: "OWNER" }, include: { user: { select: { email: true } } } });
+  const owner = await db.membership.findFirst({ where: { workspaceId, role: "OWNER", ...activeMember }, include: { user: { select: { email: true } } } });
   // Not while the owner's account is closed: they're told what happens to their plan when they close it or keep it.
-  if (!workspace || !owner || workspace.deleteAt) return;
+  // Not while support has it suspended (nothing is emailed in its name), or on legal hold (nothing is deleted then).
+  if (!workspace || !owner || workspace.deleteAt || workspace.suspendedAt || workspace.closedAt || workspace.legalHoldAt) return;
   const left = await db.video.count({ where: { workspaceId, status: { not: "EXPIRED" }, replyToId: null, sourceId: null } });
   if (!left) return;
   const when = zoned(workspace.timezone).longDay(purgeDate(false)!);

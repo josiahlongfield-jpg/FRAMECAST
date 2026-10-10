@@ -50,6 +50,8 @@ type ClientOption = {
   removed?: { until: string | null; keepsRecording: boolean };
   /** Paused because the business's plan covers fewer clients. */
   paused?: boolean;
+  /** Link turned off by SureFrame support. */
+  linkOff?: boolean;
 };
 
 /** Members only: what's needed to send this recording to several clients at once. */
@@ -689,6 +691,8 @@ function WatchBody({
                   ? sendError
                 : recipient.removed
                   ? `${recipient.name} was removed from your clients, so only your team can watch this.`
+                : recipient.linkOff
+                  ? `${recipient.name}'s link has been turned off by SureFrame support, so only your team can watch this. Contact support@sureframe.app.`
                 : recipient.paused
                   ? `${recipient.name} is paused because your plan covers fewer clients, so only your team can watch this until they're restored.`
                 : !recipient.link

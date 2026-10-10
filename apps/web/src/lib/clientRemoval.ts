@@ -15,6 +15,7 @@ import { storage } from "@/lib/storage";
 import { appUrl } from "@/lib/stripe";
 import { teamEmail } from "@/lib/teamEmail";
 import { teamPath } from "@/lib/teamLink";
+import { activeMember } from "@/lib/team";
 
 /**
  * Removing a client stops their link and frees their seat at once. Everything
@@ -27,8 +28,10 @@ export const CLIENT_KEEP_DAYS = 30;
 export const CLIENT_PURGE_WARN_MS = 3 * 86_400_000;
 export const clientPurgeDate = (from = new Date()) => new Date(from.getTime() + CLIENT_KEEP_DAYS * 86_400_000);
 
-/** Removed clients due to be deleted. Never one without a date. */
-const dueWhere = (now: Date): Prisma.ClientWhereInput => ({ removedAt: { not: null }, purgeAt: { not: null, lte: now } });
+/** Removed clients due to be deleted. Never one without a date, and nothing under legal hold (lib/support/admin.ts). */
+const dueWhere = (now: Date): Prisma.ClientWhereInput => ({ removedAt: { not: null }, purgeAt: { not: null, lte: now }, workspace: { legalHoldAt: null } });
+/** Workspaces whose owner is told about removed clients' deletion: not closed (lib/accountDeletion.ts), suspended or held. */
+const tellable = { deleteAt: null, suspendedAt: null, closedAt: null, legalHoldAt: null } satisfies Prisma.WorkspaceWhereInput;
 /** Removed clients that can still be restored (a date not yet reached, or not dated yet). */
 export const restorableWhere = (now = new Date()): Prisma.ClientWhereInput => ({ removedAt: { not: null }, OR: [{ purgeAt: null }, { purgeAt: { gt: now } }] });
 
@@ -87,7 +90,8 @@ export async function restoreClient(workspace: Workspace, id: string, { ignoreSe
   await enforceSeatLimits(workspace.id);
   const c = await db.client.findUniqueOrThrow({ where: { id }, include: { _count: { select: { videos: true } } } });
   let emailed = false;
-  if (rekeyed && c.email && !c.pausedAt) {
+  // Not to a client whose link support turned off, or while the business's account is suspended (lib/support/admin.ts).
+  if (rekeyed && c.email && !c.pausedAt && !c.linkDisabledAt && !workspace.suspendedAt && !workspace.closedAt) {
     const brand = brandOf(workspace, appUrl(""));
     const assigned = c.assignedToId ? await db.membership.findUnique({ where: { userId_workspaceId: { userId: c.assignedToId, workspaceId: workspace.id } } }) : null;
     const { replyTo } = clientMailSettings(workspace, assigned);
@@ -110,6 +114,7 @@ export async function restoreClient(workspace: Workspace, id: string, { ignoreSe
       videoCount: c._count.videos,
       assignedToId: c.assignedToId,
       paused: !!c.pausedAt,
+      linkOff: !!c.linkDisabledAt,
     },
     seats: await seatUsage(workspace),
     newLink: rekeyed,
@@ -244,7 +249,8 @@ export async function datePendingRemovals(now = new Date()) {
   // A stamp of our own, so a run overlapping this one can't claim (and announce) the same clients.
   const stamp = new Date(clientPurgeDate(now).getTime() + Math.floor(Math.random() * 60_000));
   // Not while the owner's account is closed (lib/accountDeletion.ts): they go with it, or are dated once it's kept.
-  const res = await db.client.updateMany({ where: { removedAt: { not: null }, purgeAt: null, workspace: { deleteAt: null } }, data: { purgeAt: stamp, purgeWarnedAt: null } });
+  // Nor while support has it suspended or on legal hold: dated once that ends.
+  const res = await db.client.updateMany({ where: { removedAt: { not: null }, purgeAt: null, workspace: tellable }, data: { purgeAt: stamp, purgeWarnedAt: null } });
   if (!res.count) return 0;
   const claimed = await db.client.findMany({
     where: { removedAt: { not: null }, purgeAt: stamp },
@@ -259,7 +265,7 @@ export async function datePendingRemovals(now = new Date()) {
     try {
       const [ws, owner] = await Promise.all([
         db.workspace.findUnique({ where: { id: workspaceId } }),
-        db.membership.findFirst({ where: { workspaceId, role: "OWNER" }, include: { user: { select: { email: true } } } }),
+        db.membership.findFirst({ where: { workspaceId, role: "OWNER", ...activeMember }, include: { user: { select: { email: true } } } }),
       ]);
       if (!ws || !owner) throw new Error("no owner to tell");
       const dates = zoned(ws.timezone);
@@ -301,7 +307,8 @@ export async function datePendingRemovals(now = new Date()) {
 export async function warnClientPurge(now = new Date()) {
   const due = await db.client.findMany({
     // Not while the owner's account is closed (lib/accountDeletion.ts); warned after, if they keep it in time.
-    where: { removedAt: { not: null }, purgeAt: { gt: now, lte: new Date(now.getTime() + CLIENT_PURGE_WARN_MS) }, purgeWarnedAt: null, workspace: { deleteAt: null } },
+    // Nor while support has it suspended (nothing is emailed in its name) or on legal hold (nothing is deleted).
+    where: { removedAt: { not: null }, purgeAt: { gt: now, lte: new Date(now.getTime() + CLIENT_PURGE_WARN_MS) }, purgeWarnedAt: null, workspace: tellable },
     select: { id: true, workspaceId: true },
     take: 500,
   });
@@ -323,7 +330,7 @@ export async function warnClientPurge(now = new Date()) {
 
     const [ws, owner] = await Promise.all([
       db.workspace.findUnique({ where: { id: workspaceId } }),
-      db.membership.findFirst({ where: { workspaceId, role: "OWNER" }, include: { user: { select: { email: true } } } }),
+      db.membership.findFirst({ where: { workspaceId, role: "OWNER", ...activeMember }, include: { user: { select: { email: true } } } }),
     ]);
     if (!ws || !owner) {
       await release();
@@ -332,7 +339,7 @@ export async function warnClientPurge(now = new Date()) {
     // Whoever removed them hears too, while they're still on the team.
     const removerIds = [...new Set(mine.flatMap((c) => (c.removedById && c.removedById !== owner.userId ? [c.removedById] : [])))];
     const removers = removerIds.length
-      ? await db.membership.findMany({ where: { workspaceId, userId: { in: removerIds }, pausedAt: null }, include: { user: { select: { email: true } } } })
+      ? await db.membership.findMany({ where: { workspaceId, userId: { in: removerIds }, ...activeMember }, include: { user: { select: { email: true } } } })
       : [];
     const recipients = [
       { email: owner.user.email, canRestore: true, clients: mine },

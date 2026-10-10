@@ -7,6 +7,7 @@ import { handle, HttpError } from "@/lib/session";
 import { appUrl } from "@/lib/stripe";
 import { teamEmail } from "@/lib/teamEmail";
 import { teamPath } from "@/lib/teamLink";
+import { activeMember } from "@/lib/team";
 
 /**
  * A recognised client whose browser no longer has their key (Safari clears
@@ -23,7 +24,7 @@ export const POST = handle(async (_req: Request, ctx: { params: Promise<{ id: st
 
   const client = await db.client.findUniqueOrThrow({ where: { id }, include: { workspace: true } });
   const ws = client.workspace;
-  const members = await db.membership.findMany({ where: { workspaceId: ws.id, pausedAt: null }, include: { user: { select: { email: true } } }, orderBy: { id: "asc" } });
+  const members = await db.membership.findMany({ where: { workspaceId: ws.id, ...activeMember }, include: { user: { select: { email: true } } }, orderBy: { id: "asc" } });
   const assigned = members.find((m) => m.userId === client.assignedToId);
   const to = assigned ? [assigned] : members.filter((m) => m.role === "OWNER" || m.role === "ADMIN");
   const brand = brandOf(ws, appUrl(""));
