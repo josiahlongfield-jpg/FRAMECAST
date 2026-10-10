@@ -65,7 +65,7 @@ export default async function Billing({ searchParams }: { searchParams: Promise<
           )}
           {workspace.cancelsAt ? (
             <p className="mt-1 text-sm font-medium text-amber-700" data-testid="cancels-on">
-              Cancels {workspace.cancelsAt.toLocaleDateString("en-US", { dateStyle: "long" })}. You keep the {plan.name} plan until then, then move to Free.
+              Cancels {workspace.cancelsAt.toLocaleDateString("en-US", { dateStyle: "long" })}
             </p>
           ) : (
             workspace.currentPeriodEnd && (
