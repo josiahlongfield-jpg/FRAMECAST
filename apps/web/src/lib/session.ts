@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import type { Membership, Role, User } from "@prisma/client";
 import { db, type Workspace } from "@/lib/db";
+import { hasAgreed, TERMS_REQUIRED } from "@/lib/terms";
 
 /** Shown to staff the plan no longer covers (lib/seatLimits.ts). */
 export const STAFF_PAUSED = "Your access to this team is paused because its plan changed. Ask the owner to restore it.";
@@ -34,16 +35,21 @@ export class HttpError extends Error {
  * device (see pendingDeletion). A suspended login or workspace still gets
  * here, flagged `suspended`, so the suspended page, help chat and data
  * download work; requireUser and requirePageUser keep it out of everything else.
+ * So does someone who hasn't agreed to the current Terms and Privacy Policy
+ * (`agreed` false, lib/terms.ts), until they do on /agree.
  */
 export const currentUser = cache(async () => {
   const session = await auth();
   const userId = session?.user?.id;
   if (!userId) return null;
+  // Awaited one after the other: in development React shows what a Promise.all resolved to in the page
+  // (debug info), which would put support's internal notes on the workspace into the HTML.
   const user = await db.user.findUnique({
     where: { id: userId },
     include: { memberships: { include: { workspace: true }, orderBy: { id: "asc" } } },
   });
   if (!user || user.deleteAt) return null;
+  const agreed = await hasAgreed(userId);
   // The workspace they last joined or switched to, else their first one they can still use.
   const membership =
     user.memberships.find((m) => m.workspaceId === user.activeWorkspaceId) ??
@@ -53,7 +59,7 @@ export const currentUser = cache(async () => {
   if (membership) {
     const { workspace, ...m } = membership;
     // Staff over the plan's limits (lib/seatLimits.ts) can't use the team until restored.
-    return { user, workspace, role: membership.role, membership: m as Membership, paused: !!membership.pausedAt, suspended: suspensionOf(user, workspace) };
+    return { user, workspace, role: membership.role, membership: m as Membership, paused: !!membership.pausedAt, suspended: suspensionOf(user, workspace), agreed };
   }
   // One at a time per user, so two tabs opening at once can't make two personal workspaces.
   const made = await db.$transaction(async (tx) => {
@@ -71,7 +77,7 @@ export const currentUser = cache(async () => {
     return { ...members[0], workspace: ws };
   });
   const { workspace, ...m } = made;
-  return { user, workspace, role: m.role, membership: m as Membership, paused: !!m.pausedAt, suspended: suspensionOf(user, workspace) };
+  return { user, workspace, role: m.role, membership: m as Membership, paused: !!m.pausedAt, suspended: suspensionOf(user, workspace), agreed };
 });
 
 /** Throws unless the signed-in member has one of the given roles. */
@@ -79,16 +85,22 @@ export function requireRole(me: { role: Role }, ...roles: Role[]) {
   if (!roles.includes(me.role)) throw new HttpError(403, me.role === "MEMBER" ? "Ask an admin of this workspace to do this" : "Only the workspace owner can do this");
 }
 
+/** Refused until they agree to the current Terms and Privacy Policy on /agree (lib/terms.ts). */
+export const termsRequired = () => new HttpError(403, TERMS_REQUIRED, "TERMS_REQUIRED");
+
 /**
  * The signed-in member, or a 401/403. `allowSuspendedWorkspace` lets the owner
  * of a suspended workspace reach what the suspended page offers (managing the
- * subscription); a suspended login never gets through.
+ * subscription); a suspended login never gets through. `allowTermsPending`
+ * lets someone who hasn't agreed to the current terms yet finish an upload
+ * they'd already started.
  */
-export async function requireUser({ allowSuspendedWorkspace = false } = {}) {
+export async function requireUser({ allowSuspendedWorkspace = false, allowTermsPending = false } = {}) {
   const me = await currentUser();
   if (!me) throw new HttpError(401, "Sign in required");
   if (me.suspended && !(allowSuspendedWorkspace && me.suspended === "workspace")) throw new HttpError(403, ACCOUNT_SUSPENDED, "ACCOUNT_SUSPENDED");
   if (me.paused) throw new HttpError(403, STAFF_PAUSED);
+  if (!me.agreed && !allowTermsPending) throw termsRequired();
   return me;
 }
 
@@ -111,7 +123,10 @@ export const pendingDeletion = cache(async () => {
   return { ...user, deleteAt: user.deleteAt, fresh };
 });
 
-export async function requirePageUser(next = "/library", { allowPaused = false, allowSuspended = false } = {}) {
+/** Where someone goes to agree to the current terms, coming back to `next` afterwards. */
+export const agreePath = (next: string) => `/agree?next=${encodeURIComponent(next)}`;
+
+export async function requirePageUser(next = "/library", { allowPaused = false, allowSuspended = false, allowTermsPending = false } = {}) {
   const me = await currentUser();
   if (!me) {
     // A closed account just signed in again: offer to keep it.
@@ -122,6 +137,9 @@ export async function requirePageUser(next = "/library", { allowPaused = false, 
   if (me.suspended && !allowSuspended) redirect("/suspended");
   // Paused staff can still reach their own account (to download their data or delete it).
   if (me.paused && !allowPaused) redirect("/paused");
+  // Not agreed to the current Terms and Privacy Policy yet (lib/terms.ts): only /agree, their account
+  // page (to download their data or delete it) and the support console.
+  if (!me.agreed && !allowTermsPending) redirect(agreePath(next));
   return me;
 }
 

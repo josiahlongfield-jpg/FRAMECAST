@@ -12,7 +12,7 @@ import SureFramePromo from "@/components/SureFramePromo";
 import { aiAssistActive, PLANS } from "@/lib/plans";
 import { db } from "@/lib/db";
 import { clientBlock, clientCookie, clientGate, viewerFor } from "@/lib/access";
-import { currentUser } from "@/lib/session";
+import { agreePath, currentUser } from "@/lib/session";
 import { clientLink } from "@/lib/clients";
 import { publicVideo } from "@/lib/videos";
 import { replyDTO, visibleReplies } from "@/lib/replies";
@@ -56,6 +56,8 @@ export default async function Watch({ params, searchParams }: Props) {
     // The team of a suspended workspace (or a suspended login) is told so, not that the video is private.
     const me = await currentUser();
     if (me?.suspended && (me.suspended === "user" || me.workspace.id === video.workspaceId)) redirect("/suspended");
+    // Their own team's video, before they've agreed to the current terms (lib/terms.ts).
+    if (me && !me.agreed && !me.paused && me.workspace.id === video.workspaceId) redirect(agreePath(`/v/${id}`));
     // The client it was sent to, when support has turned their link off or the business's videos are unavailable.
     const token = video.clientId ? (await cookies()).get(clientCookie(video.workspaceId))?.value : undefined;
     const mine = token ? await db.client.findUnique({ where: { token }, include: { workspace: { select: { ...clientGate, name: true } } } }) : null;

@@ -2,7 +2,7 @@ import { after } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { storage } from "@/lib/storage";
-import { handle, HttpError, requireUser } from "@/lib/session";
+import { handle, HttpError, requireUser, termsRequired } from "@/lib/session";
 import { publicVideo } from "@/lib/videos";
 import { accessOf, canDeleteVideo, canSeeClient, seesAllClients, visibleVideo } from "@/lib/permissions";
 import { limitByIp } from "@/lib/rateLimit";
@@ -85,8 +85,11 @@ export const PATCH = handle(async (req: Request, ctx: { params: Promise<{ id: st
 
 export const DELETE = handle(async (_req: Request, ctx: { params: Promise<{ id: string }> }) => {
   const { id } = await ctx.params;
-  const access = accessOf(await requireUser());
+  // Discarding a recording still uploading works before agreeing to changed terms (lib/terms.ts); deleting a video doesn't.
+  const me = await requireUser({ allowTermsPending: true });
+  const access = accessOf(me);
   const video = await visibleVideo(access, id);
+  if (!me.agreed && video.status !== "RECORDING") throw termsRequired();
   if (!canDeleteVideo(access, video)) throw new HttpError(403, "You can only delete videos you recorded. Ask the owner or an admin.");
   // Deleting an original also deletes the copies sent to other clients.
   const copies = video.sourceId ? [] : await db.video.findMany({ where: { sourceId: id }, include: { client: true } });

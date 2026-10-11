@@ -8,7 +8,7 @@ import { isNoticeReason, isSupportAdmin, NOTICE_REASONS, type SupportAdmin } fro
 
 /** The signed-in support admin for a console page (works while their own workspace is paused or suspended); anyone else gets a 404. */
 export async function consoleAdmin(next: string): Promise<SupportAdmin> {
-  const me = await requirePageUser(next, { allowPaused: true, allowSuspended: true });
+  const me = await requirePageUser(next, { allowPaused: true, allowSuspended: true, allowTermsPending: true });
   if (!isSupportAdmin(me.user.email)) notFound();
   return { userId: me.user.id, email: me.user.email, workspaceIds: me.user.memberships.map((m) => m.workspaceId) };
 }

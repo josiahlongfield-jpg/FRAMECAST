@@ -11,6 +11,7 @@ import { sendMail } from "@/lib/mail";
 import { BRAND } from "@/lib/brand";
 import { teamPath } from "@/lib/teamLink";
 import { activeMember } from "@/lib/team";
+import { agreementsOf } from "@/lib/terms";
 
 async function deleteVideoFiles(where: { workspaceId: string } | { ownerId: string; workspaceId: string }) {
   const videos = await db.video.findMany({ where, select: { storageKey: true, uploadId: true, status: true } });
@@ -224,5 +225,7 @@ export async function exportAccount(userId: string) {
     user,
     workspaces,
     supportConversations,
+    // Each time you agreed to the Terms of Service and Privacy Policy (lib/terms.ts).
+    termsAgreements: await agreementsOf(userId),
   };
 }

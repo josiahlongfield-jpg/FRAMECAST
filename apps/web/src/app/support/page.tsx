@@ -13,7 +13,7 @@ const LABEL = { NEEDS_HUMAN: "Needs you", ANSWERED: "Answered", OPEN: "Assistant
 
 /** The founder's support inbox: conversations the assistant handed over come first. */
 export default async function SupportInbox({ searchParams }: { searchParams: Promise<{ show?: string; error?: string; cleared?: string }> }) {
-  const { user } = await requirePageUser("/support", { allowPaused: true, allowSuspended: true });
+  const { user } = await requirePageUser("/support", { allowPaused: true, allowSuspended: true, allowTermsPending: true });
   if (!isSupportAgent(user.email)) notFound();
   const { show, error, cleared } = await searchParams;
   const tickets = await db.supportTicket.findMany({

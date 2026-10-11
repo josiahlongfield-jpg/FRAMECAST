@@ -18,7 +18,9 @@ export const metadata: Metadata = { title: "Account" };
 
 export default async function AccountSettings({ searchParams }: { searchParams: Promise<{ error?: string; saved?: string }> }) {
   const { error, saved } = await searchParams;
-  const { user, workspace, role, membership, paused } = await requirePageUser("/settings/account", { allowPaused: true });
+  // Before agreeing to the current terms (lib/terms.ts), only the data download and account deletion are here.
+  const { user, workspace, role, membership, paused, agreed } = await requirePageUser("/settings/account", { allowPaused: true, allowTermsPending: true });
+  const limited = paused || !agreed;
   const onTeam = role === "MEMBER" || (await db.membership.count({ where: { workspaceId: workspace.id } })) > 1;
   // What deleting the account does depends on whether they run a workspace of their own or work on someone else's team.
   const mine = await db.membership.findMany({ where: { userId: user.id }, include: { workspace: { select: { name: true, timezone: true, stripeSubscriptionId: true, _count: { select: { members: true } } } } } });
@@ -40,7 +42,7 @@ export default async function AccountSettings({ searchParams }: { searchParams: 
 
   async function remove(form: FormData) {
     "use server";
-    const { user } = await requirePageUser("/settings/account", { allowPaused: true });
+    const { user } = await requirePageUser("/settings/account", { allowPaused: true, allowTermsPending: true });
     const typed = String(form.get("confirm") ?? "").trim().toLowerCase();
     if (typed !== user.email.toLowerCase()) redirect("/settings/account?error=confirm");
     let refused: "team" | "failed" | null = null;
@@ -58,9 +60,9 @@ export default async function AccountSettings({ searchParams }: { searchParams: 
 
   return (
     <>
-      {paused ? (
+      {limited ? (
         <p className="mx-auto max-w-3xl px-4 pt-6 text-sm sm:px-6">
-          <Link href="/paused" className="font-medium text-brand-700 hover:underline">&larr; Back</Link>
+          <Link href={paused ? "/paused" : "/agree"} className="font-medium text-brand-700 hover:underline">&larr; Back</Link>
         </p>
       ) : (
         <AppHeader email={user.email} plan={PLANS[workspace.plan].name} />
@@ -69,7 +71,7 @@ export default async function AccountSettings({ searchParams }: { searchParams: 
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Account</h1>
         <p className="mt-1 text-sm text-slate-500">Signed in as {user.email}</p>
 
-        <section id="name" className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
+        {agreed && <section id="name" className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
           <h2 className="font-semibold text-slate-900">Your name</h2>
           <p className="mt-1 text-sm text-slate-600">
             Clients see it on the videos you send, as &ldquo;{user.name || "Your name"} from {workspace.name}&rdquo;. Your team sees it too.
@@ -81,9 +83,9 @@ export default async function AccountSettings({ searchParams }: { searchParams: 
           </form>
           {saved === "name" && <p role="status" className="mt-2 text-sm text-emerald-700">Saved.</p>}
           {error === "name" && <p className="mt-2 text-sm text-red-700">Enter your name.</p>}
-        </section>
+        </section>}
 
-        {onTeam && !paused && <section id="emails" className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
+        {onTeam && !limited && <section id="emails" className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
           <h2 className="font-semibold text-slate-900">Emails to you</h2>
           {role === "MEMBER" ? (
             <MyEmailPrefs initial={{ replyEmails: membership?.replyNotify !== "OFF" }} />
@@ -95,7 +97,7 @@ export default async function AccountSettings({ searchParams }: { searchParams: 
           )}
         </section>}
 
-        {!paused && <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
+        {!limited && <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
           <h2 className="font-semibold text-slate-900">Recovery key</h2>
           <p className="mt-1 text-sm text-slate-600">
             Use this to unlock your videos on a phone or another computer. Keep it private: anyone signed in to your account with it can open your videos.

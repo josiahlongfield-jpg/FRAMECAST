@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import type { Client, Prisma, Video } from "@prisma/client";
 import { db, type Workspace } from "@/lib/db";
-import { ACCOUNT_SUSPENDED, currentUser, HttpError, STAFF_PAUSED } from "@/lib/session";
+import { ACCOUNT_SUSPENDED, currentUser, HttpError, STAFF_PAUSED, termsRequired } from "@/lib/session";
 import { accessOf, canSeeClient, canSeeVideo, type Access } from "@/lib/permissions";
 
 /** Cookie a client's personal link sets, one per workspace they belong to. */
@@ -53,14 +53,15 @@ export type Viewer =
  * Who is looking at this video, if they are allowed to. Videos are private:
  * team members see the conversations their access allows (lib/permissions.ts),
  * and a client can see only videos sent to them (plus the replies inside
- * those conversations). There is no public access.
+ * those conversations). There is no public access. A member who hasn't agreed
+ * to the current terms (lib/terms.ts) isn't one here until they do.
  */
 export async function viewerFor(video: Video): Promise<Viewer | null> {
   const root = video.replyToId ? await db.video.findUnique({ where: { id: video.replyToId } }) : video;
   if (!root) return null;
 
   const me = await currentUser();
-  if (me && !me.paused && !me.suspended && me.workspace.id === root.workspaceId) {
+  if (me && !me.paused && !me.suspended && me.agreed && me.workspace.id === root.workspaceId) {
     const access = accessOf(me);
     if (await canSeeVideo(access, root)) {
       // Clients see this on replies: the business name rather than part of an email address.
@@ -81,7 +82,12 @@ export async function viewableVideo(id: string) {
   const video = await db.video.findUnique({ where: { id } });
   if (!video) throw new HttpError(404, "Video not found");
   const viewer = await viewerFor(video);
-  if (!viewer) throw new HttpError(404, "Video not found");
+  if (!viewer) {
+    // Their own team's video: the terms are what's in the way, not the video.
+    const me = await currentUser();
+    if (me && !me.agreed && !me.paused && !me.suspended && me.workspace.id === video.workspaceId) throw termsRequired();
+    throw new HttpError(404, "Video not found");
+  }
   return { video, viewer };
 }
 
@@ -102,15 +108,16 @@ export async function memberOrClient(clientId: string | null) {
   if (clientId) {
     const client = await db.client.findUnique({ where: { id: clientId } });
     if (!client || client.removedAt) throw new HttpError(404, "Not found");
-    if (me && !me.paused && !me.suspended && me.workspace.id === client.workspaceId && canSeeClient(accessOf(me), client)) {
-      return { kind: "member" as const, me, workspaceId: client.workspaceId };
-    }
+    const member = !!me && !me.paused && !me.suspended && me.workspace.id === client.workspaceId && canSeeClient(accessOf(me), client);
+    if (member && me.agreed) return { kind: "member" as const, me, workspaceId: client.workspaceId };
     const self = await clientFromCookie(client.workspaceId);
     if (self?.id === client.id) return { kind: "client" as const, client: self, workspaceId: client.workspaceId };
+    if (member) throw termsRequired();
     throw new HttpError(404, "Not found");
   }
   if (!me) throw new HttpError(401, "Sign in required");
   if (me.suspended) throw new HttpError(403, ACCOUNT_SUSPENDED, "ACCOUNT_SUSPENDED");
   if (me.paused) throw new HttpError(403, STAFF_PAUSED);
+  if (!me.agreed) throw termsRequired();
   return { kind: "member" as const, me, workspaceId: me.workspace.id };
 }

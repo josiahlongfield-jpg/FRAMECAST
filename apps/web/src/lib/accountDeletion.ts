@@ -14,6 +14,7 @@ import { HttpError } from "@/lib/session";
 import { appUrl, stripe } from "@/lib/stripe";
 import { isMissing } from "@/lib/subscription";
 import { teamEmail } from "@/lib/teamEmail";
+import { DELETION_GRACE_DAYS, DELETION_WARN_DAYS } from "@/lib/periods";
 
 /**
  * Deleting your own account closes it straight away and deletes it for good
@@ -24,12 +25,10 @@ import { teamEmail } from "@/lib/teamEmail";
  * business's name, invites are cancelled and the subscription doesn't renew.
  * Staff leave their teams at once (a seat and the team's keys can't wait 30
  * days). Recordings without cloud backup still expire on their usual dates.
- *
- * Fixed on purpose: not RETENTION_DAYS, which can be changed per deployment.
  */
-export const DELETION_GRACE_DAYS = 30;
+export { DELETION_GRACE_DAYS };
 /** How far ahead of the deletion the account holder is reminded. */
-export const DELETION_WARN_MS = 3 * 86_400_000;
+export const DELETION_WARN_MS = DELETION_WARN_DAYS * 86_400_000;
 export const deletionDate = (from = new Date()) => new Date(from.getTime() + DELETION_GRACE_DAYS * 86_400_000);
 /** An owner leaving would strand their staff in a workspace nobody pays for. */
 export const OWNER_WITH_STAFF = "You own a team with other staff. Remove them on the Team page first.";

@@ -72,7 +72,7 @@ export default async function Restore() {
             )}{" "}
             If you think this is a mistake, email{" "}
             <a href={`mailto:${LEGAL.email}`} className="font-medium text-brand-700 hover:underline">{LEGAL.email}</a>
-            {closed.closedAt ? " within 30 days of the closure to ask for a review." : "."}
+            {closed.closedAt ? ` within ${LEGAL.reviewDays} days of the closure to ask for a review.` : "."}
           </p>
           <div className="mt-6">{signOutButton("Sign out")}</div>
         </>

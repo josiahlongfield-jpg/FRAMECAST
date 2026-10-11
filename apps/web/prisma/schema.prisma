@@ -702,3 +702,25 @@ model BlockedEmail {
   /// The account it came from, if any. A plain id: the block outlives the account.
   userId     String?
 }
+
+/// Each time someone agreed to the Terms of Service and Privacy Policy (lib/terms.ts): evidence of the agreement.
+/// Append-only: the app only inserts rows; the daily job deletes rows older than 7 years. No foreign keys, so it
+/// outlives the account.
+model TermsAcceptance {
+  id             String   @id @default(cuid())
+  userId         String
+  /// The account's email address at the time.
+  email          String
+  termsVersion   String
+  privacyVersion String
+  /// The deployed commit (VERCEL_GIT_COMMIT_SHA), so the exact text shown can be found in the code history.
+  appVersion     String?
+  acceptedAt     DateTime @default(now())
+  ip             String?
+  userAgent      String?
+  /// "signup" (first agreement) or "update" (agreeing to a newer version, or for the first time with an older account).
+  method         String
+
+  @@index([userId, acceptedAt])
+  @@index([acceptedAt])
+}

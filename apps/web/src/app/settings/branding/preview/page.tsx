@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import BrandPreviewFrame from "./BrandPreviewFrame";
 import { brandOf } from "@/lib/branding";
-import { currentUser } from "@/lib/session";
+import { agreePath, currentUser } from "@/lib/session";
 import type { PreviewView } from "@/components/ClientPreview";
 
 export const metadata: Metadata = { title: "Client preview", robots: { index: false } };
@@ -19,6 +19,15 @@ export default async function BrandingPreview({ searchParams }: { searchParams: 
     return (
       <main className="grid min-h-screen place-items-center bg-slate-50 p-6 text-center">
         <a href="/suspended" target="_top" className="text-sm font-medium text-brand-700 hover:underline">This account is suspended.</a>
+      </main>
+    );
+  }
+  if (me && !me.paused && !me.agreed) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-slate-50 p-6 text-center">
+        <a href={agreePath("/settings/branding")} target="_top" className="text-sm font-medium text-brand-700 hover:underline">
+          Agree to the updated terms to see the preview.
+        </a>
       </main>
     );
   }

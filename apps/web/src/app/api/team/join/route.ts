@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
-import { ACCOUNT_CLOSED_BY_SUPPORT, ACCOUNT_SUSPENDED, handle, HttpError } from "@/lib/session";
+import { ACCOUNT_CLOSED_BY_SUPPORT, ACCOUNT_SUSPENDED, handle, HttpError, termsRequired } from "@/lib/session";
+import { hasAgreed } from "@/lib/terms";
 import { limitByIp } from "@/lib/rateLimit";
 import { EMAIL_BLOCKED, isEmailBlocked } from "@/lib/blockedEmail";
 import { ACCOUNT_CLOSED_JOIN, hashToken, staffUsage, TEAM_CLOSED_JOIN, TEAM_UNAVAILABLE_JOIN } from "@/lib/team";
@@ -28,6 +29,8 @@ export const POST = handle(async (req: Request) => {
   if (me.deleteAt) throw new HttpError(403, ACCOUNT_CLOSED_JOIN);
   // A login suspended by support joins nothing (lib/support/admin.ts).
   if (me.suspendedAt) throw new HttpError(403, ACCOUNT_SUSPENDED, "ACCOUNT_SUSPENDED");
+  // Agree to the current Terms and Privacy Policy first (lib/terms.ts); the invite page sends them to /agree and back.
+  if (!(await hasAgreed(userId))) throw termsRequired();
   const body = Body.safeParse(await req.json());
   if (!body.success) throw new HttpError(400, "This invite link is incomplete");
   const invite = await db.invite.findUnique({ where: { tokenHash: hashToken(body.data.token) }, include: { workspace: true } });

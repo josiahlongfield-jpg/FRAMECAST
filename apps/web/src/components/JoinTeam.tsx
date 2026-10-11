@@ -35,6 +35,8 @@ export default function JoinTeam({ token, signedIn }: { token: string; signedIn:
     try {
       const res = await fetch("/api/team/join", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) });
       const data = await res.json().catch(() => ({}));
+      // Agree to the current terms first, then come back here (the invite key waits in localStorage).
+      if (res.status === 403 && data.code === "TERMS_REQUIRED") return window.location.assign(`/agree?next=${encodeURIComponent(`/join/${token}`)}`);
       if (!res.ok) throw new Error(data.error ?? "Could not join the team");
       const teamKey = await unwrapKey(data.teamKeyWrap, await importKey(inviteKey)).catch(() => {
         throw new Error("This invite link is damaged. Ask for a new one.");

@@ -1,0 +1,23 @@
+/**
+ * How long things are kept, in one place for the code that keeps them and for
+ * the legal pages (lib/legal.ts). No imports, so anything can use it without
+ * an import cycle.
+ */
+
+/** A removed client is kept this long, so the business can restore them, then deleted (lib/clientRemoval.ts). */
+export const CLIENT_KEEP_DAYS = 30;
+/** The business is warned this long before a removed client is deleted. */
+export const CLIENT_PURGE_WARN_DAYS = 3;
+/**
+ * A deleted or closed account is kept this long, then deleted for good (lib/accountDeletion.ts).
+ * Fixed on purpose: not RETENTION_DAYS, which can be changed per deployment.
+ */
+export const DELETION_GRACE_DAYS = 30;
+/** The account holder is reminded this long before a closed account is deleted. */
+export const DELETION_WARN_DAYS = 3;
+/** Time to ask for a review of a suspension, closure or turned-off link (support's notices, the Terms). */
+export const REVIEW_DAYS = 30;
+/** Support records (AdminAction) are kept this long: tax and legal-claims periods (lib/support/admin.ts). */
+export const ADMIN_ACTION_KEEP_YEARS = 7;
+/** Records of agreeing to the Terms and Privacy Policy (TermsAcceptance) are kept this long (lib/terms.ts). */
+export const TERMS_RECORD_KEEP_YEARS = 7;

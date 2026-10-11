@@ -15,6 +15,7 @@ import { appUrl, stripe } from "@/lib/stripe";
 import { isMissing } from "@/lib/subscription";
 import { supportInbox } from "@/lib/support/tickets";
 import { teamEmail } from "@/lib/teamEmail";
+import { ADMIN_ACTION_KEEP_YEARS, REVIEW_DAYS } from "@/lib/periods";
 
 /**
  * The founder's support powers: warn, suspend and unsuspend a workspace or a
@@ -96,7 +97,7 @@ export function logAdmin(
 }
 
 /** Support records are kept 7 years (tax and legal-claims periods), then deleted by the daily job. */
-export const ADMIN_ACTION_KEEP_YEARS = 7;
+export { ADMIN_ACTION_KEEP_YEARS };
 export async function pruneAdminActions(now = new Date()) {
   const cutoff = new Date(now);
   cutoff.setUTCFullYear(cutoff.getUTCFullYear() - ADMIN_ACTION_KEEP_YEARS);
@@ -156,7 +157,7 @@ export async function loadUser(userId: string) {
 
 // ---- Notices: plain SureFrame emails (not branded as the business), replies go to the support inbox ----
 
-export const REVIEW = `If you think this is a mistake, reply to this email or email ${LEGAL.email} within 30 days and we'll review it.`;
+export const REVIEW = `If you think this is a mistake, reply to this email or email ${LEGAL.email} within ${REVIEW_DAYS} days and we'll review it.`;
 export const QUESTIONS = `Questions? Reply to this email or contact ${LEGAL.email}.`;
 export const termsLine = () => ({ text: "Our Terms of Service", link: appUrl("/legal/terms") });
 

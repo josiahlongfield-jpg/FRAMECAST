@@ -9,6 +9,7 @@ import { videosUsed } from "@/lib/videoAllowance";
 import { restorableWhere } from "@/lib/clientRemoval";
 import { SUPPORT_GUIDE } from "@/lib/support/knowledge";
 import { handToHuman } from "@/lib/support/tickets";
+import { hasAgreed } from "@/lib/terms";
 
 const MODEL = "claude-opus-5-5";
 
@@ -43,7 +44,7 @@ ${SUPPORT_GUIDE}
 const ACCOUNT_TOOL: Anthropic.Beta.BetaTool = {
   name: "account_overview",
   description:
-    "The signed-in customer's own workspace: plan, billing status and renewal date, clients and staff used against the plan's limits (and any client links the team turned off), free videos used (a lifetime total, not per month), removed clients waiting to be deleted (owners and admins), cloud backup, AI transcripts and summaries, their role, and whether the team suspended or closed the account. Use it for questions about their plan, limits, billing state or why something is blocked. Contains no video, reply or to-do content.",
+    "The signed-in customer's own workspace: plan, billing status and renewal date, clients and staff used against the plan's limits (and any client links the team turned off), free videos used (a lifetime total, not per month), removed clients waiting to be deleted (owners and admins), cloud backup, AI transcripts and summaries, their role, whether they've agreed to the current Terms of Service and Privacy Policy, and whether the team suspended or closed the account. Use it for questions about their plan, limits, billing state or why something is blocked. Contains no video, reply or to-do content.",
   input_schema: { type: "object", properties: {}, additionalProperties: false },
   strict: true,
 };
@@ -76,7 +77,7 @@ export const assistantEnabled = () => !!process.env.ANTHROPIC_API_KEY;
  */
 async function accountOverview(ticket: SupportTicket) {
   if (!ticket.userId || !ticket.workspaceId) return { signedIn: false, note: "The customer isn't signed in, so there is no account to look at." };
-  const [workspace, membership, login, clients, pausedClients, linksOff, staff, pausedStaff, videos] = await Promise.all([
+  const [workspace, membership, login, clients, pausedClients, linksOff, staff, pausedStaff, videos, agreed] = await Promise.all([
     db.workspace.findUnique({ where: { id: ticket.workspaceId } }),
     db.membership.findFirst({ where: { workspaceId: ticket.workspaceId, userId: ticket.userId } }),
     db.user.findUnique({ where: { id: ticket.userId }, select: { suspendedAt: true, closedAt: true } }),
@@ -86,6 +87,8 @@ async function accountOverview(ticket: SupportTicket) {
     db.membership.count({ where: { workspaceId: ticket.workspaceId } }),
     db.membership.count({ where: { workspaceId: ticket.workspaceId, pausedAt: { not: null } } }),
     videosUsed(ticket.workspaceId),
+    // Only yes or no: never the agreement records themselves (lib/terms.ts).
+    hasAgreed(ticket.userId),
   ]);
   // What the team did through the support powers (lib/support/admin.ts) is described only as the customer sees it:
   // never the team's reason, a legal hold or the support log.
@@ -137,6 +140,7 @@ async function accountOverview(ticket: SupportTicket) {
     cloudBackup: workspace.cloudBackup,
     aiTranscriptsAndSummaries: ai ? { on: true, summariesThisMonth: await summaryUsage(workspace) } : { on: false },
     customBranding: workspace.plan !== "FREE",
+    agreedToCurrentTerms: agreed,
   };
   if (membership.role !== "OWNER") return { ...overview, billing: "Only the workspace owner can see billing details. Ask them, or have them ask here." };
   return {

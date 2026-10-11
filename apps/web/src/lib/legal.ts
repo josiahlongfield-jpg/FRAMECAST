@@ -1,4 +1,13 @@
 import { BRAND } from "@/lib/brand";
+import {
+  ADMIN_ACTION_KEEP_YEARS,
+  CLIENT_KEEP_DAYS,
+  CLIENT_PURGE_WARN_DAYS,
+  DELETION_GRACE_DAYS,
+  DELETION_WARN_DAYS,
+  REVIEW_DAYS,
+  TERMS_RECORD_KEEP_YEARS,
+} from "@/lib/periods";
 import { RETENTION_DAYS } from "@/lib/retention";
 
 /**
@@ -18,16 +27,48 @@ export const LEGAL = {
   minimumAge: 18,
   retentionDays: RETENTION_DAYS,
   /** A removed client is kept this long, so the business can restore them, then deleted. */
-  removedClientDays: 30,
+  removedClientDays: CLIENT_KEEP_DAYS,
+  /** The business is warned about this long before a removed client is deleted. */
+  removedClientWarningDays: CLIENT_PURGE_WARN_DAYS,
   /** A deleted or closed account is kept this long, then permanently deleted. */
-  deletionGraceDays: 30,
+  deletionGraceDays: DELETION_GRACE_DAYS,
+  /** The account holder is reminded about this long before a deleted account is deleted for good. */
+  deletionWarningDays: DELETION_WARN_DAYS,
   /** Records of support actions on accounts are kept this long. */
-  supportRecordYears: 7,
+  supportRecordYears: ADMIN_ACTION_KEEP_YEARS,
+  /** Records of agreeing to the Terms and Privacy Policy are kept this long. */
+  agreementRecordYears: TERMS_RECORD_KEEP_YEARS,
   /** Time to ask us to review a suspension, closure or turned-off link. */
-  reviewDays: 30,
+  reviewDays: REVIEW_DAYS,
+  /**
+   * The versions people agree to on /agree (lib/terms.ts). Change one whenever its page changes in a way
+   * people should agree to again, add the new version to LEGAL_VERSIONS, and keep the old text (git history,
+   * and on request).
+   */
+  termsVersion: "2026-10-11",
+  privacyVersion: "2026-10-11",
   dpaVersion: "1.0",
-  updated: "10 October 2026",
+  updated: "11 October 2026",
 };
+
+/**
+ * Every version of the Terms of Service and Privacy Policy people have agreed to, newest first, for
+ * /legal/archive. `changes` is the plain summary shown to existing account holders on /agree. A record of
+ * that version, so its numbers are written out rather than read from today's settings.
+ */
+export const LEGAL_VERSIONS = [
+  {
+    terms: "2026-10-11",
+    privacy: "2026-10-11",
+    date: "11 October 2026",
+    changes: [
+      "The Free plan now includes 25 videos in total per workspace, not 25 a month. Deleting a video doesn’t give a place back.",
+      "Removed clients and deleted accounts are kept for 30 days so they can be restored, then deleted for good.",
+      "We explain when we may suspend or close an account or turn off a client’s link, sometimes without warning, and how to ask for a review.",
+      "We added a section for people in the EU and UK and a data processing agreement for businesses, and we now keep a record of when you agree to these documents.",
+    ],
+  },
+];
 
 export const operatorLine = () =>
   `${LEGAL.product} is operated by ${LEGAL.operator}, a sole trader based in ${LEGAL.state}, ${LEGAL.country}${LEGAL.abn ? ` (ABN ${LEGAL.abn})` : ""}`;
@@ -64,7 +105,7 @@ export const SUBPROCESSORS: Subprocessor[] = [
   {
     name: "Neon",
     purpose: "our database",
-    data: "account, team, client, billing and support details, details of videos we can read (such as titles), and the encrypted text of replies, to-dos, notes, transcripts and summaries",
+    data: "account, team, client, billing and support details, details of videos we can read (such as titles), records of support actions and of agreement to our terms, and the encrypted text of replies, to-dos, notes, transcripts and summaries",
     location: NEON_LOCATION,
     customerData: true,
   },

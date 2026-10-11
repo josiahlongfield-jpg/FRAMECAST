@@ -16,6 +16,7 @@ import { appUrl } from "@/lib/stripe";
 import { teamEmail } from "@/lib/teamEmail";
 import { teamPath } from "@/lib/teamLink";
 import { activeMember } from "@/lib/team";
+import { CLIENT_KEEP_DAYS, CLIENT_PURGE_WARN_DAYS } from "@/lib/periods";
 
 /**
  * Removing a client stops their link and frees their seat at once. Everything
@@ -23,9 +24,9 @@ import { activeMember } from "@/lib/team";
  * CLIENT_KEEP_DAYS so the business can restore them, then deleted for good,
  * cloud backup or not. The business is warned a few days before.
  */
-export const CLIENT_KEEP_DAYS = 30;
+export { CLIENT_KEEP_DAYS };
 /** How far ahead of the deletion the business is warned. */
-export const CLIENT_PURGE_WARN_MS = 3 * 86_400_000;
+export const CLIENT_PURGE_WARN_MS = CLIENT_PURGE_WARN_DAYS * 86_400_000;
 export const clientPurgeDate = (from = new Date()) => new Date(from.getTime() + CLIENT_KEEP_DAYS * 86_400_000);
 
 /** Removed clients due to be deleted. Never one without a date, and nothing under legal hold (lib/support/admin.ts). */

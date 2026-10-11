@@ -8,10 +8,11 @@ import { reconcileSubscriptions } from "@/lib/subscription";
 import { purgeRemovedClients, warnClientPurge } from "@/lib/clientRemoval";
 import { purgeScheduledAccounts, warnScheduledDeletions } from "@/lib/accountDeletion";
 import { pruneAdminActions } from "@/lib/support/admin";
+import { pruneTermsAcceptances } from "@/lib/terms";
 
 export const maxDuration = 300;
 
-const JOBS = ["purged", "rateLimits", "staleUploads", "teamNotifications", "leftovers", "expiryWarnings", "clientsPurged", "clientWarnings", "accountWarnings", "accountsPurged", "adminActionsPruned"] as const;
+const JOBS = ["purged", "rateLimits", "staleUploads", "teamNotifications", "leftovers", "expiryWarnings", "clientsPurged", "clientWarnings", "accountWarnings", "accountsPurged", "adminActionsPruned", "agreementsPruned"] as const;
 
 /** Run daily (e.g. Vercel Cron) with Authorization: Bearer $CRON_SECRET. */
 export async function GET(req: Request) {
@@ -34,8 +35,9 @@ export async function GET(req: Request) {
     // Closed accounts: the reminder 3 days before, and deletion once the date comes (also every 5 minutes).
     warnScheduledDeletions(),
     purgeScheduledAccounts(new Date(), 120_000),
-    // Support records older than 7 years.
+    // Support records and records of agreeing to the terms, older than 7 years.
     pruneAdminActions(),
+    pruneTermsAcceptances(),
   ]);
   const out: Partial<Record<(typeof JOBS)[number], unknown>> = {};
   results.forEach((r, i) => {
@@ -45,6 +47,6 @@ export async function GET(req: Request) {
       console.error(JSON.stringify({ level: "error", message: `[cron/purge] ${JOBS[i]} failed`, error: String(r.reason) }));
     }
   });
-  const { purged, expiryWarnings, clientsPurged, clientWarnings, accountWarnings, accountsPurged, adminActionsPruned } = out;
-  return Response.json({ purged, expiryWarnings, clientsPurged, clientWarnings, accountWarnings, accountsPurged, adminActionsPruned });
+  const { purged, expiryWarnings, clientsPurged, clientWarnings, accountWarnings, accountsPurged, adminActionsPruned, agreementsPruned } = out;
+  return Response.json({ purged, expiryWarnings, clientsPurged, clientWarnings, accountWarnings, accountsPurged, adminActionsPruned, agreementsPruned });
 }

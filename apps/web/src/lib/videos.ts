@@ -42,7 +42,8 @@ export async function uploadableVideo(req: Request, id: string) {
     await requireReplyerAllowed(video.id);
     return video;
   }
-  const me = await requireUser();
+  // A recording already under way finishes even if the terms changed meanwhile (lib/terms.ts).
+  const me = await requireUser({ allowTermsPending: true });
   const video = await visibleVideo(accessOf(me), id);
   if (video.replyToId || video.ownerId !== me.user.id) throw new HttpError(403, "Only the person recording this can upload it");
   return video;
