@@ -198,7 +198,8 @@ export default function Page() {
         </li>
         <li>
           With cloud backup, encrypted content is kept until you delete it, the client it was sent to is removed and then deleted (see below), or your account is
-          permanently deleted. If cloud backup ends (you switch it off, cancel, or your paid plan ends), our copies are deleted {LEGAL.retentionDays} days later.
+          permanently deleted. If cloud backup ends (you switch it off, cancel, or your paid plan ends), our copies are deleted {LEGAL.retentionDays} days later;
+          if it ends while the account is suspended or closed, those {LEGAL.retentionDays} days start when it&rsquo;s unsuspended, reopened or kept.
         </li>
         <li>Text replies, to-dos and notes are kept until they&rsquo;re deleted, the client they belong to is deleted (see below), or the account is permanently deleted.</li>
         <li>
@@ -227,8 +228,9 @@ export default function Page() {
           made for it stay with the team.
         </li>
         <li>
-          If we close an account under our terms, we permanently delete the account, its workspaces and their content {LEGAL.deletionGraceDays} days later, unless
-          we need to keep them for legal reasons (see the last point below).
+          If we close an account under our terms, we permanently delete the account, its workspaces and their content {LEGAL.closureDeleteDays} days later (or on
+          the date already set, if its holder had already deleted it), unless we need to keep them for legal reasons (see the last point below). The account
+          holder can&rsquo;t sign in, but can email us within {LEGAL.reviewDays} days of the closure for a copy of their account data download.
         </li>
         <li>
           After an account is deleted, some records stay, as described here: billing records, support chats until you ask us to delete them, records of support
@@ -241,7 +243,8 @@ export default function Page() {
         </li>
         <li>
           Records of agreement to our Terms of Service and this policy are kept for {LEGAL.agreementRecordYears} years after each agreement, even after the account
-          is deleted, as evidence of the agreement if there&rsquo;s ever a dispute or legal claim.
+          is deleted, as evidence of the agreement if there&rsquo;s ever a dispute or legal claim. Your latest agreement is also kept for as long as your account
+          exists. Records of when we emailed you about a change to these documents are kept for the same {LEGAL.agreementRecordYears} years.
         </li>
         <li>
           A blocked email address&rsquo;s fingerprint is kept for as long as we need to stop that address being used again, until we lift the block. The record
@@ -260,7 +263,8 @@ export default function Page() {
       <p>We only use cookies needed to run {LEGAL.product}:</p>
       <ul>
         <li>
-          <strong>Sign-in cookie:</strong> keeps you signed in to your account. It holds your account&rsquo;s id and when you signed in, so a sign-in from before
+          <strong>Sign-in cookie:</strong> keeps you signed in to your account. It holds your account&rsquo;s id, your name and email address (and, if you sign in with Google, the link to your Google
+          profile picture), and when you signed in, so a sign-in from before
           you closed your account, or before we signed your account out everywhere, no longer works.
         </li>
         <li>
@@ -367,7 +371,7 @@ export default function Page() {
           <strong>Legitimate interests:</strong> to keep {LEGAL.product} secure, prevent misuse and enforce our terms (for example sign-in protection, limits on
           repeated attempts, suspending or closing accounts and turning off links that break our terms, keeping records of those actions, and stopping closed
           accounts signing up again), to keep records of agreement to our terms and this policy as evidence if there&rsquo;s a dispute or legal claim (for{" "}
-          {LEGAL.agreementRecordYears} years, including after an account is deleted), to deal with legal claims, to fix problems, to answer the help chat with our
+          {LEGAL.agreementRecordYears} years, including after an account is deleted, and your latest one while your account exists), to deal with legal claims, to fix problems, to answer the help chat with our
           AI assistant, and to tell you about important changes. We&rsquo;ve weighed these against your rights and use as little information as we can for them.
         </li>
         <li>
@@ -426,8 +430,10 @@ export default function Page() {
       <h2>Changes</h2>
       <p>
         We&rsquo;ll update this page when our practices change, and tell you by email about significant changes. When we update it, we ask account holders to
-        read and agree to the new version before carrying on, and we keep a record of that. Each version has a number, shown at the top. Earlier versions are
-        listed in our <Link href="/legal/archive">archive of versions</Link>, and we&rsquo;ll send you a copy of any of them if you ask.
+        read and agree to the new version before carrying on, and we keep a record of that. If you already have an account, we email you first, and you can carry
+        on for {LEGAL.changeNoticeDays} days after that email before you need to agree. Each version has a number, shown at the top. Versions from 11
+        October 2026 onwards are listed in our <Link href="/legal/archive">archive of versions</Link>, and we&rsquo;ll send you a copy of any earlier version if you
+        ask.
       </p>
 
       <h2>Contact and complaints</h2>

@@ -16,8 +16,8 @@ export default function Page() {
       <p>
         To use {LEGAL.product} with an account, you must agree to these terms and our <Link href="/legal/privacy">privacy policy</Link> by ticking the box we show
         you, when you sign up and again whenever we update them (see section 18). We keep a record of each time you agree: when, which versions, and the email
-        address, IP address and browser you used. Until you agree, you can still sign out, download your data and delete your account, and a recording that was
-        already uploading still finishes, but you can&rsquo;t otherwise use {LEGAL.product}.
+        address, IP address and browser you used. Until you agree, you can still sign out, download your data, manage or cancel your subscription and delete your
+        account, and a recording that was already uploading still finishes, but you can&rsquo;t otherwise use {LEGAL.product}.
       </p>
 
       <h2>1. Who can use {LEGAL.product}</h2>
@@ -142,7 +142,8 @@ export default function Page() {
         be watched from its link. Video and voice replies follow the same rule; text replies, to-dos and notes are kept until they&rsquo;re deleted. A recording
         stays on the device it was made on only until its upload finishes. To keep your own copy, open the video and choose Save
         to device. With cloud backup, content is kept until you delete it or your account is permanently deleted (see section 17). If cloud backup ends (you switch
-        it off, cancel, or your paid plan ends), our copies are deleted {LEGAL.retentionDays} days later. Removing a client also deletes their conversations after{" "}
+        it off, cancel, or your paid plan ends), our copies are deleted {LEGAL.retentionDays} days later; if it ends while your account is suspended or
+        closed, those {LEGAL.retentionDays} days start when it&rsquo;s unsuspended, reopened or kept. Removing a client also deletes their conversations after{" "}
         {LEGAL.removedClientDays} days, even with cloud backup (see section 4). We may pause these deletions where we need to keep information for legal reasons (see section 9). Please
         keep your own copies of anything important.
       </p>
@@ -221,10 +222,12 @@ export default function Page() {
           suspended straight away. Unlike when you delete your own account (section 17), you can&rsquo;t keep or reactivate it by signing in. If the owner has a
           team, the whole workspace is closed and its staff are taken off it, keeping their own logins. A closed login is also taken off any other team it&rsquo;s
           on, and pending invites are cancelled. Any subscription is cancelled straight away. We may also stop the account&rsquo;s email address being used to sign
-          in or sign up again. The account, its workspaces and their content are permanently deleted {LEGAL.deletionGraceDays} days after closure (or on the date
-          already set, if you&rsquo;d already deleted your account), unless the law requires us to keep them or they&rsquo;re on legal hold. If a review finds we
-          got it wrong before then, we can reopen the account; a subscription we cancelled and staff taken off the team don&rsquo;t come back, so you would
-          subscribe and invite them again.
+          in or sign up again. The account, its workspaces and their content are permanently deleted {LEGAL.closureDeleteDays} days after closure (or on the date
+          already set, if you&rsquo;d already deleted your account), unless the law requires us to keep them or they&rsquo;re on legal hold. Because you can&rsquo;t
+          sign in, you can email {mail} within {LEGAL.reviewDays} days of the closure for a copy of your account data download, unless the law stops us sending
+          it. If a review finds we got it wrong before the deletion date, we can reopen the account (if you&rsquo;d already deleted it yourself, it goes back to
+          being deleted on its date unless you keep it); a subscription we cancelled and staff taken off the team don&rsquo;t come back, so you would subscribe
+          and invite them again.
         </li>
         <li>
           <strong>Legal hold:</strong> where the law requires it, to deal with a legal claim, or for a report to the authorities, we may keep an account&rsquo;s
@@ -366,15 +369,17 @@ export default function Page() {
 
       <h2>18. Changes to these terms</h2>
       <p>
-        We may update these terms. If a change is significant, we&rsquo;ll email you at least 30 days before it takes effect. When we update them, we&rsquo;ll ask
-        you to read the new version and agree to it by ticking the box before you carry on using {LEGAL.product}, and we keep a record of your agreement (see the
-        start of these terms). Continuing to use {LEGAL.product} after agreeing to an updated version means that version applies. If you don&rsquo;t agree to a
-        change, don&rsquo;t tick the box: you can stop using {LEGAL.product}, and you can still download your data and delete your account (see section 17). If you
+        We may update these terms. If a change is significant, we&rsquo;ll email you at least {LEGAL.changeNoticeDays} days before it takes effect. When we update
+        them, we&rsquo;ll ask you to read the new version and agree to it by ticking the box before you carry on using {LEGAL.product}, and we keep a record of your
+        agreement (see the start of these terms). If you already have an account, you can keep using {LEGAL.product} under the version you agreed to until the
+        new one takes effect for you, {LEGAL.changeNoticeDays} days after we email you about it. Continuing to use {LEGAL.product} after agreeing to an updated version means that version applies. If you don&rsquo;t agree to a
+        change, don&rsquo;t tick the box: you can stop using {LEGAL.product}, and you can still download your data, cancel your subscription and delete your account
+        (see section 17). If you
         use {LEGAL.product} only as a client, through a business&rsquo;s link, the version published here when you use it applies.
       </p>
       <p>
-        Each version has a number, shown at the top. Earlier versions are listed in our <Link href="/legal/archive">archive of versions</Link>, and we&rsquo;ll
-        send you a copy of any of them if you ask.
+        Each version has a number, shown at the top. Versions from 11 October 2026 onwards are listed in our <Link href="/legal/archive">archive of versions</Link>,
+        and we&rsquo;ll send you a copy of any earlier version if you ask.
       </p>
 
       <h2>19. Disputes</h2>

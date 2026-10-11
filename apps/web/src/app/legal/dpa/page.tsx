@@ -156,15 +156,18 @@ export default function Page() {
         </li>
         <li>
           When you delete your account, we keep Customer Personal Data for {LEGAL.deletionGraceDays} days so you can reactivate it, then delete it. If we close your
-          account under section 9 of the Terms, we delete it {LEGAL.deletionGraceDays} days after closure. Either way, a legal hold (below) can keep it longer.
+          account under section 9 of the Terms, we delete it {LEGAL.closureDeleteDays} days after closure (or on the date already set, if you&rsquo;d already
+          deleted your account). Either way, a legal hold (below) can keep it longer.
         </li>
         <li>
           If we need to keep Customer Personal Data longer because the law requires it, or for a legal claim or a report to the authorities (a legal hold, as
           section 9 of the Terms describes), we keep only what we need, keep protecting it under this DPA, and delete it once it&rsquo;s no longer needed.
         </li>
         <li>
-          Before deletion, you can download your data in Settings &gt; Account and save videos to your device. Encrypted content is returned in encrypted form, which
-          only your keys can open.
+          Before your account is deleted, you can download your data in Settings &gt; Account and save videos to your device (if you deleted your account, keep it
+          first). If we close your account under section 9 of the Terms, you can&rsquo;t sign in, so email {LEGAL.email} within {LEGAL.reviewDays} days of the
+          closure and we&rsquo;ll send you your account data download, unless the law stops us. Encrypted content is returned in encrypted form, which only your
+          keys can open.
         </li>
         <li>Deleted data may remain in our providers&rsquo; backups until those backups expire, and this DPA keeps applying to it until then.</li>
       </ul>
