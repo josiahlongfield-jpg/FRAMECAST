@@ -36,6 +36,8 @@ function termsNoticeEmail(from: Date, timezone: string | null) {
  * accounts: they're signed out, and are told once they keep the account.
  */
 export async function sendTermsNotices(budgetMs = 60_000) {
+  // Emails every existing account holder, so it waits until the founder switches it on.
+  if (process.env.TERMS_NOTICES !== "on") return 0;
   const until = Date.now() + budgetMs;
   const { termsVersion, privacyVersion } = LEGAL;
   const started = await recordsStartedAt();
