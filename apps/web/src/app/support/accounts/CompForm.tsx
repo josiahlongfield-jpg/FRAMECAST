@@ -3,6 +3,22 @@
 import { useActionState } from "react";
 import { setComplimentary, setComplimentaryAi } from "./actions";
 
+/** The internal reason for the support log, and whether the owner is emailed. */
+function ReasonAndNotice() {
+  return (
+    <>
+      <label className="mt-3 grid gap-1 text-sm text-slate-700">
+        Reason (internal: kept in the support log, never shown to the customer)
+        <textarea name="reason" required maxLength={500} rows={2} className="rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+      </label>
+      <label className="mt-3 flex items-start gap-2 text-sm text-slate-700">
+        <input type="checkbox" name="notify" defaultChecked className="mt-0.5 h-4 w-4 shrink-0" />
+        <span>Email the owner what changed</span>
+      </label>
+    </>
+  );
+}
+
 export default function CompForm({ plans }: { plans: { id: string; name: string }[] }) {
   const [result, action, pending] = useActionState(setComplimentary, null);
   return (
@@ -20,6 +36,7 @@ export default function CompForm({ plans }: { plans: { id: string; name: string 
           {pending ? "Saving…" : "Save"}
         </button>
       </div>
+      <ReasonAndNotice />
       {result && <p className={`mt-3 text-sm ${result.ok ? "text-emerald-700" : "text-red-700"}`}>{result.message}</p>}
     </form>
   );
@@ -43,6 +60,7 @@ export function CompAiForm() {
           {pending ? "Saving…" : "Save AI"}
         </button>
       </div>
+      <ReasonAndNotice />
       {result && <p className={`mt-3 text-sm ${result.ok ? "text-emerald-700" : "text-red-700"}`}>{result.message}</p>}
     </form>
   );

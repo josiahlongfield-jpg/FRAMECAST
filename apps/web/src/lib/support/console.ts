@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import type Stripe from "stripe";
-import { deletedEmail, LEGAL_HOLD_DELETE, purgeAccountNow, restoreAccount, workspacesOf } from "@/lib/accountDeletion";
+import { deletedEmail, LEGAL_HOLD_DELETE, onLegalHold, purgeAccountNow, restoreAccount, workspacesOf } from "@/lib/accountDeletion";
 import { ACTIVE_STATUSES } from "@/lib/billing";
 import { isEmailBlocked } from "@/lib/blockedEmail";
 import { BRAND } from "@/lib/brand";
@@ -111,7 +111,7 @@ export async function deleteAccountNow(actor: SupportAdmin, o: { userId: string;
   const { own, ownsTeam } = await workspacesOf(user.id);
   if (ownsTeam) throw new HttpError(409, "This login owns a team with other staff. They need to leave the team first (closing the account takes them off it).");
   for (const w of own) guard(actor, { workspaceId: w.id });
-  if (await db.membership.count({ where: { userId: user.id, workspace: { legalHoldAt: { not: null } } } })) throw new HttpError(409, LEGAL_HOLD_DELETE);
+  if (await onLegalHold(user.id)) throw new HttpError(409, LEGAL_HOLD_DELETE);
   // Written now: the account and its workspace are gone afterwards.
   const mail = deletedEmail(user.email, own[0]?.name ?? null, { closed: !!user.closedAt, blocked: await isEmailBlocked(user.email) });
   const { row, out: deleted } = await tracked(
@@ -396,7 +396,7 @@ export async function setFreeVideosUsed(actor: SupportAdmin, o: { workspaceId: s
   let emailed = false;
   if (notify) {
     const limit = PLANS.FREE.maxVideos!;
-    const { used } = await videosUsed(w.id);
+    const { used, uploading } = await videosUsed(w.id);
     emailed = await sendNotice(
       row.id,
       own?.user.email,
@@ -405,10 +405,15 @@ export async function setFreeVideosUsed(actor: SupportAdmin, o: { workspaceId: s
         lead: `We've corrected the number of videos ${w.name} has recorded on ${BRAND.name}. It's now ${o.value}.`,
         lines: [
           w.plan === "FREE"
-            ? { text: `That's ${Math.min(used, limit)} of the Free plan's ${limit} videos used, so you have ${Math.max(0, limit - used)} left.` }
+            ? {
+                text:
+                  `That's ${Math.min(used, limit)} of the Free plan's ${limit} videos used` +
+                  (uploading ? `, including ${uploading === 1 ? "1 recording" : `${uploading} recordings`} still uploading` : "") +
+                  `, so you have ${Math.max(0, limit - used)} left.`,
+              }
             : { text: `This only matters on the Free plan, which includes ${limit} videos in total.` },
         ],
-        button: { label: `Open ${BRAND.name}`, link: appUrl("/library") },
+        button: { label: `Open ${BRAND.name}`, link: appUrl(teamPath("/library", w.id)) },
         footer: QUESTIONS,
       }),
     );

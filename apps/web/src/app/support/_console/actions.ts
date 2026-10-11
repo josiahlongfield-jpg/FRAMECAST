@@ -81,7 +81,7 @@ const Power = z.discriminatedUnion("power", [
   }),
   z.object({ power: z.literal("resyncBilling"), workspaceId: id, reason, notify: box }),
   z.object({ power: z.literal("seatCheck"), workspaceId: id, reason, notify: box }),
-  z.object({ power: z.literal("blockEmail"), email, reason }),
+  z.object({ power: z.literal("blockEmail"), email, reason, category: category.optional(), notify: box }),
   z.object({ power: z.literal("unblockEmail"), email, reason, notify: box }),
 ]);
 type Power = z.infer<typeof Power>;

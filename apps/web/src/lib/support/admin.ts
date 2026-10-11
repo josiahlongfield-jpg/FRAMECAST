@@ -1,7 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
-import { leaveTeam, leaverName } from "@/lib/account";
-import { deletionDate } from "@/lib/accountDeletion";
+import { exportAccount, leaveTeam, leaverName } from "@/lib/account";
 import { blockedEmailHash } from "@/lib/blockedEmail";
 import { BRAND } from "@/lib/brand";
 import { zoned } from "@/lib/dates";
@@ -9,13 +8,16 @@ import { db, type Workspace } from "@/lib/db";
 import { alertFounder } from "@/lib/founderAlert";
 import { LEGAL } from "@/lib/legal";
 import { sendMail } from "@/lib/mail";
+import { startBackupEndedClock } from "@/lib/backupEnded";
+import { RETENTION_DAYS } from "@/lib/retention";
 import { enforceSeatLimits } from "@/lib/seatLimits";
 import { HttpError } from "@/lib/session";
 import { appUrl, stripe } from "@/lib/stripe";
-import { isMissing } from "@/lib/subscription";
-import { supportInbox } from "@/lib/support/tickets";
+import { endOpenCheckouts, isMissing } from "@/lib/subscription";
+import { isSupportAgent, supportInbox } from "@/lib/support/tickets";
+import { teamPath } from "@/lib/teamLink";
 import { teamEmail } from "@/lib/teamEmail";
-import { ADMIN_ACTION_KEEP_YEARS, REVIEW_DAYS } from "@/lib/periods";
+import { ADMIN_ACTION_KEEP_YEARS, CLOSURE_DELETE_DAYS, REVIEW_DAYS } from "@/lib/periods";
 
 /**
  * The founder's support powers: warn, suspend and unsuspend a workspace or a
@@ -48,6 +50,19 @@ export function isSupportAdmin(email: string | null | undefined) {
 }
 
 export type SupportAdmin = { userId: string; email: string; workspaceIds: string[] };
+
+/**
+ * The signed-in support agent (SUPPORT_AGENTS), or null. Suspending an agent's login cuts them off too: only a support
+ * admin keeps working while their own login is suspended. A closed account is cut off as well.
+ */
+export async function activeSupportAgent() {
+  const id = (await auth())?.user?.id;
+  if (!id) return null;
+  const u = await db.user.findUnique({ where: { id }, select: { id: true, email: true, suspendedAt: true, closedAt: true, deleteAt: true } });
+  if (!u || u.deleteAt || u.closedAt || !isSupportAgent(u.email)) return null;
+  if (u.suspendedAt && !isSupportAdmin(u.email)) return null;
+  return u;
+}
 
 /** The signed-in support admin, or null. Works while their own workspace is paused or suspended. */
 export async function currentSupportAdmin(): Promise<SupportAdmin | null> {
@@ -195,18 +210,24 @@ async function stopRenewalAtPeriodEnd(w: Workspace) {
   if (!process.env.STRIPE_SECRET_KEY || !w.stripeSubscriptionId) return null;
   const sub = await stripe().subscriptions.retrieve(w.stripeSubscriptionId).catch((err) => (isMissing(err) ? null : Promise.reject(err)));
   if (!sub || (sub.status !== "active" && sub.status !== "trialing")) return null;
-  if (sub.cancel_at_period_end || sub.cancel_at) return { subscription: sub.id, renewal: "already ending" as const };
+  if (sub.cancel_at_period_end || sub.cancel_at)
+    return { subscription: sub.id, renewal: "already ending" as const, endsAt: (sub.cancel_at ? new Date(sub.cancel_at * 1000) : w.currentPeriodEnd)?.toISOString() ?? null };
   await stripe().subscriptions.update(sub.id, { cancel_at_period_end: true });
   await db.workspace.update({ where: { id: w.id }, data: { cancelsAt: w.currentPeriodEnd } });
   return { subscription: sub.id, renewal: "stopped" as const, endsAt: w.currentPeriodEnd?.toISOString() ?? null };
 }
 
-/** Turns renewal back on (unsuspending with "Resume renewal"), if the subscription is still running. */
+/**
+ * Turns renewal back on (unsuspending with "Resume renewal"), if the subscription is still running and no payment
+ * has been disputed (a dispute stops renewal too, api/webhooks/stripe; a person turns it back on in Stripe).
+ */
 async function resumeRenewal(w: Workspace) {
   if (!process.env.STRIPE_SECRET_KEY || !w.stripeSubscriptionId) return null;
   const sub = await stripe().subscriptions.retrieve(w.stripeSubscriptionId).catch((err) => (isMissing(err) ? null : Promise.reject(err)));
   if (!sub || (sub.status !== "active" && sub.status !== "trialing")) return { renewal: "ended" as const };
   if (!sub.cancel_at_period_end) return { subscription: sub.id, renewal: "already renewing" as const };
+  const charges = w.stripeCustomerId ? await stripe().charges.list({ customer: w.stripeCustomerId, limit: 100 }) : null;
+  if (charges?.data.some((c) => c.disputed)) return { subscription: sub.id, renewal: "disputed" as const };
   await stripe().subscriptions.update(sub.id, { cancel_at_period_end: false });
   await db.workspace.update({ where: { id: w.id }, data: { cancelsAt: null } });
   return { subscription: sub.id, renewal: "resumed" as const };
@@ -298,13 +319,22 @@ export async function suspendWorkspace(
   });
   let emailed = false;
   if (notify) {
-    const ends = billing && "endsAt" in billing && billing.endsAt ? zoned(w.timezone).longDay(new Date(billing.endsAt)) : null;
+    // Set to end, whether this suspension stopped renewal or it already was (cancelled in Manage subscription, a dispute, closing the account).
+    const ending = billing?.renewal === "stopped" || billing?.renewal === "already ending" || (!billing && !!w.stripeSubscriptionId && !!w.cancelsAt);
+    const endsAt = billing?.endsAt ? new Date(billing.endsAt) : w.cancelsAt;
+    const ends = endsAt ? zoned(w.timezone).longDay(endsAt) : null;
     const lines = [
       { text: "Nobody on your team can use it while it's suspended, and your clients see that your videos are unavailable right now. Nothing has been deleted." },
       { text: "Reminders and other emails from SureFrame to you, your team and your clients are paused." },
-      ...(w.legalHoldAt ? [] : [{ text: "Recordings without cloud backup are still deleted from our servers on their usual dates, and removed clients are still deleted when their 30 days end." }]),
-      ...(billing?.renewal === "stopped"
-        ? [{ text: `Your subscription won't renew${ends ? `, so it ends on ${ends}` : ""}.` }]
+      // The same whatever else is going on (a legal hold is never given away by what's left out).
+      { text: "The usual deletion schedules in our Terms carry on: recordings without cloud backup still leave our servers, and removed clients are deleted when their 30 days end." },
+      ...(ending
+        ? [
+            { text: `Your subscription won't renew${ends ? `, so it ends on ${ends}` : ""}. You can still manage it when you sign in.` },
+            ...(w.cloudBackup
+              ? [{ text: `Cloud backup ends with your plan. Backed-up recordings are kept while the account is suspended; once it's lifted, our copies are deleted ${RETENTION_DAYS} days later unless you subscribe again with cloud backup.` }]
+              : []),
+          ]
         : w.stripeSubscriptionId
           ? [{ text: "Your subscription carries on. You can still manage or cancel it when you sign in." }]
           : []),
@@ -344,6 +374,8 @@ export async function unsuspendWorkspace(actor: SupportAdmin, o: { workspaceId: 
     const res = await tx.workspace.updateMany({ where: { id: w.id, suspendedAt: { not: null }, closedAt: null }, data: { suspendedAt: null, suspendedReason: null, suspendedNote: null } });
     if (!res.count) throw new HttpError(409, "This workspace isn't suspended.");
     const skipped = await tx.reminder.updateMany({ where: { sentAt: null, sendAt: { lte: now }, item: { workspaceId: w.id } }, data: { sentAt: now, error: "suspended" } });
+    // Uploads refused meanwhile (lib/retention.ts abortStaleUploads) get a new week to finish.
+    await tx.video.updateMany({ where: { workspaceId: w.id, status: "RECORDING" }, data: { updatedAt: now } });
     return logAdmin(tx, actor, {
       action: "workspace.unsuspend",
       workspaceId: w.id,
@@ -359,6 +391,8 @@ export async function unsuspendWorkspace(actor: SupportAdmin, o: { workspaceId: 
       },
     });
   });
+  // Cloud backup that ended while it was suspended: the recordings' 30 days start now, and the owner is told the date.
+  await startBackupEndedClock(w.id).catch((err) => console.error("[support-admin] backup clock after unsuspending", w.id, err));
   let emailed = false;
   if (notify) {
     emailed = await sendNotice(
@@ -371,7 +405,7 @@ export async function unsuspendWorkspace(actor: SupportAdmin, o: { workspaceId: 
           { text: "Reminders that came due while it was suspended weren't sent." },
           ...(billing?.renewal === "resumed" ? [{ text: "Your subscription renews as normal again." }] : []),
         ],
-        button: { label: `Open ${BRAND.name}`, link: appUrl("/library") },
+        button: { label: `Open ${BRAND.name}`, link: appUrl(teamPath("/library", w.id)) },
         footer: QUESTIONS,
       }),
     );
@@ -420,6 +454,8 @@ export async function unsuspendUser(actor: SupportAdmin, o: { userId: string; re
   const row = await db.$transaction(async (tx) => {
     const res = await tx.user.updateMany({ where: { id: user.id, suspendedAt: { not: null }, closedAt: null }, data: { suspendedAt: null, suspendedReason: null } });
     if (!res.count) throw new HttpError(409, "This login isn't suspended.");
+    // Its uploads refused meanwhile (lib/retention.ts abortStaleUploads) get a new week to finish.
+    await tx.video.updateMany({ where: { status: "RECORDING", OR: [{ ownerId: user.id }, { asReply: { is: { authorUserId: user.id } } }] }, data: { updatedAt: new Date() } });
     return logAdmin(tx, actor, {
       action: "user.unsuspend",
       userId: user.id,
@@ -456,8 +492,9 @@ export const closeConfirmation = (email: string) => `CLOSE ${email}`;
  * - Stripe first: the subscription is cancelled now (no further charges). If
  *   Stripe can't be reached nothing changes.
  * - suspended and marked closed, signed out everywhere, invites cancelled, and
- *   deleted for good DELETION_GRACE_DAYS later by the account purge (unless on
- *   legal hold). The account holder can't keep it (lib/accountDeletion.ts).
+ *   deleted for good CLOSURE_DELETE_DAYS later by the account purge (unless on
+ *   legal hold), or on the date already set if its holder had deleted it
+ *   themselves. The account holder can't keep it (lib/accountDeletion.ts).
  * - staff of a closed workspace leave it (they keep their own logins), and the
  *   login leaves any team it was staff on.
  * - optionally the address is blocked from signing up again, and legal hold set.
@@ -483,11 +520,16 @@ export async function closeAccount(
   for (const w of closing) guard(actor, { workspaceId: w.id });
 
   const billing: Record<string, unknown> = {};
-  for (const w of closing) billing[w.id] = await cancelNow(w).catch(billingFailed);
+  for (const w of closing) {
+    billing[w.id] = await cancelNow(w).catch(billingFailed);
+    await endOpenCheckouts(w);
+  }
 
   const now = new Date();
-  // An earlier date (they'd already closed it themselves) stays.
-  const deleteAt = user.deleteAt && user.deleteAt < deletionDate(now) ? user.deleteAt : deletionDate(now);
+  // After the review window, so a review can still reopen it. An earlier date (they'd already deleted it themselves) stays.
+  const closureDate = new Date(now.getTime() + CLOSURE_DELETE_DAYS * 86_400_000);
+  const selfDeleted = !!user.deleteAt && user.deleteAt < closureDate;
+  const deleteAt = selfDeleted ? user.deleteAt! : closureDate;
   const closingIds = closing.map((w) => w.id);
   const row = await db.$transaction(async (tx) => {
     const res = await tx.user.updateMany({
@@ -538,6 +580,7 @@ export async function closeAccount(
         blockEmail: !!o.blockEmail,
         legalHold: !!o.legalHold,
         deleteAt: deleteAt.toISOString(),
+        deletionRequestedAt: user.deletionRequestedAt?.toISOString() ?? null,
         workspaces: closing.map((w) => ({ id: w.id, name: w.name, plan: w.plan })),
         leftTeams: leaving.map((w) => ({ id: w.id, name: w.name })),
         billing: billing as Prisma.InputJsonObject,
@@ -581,10 +624,14 @@ export async function closeAccount(
       ...(w ? [{ text: `Your clients can no longer open their videos from ${w.name}, and nothing more is emailed in its name.` }] : []),
       ...(cancelled ? [{ text: "Your subscription has been cancelled, so you won't be charged again." }] : []),
       {
-        text: w
-          ? `${w.name} and its recordings, clients, to-dos and notes will be deleted for good on ${when}, unless the law requires us to keep them longer.`
-          : `Your account will be deleted for good on ${when}, unless the law requires us to keep it longer.`,
+        text:
+          (w
+            ? `${w.name} and its recordings, clients, to-dos and notes will be deleted for good on ${when}`
+            : `Your account will be deleted for good on ${when}`) +
+          (selfDeleted ? ", the date set when you deleted your account" : "") +
+          `, unless the law requires us to keep ${w ? "them" : "it"} longer.`,
       },
+      { text: `For a copy of your account data download before then, email ${LEGAL.email} within ${REVIEW_DAYS} days.` },
       ...(teamsLeft.length ? [{ text: `You're no longer on the team${teamsLeft.length === 1 ? "" : "s"} of ${teamsLeft.join(", ")}.` }] : []),
       ...(o.blockEmail ? [{ text: `This email address can't be used to sign up to ${BRAND.name} again.` }] : []),
       termsLine(),
@@ -617,7 +664,9 @@ export async function closeAccount(
  * Undoes a closure after a review finds it was wrong, before the deletion
  * date. The login and its workspaces open again and the address is unblocked.
  * The cancelled subscription and the staff who were taken off the team don't
- * come back: the owner subscribes again and sends new invites.
+ * come back: the owner subscribes again and sends new invites. An account its
+ * holder had deleted themselves before support closed it goes back to that:
+ * still deleted on its date unless they sign in and keep it.
  */
 export async function reopenAccount(actor: SupportAdmin, o: { userId: string; reason: string; notify?: boolean }) {
   const reason = reasonOf(o.reason);
@@ -629,16 +678,20 @@ export async function reopenAccount(actor: SupportAdmin, o: { userId: string; re
   if (user.deleteAt && user.deleteAt <= now) throw new HttpError(410, "This account has reached its deletion date, so it can't be reopened.");
   const closed = await db.workspace.findMany({ where: { closedAt: { not: null }, members: { some: { userId: user.id } } } });
   for (const w of closed) guard(actor, { workspaceId: w.id });
+  // They'd deleted it themselves before support closed it (closeAccount stamps both at once otherwise): that request stands.
+  const selfDeleted = !!user.deletionRequestedAt && user.deletionRequestedAt < user.closedAt;
   const row = await db.$transaction(async (tx) => {
     const res = await tx.user.updateMany({
       where: { id: user.id, closedAt: { not: null }, deleteAt: { gt: now } },
-      data: { closedAt: null, suspendedAt: null, suspendedReason: null, deleteAt: null, deletionRequestedAt: null, deletionWarnedAt: null },
+      data: { closedAt: null, suspendedAt: null, suspendedReason: null, deletionWarnedAt: null, ...(selfDeleted ? {} : { deleteAt: null, deletionRequestedAt: null }) },
     });
     if (!res.count) throw new HttpError(409, "This account can't be reopened now.");
     await tx.workspace.updateMany({
       where: { id: { in: closed.map((w) => w.id) } },
-      data: { closedAt: null, suspendedAt: null, suspendedReason: null, suspendedNote: null, deleteAt: null, renewalStoppedAt: null },
+      data: { closedAt: null, suspendedAt: null, suspendedReason: null, suspendedNote: null, ...(selfDeleted ? {} : { deleteAt: null, renewalStoppedAt: null }) },
     });
+    // Uploads refused meanwhile (lib/retention.ts abortStaleUploads) get a new week to finish.
+    await tx.video.updateMany({ where: { workspaceId: { in: closed.map((w) => w.id) }, status: "RECORDING" }, data: { updatedAt: now } });
     const unblocked = await tx.blockedEmail.deleteMany({ where: { emailHash: blockedEmailHash(user.email) } });
     return logAdmin(tx, actor, {
       action: "account.reopen",
@@ -646,31 +699,50 @@ export async function reopenAccount(actor: SupportAdmin, o: { userId: string; re
       workspaceId: closed[0]?.id ?? null,
       target: user.email,
       reason,
-      details: { notify, unblocked: unblocked.count > 0, workspaces: closed.map((w) => w.id), before: { closedAt: user.closedAt!.toISOString(), deleteAt: user.deleteAt?.toISOString() ?? null } },
+      details: {
+        notify,
+        selfDeleted,
+        unblocked: unblocked.count > 0,
+        workspaces: closed.map((w) => w.id),
+        before: { closedAt: user.closedAt!.toISOString(), deleteAt: user.deleteAt?.toISOString() ?? null, deletionRequestedAt: user.deletionRequestedAt?.toISOString() ?? null },
+      },
     });
   });
-  // The plan may have changed meanwhile (the subscription was cancelled): clients it covers come back.
-  for (const w of closed) await enforceSeatLimits(w.id, { notify: false }).catch((err) => console.error("[support-admin] seat check after reopening", w.id, err));
+  // The plan may have changed meanwhile (the subscription was cancelled): clients it covers come back. Not for an
+  // account still closed at its holder's request: its clients stay paused until they keep it (lib/accountDeletion.ts).
+  if (!selfDeleted) {
+    for (const w of closed) {
+      await enforceSeatLimits(w.id, { notify: false }).catch((err) => console.error("[support-admin] seat check after reopening", w.id, err));
+      // Cloud backup ended with the cancelled subscription: the recordings' 30 days start now, and the owner is told the date.
+      await startBackupEndedClock(w.id).catch((err) => console.error("[support-admin] backup clock after reopening", w.id, err));
+    }
+  }
   let emailed = false;
   if (notify) {
     const hadSub = closed.some((w) => w.stripeSubscriptionId);
+    const subLine = hadSub ? [{ text: "Your subscription was cancelled when the account was closed. Choose a plan in Settings > Billing to subscribe again." }] : [];
+    const when = user.deleteAt ? zoned(closed[0]?.timezone).longDay(user.deleteAt) : "";
     emailed = await sendNotice(
       row.id,
       user.email,
-      notice({
-        subject: `Your ${BRAND.name} account is open again`,
-        lead: `We've reviewed the closure of your ${BRAND.name} account (${user.email}) and opened it again. It won't be deleted.`,
-        lines: [
-          { text: "Sign in to carry on. Clients your plan covers can open their videos again." },
-          ...(hadSub ? [{ text: "Your subscription was cancelled when the account was closed. Choose a plan in Settings > Billing to subscribe again." }] : []),
-          { text: "Anyone who was on your team needs a new invite." },
-        ],
-        button: { label: `Open ${BRAND.name}`, link: appUrl("/library") },
-        footer: QUESTIONS,
-      }),
+      selfDeleted
+        ? notice({
+            subject: `We've lifted the closure of your ${BRAND.name} account`,
+            lead: `We've reviewed the closure of your ${BRAND.name} account (${user.email}) and lifted it. You'd already deleted the account yourself, so it's still due to be deleted for good on ${when}, as you asked.`,
+            lines: [{ text: "To keep it instead, sign in before then and choose Keep my account." }, ...(hadSub ? [{ text: "Your subscription was cancelled when the account was closed, so if you keep it you'd need to subscribe again." }] : [])],
+            button: { label: "Keep my account", link: appUrl("/account/restore") },
+            footer: QUESTIONS,
+          })
+        : notice({
+            subject: `Your ${BRAND.name} account is open again`,
+            lead: `We've reviewed the closure of your ${BRAND.name} account (${user.email}) and opened it again. It won't be deleted.`,
+            lines: [{ text: "Sign in to carry on. Clients your plan covers can open their videos again." }, ...subLine, { text: "Anyone who was on your team needs a new invite." }],
+            button: { label: `Open ${BRAND.name}`, link: appUrl("/library") },
+            footer: QUESTIONS,
+          }),
     );
   }
-  return { actionId: row.id, emailed };
+  return { actionId: row.id, emailed, selfDeleted };
 }
 
 // ---- 5. Legal hold ----
@@ -767,6 +839,8 @@ export async function enableClientLink(actor: SupportAdmin, o: { clientId: strin
   const row = await db.$transaction(async (tx) => {
     const res = await tx.client.updateMany({ where: { id: client.id, linkDisabledAt: { not: null } }, data: { linkDisabledAt: null, linkDisabledReason: null } });
     if (!res.count) throw new HttpError(409, "This client's link isn't off.");
+    // Their replies refused meanwhile (lib/retention.ts abortStaleUploads) get a new week to finish.
+    await tx.video.updateMany({ where: { status: "RECORDING", asReply: { is: { authorUserId: null, video: { clientId: client.id } } } }, data: { updatedAt: new Date() } });
     return logAdmin(tx, actor, {
       action: "client.link_on",
       workspaceId: client.workspaceId,
@@ -786,7 +860,7 @@ export async function enableClientLink(actor: SupportAdmin, o: { clientId: strin
       notice({
         subject: `${client.name}'s link has been turned back on`,
         lead: `We've turned ${client.name}'s personal link to ${client.workspace.name} back on.` + (works ? ` ${client.name} can open their videos and be sent new ones again.` : ""),
-        button: { label: "Open Clients", link: appUrl("/clients") },
+        button: { label: "Open Clients", link: appUrl(teamPath("/clients", client.workspaceId)) },
         footer: QUESTIONS,
       }),
     );
@@ -841,22 +915,48 @@ export async function signOutEverywhere(actor: SupportAdmin, o: { userId: string
 
 /**
  * Stops an address signing in or signing up, by any method (src/auth.ts).
- * Only a hash of it is stored in the block list (lib/blockedEmail.ts).
+ * Only a hash of it is stored in the block list (lib/blockedEmail.ts). When
+ * it's an existing login's address, the login is emailed why (unless
+ * unticked), and a login whose plan still renews can't be blocked on its own:
+ * it would be charged without being able to sign in to cancel.
  */
-export async function blockEmail(actor: SupportAdmin, o: { email: string; reason: string; userId?: string | null }) {
+export async function blockEmail(actor: SupportAdmin, o: { email: string; reason: string; userId?: string | null; category?: NoticeReason; notify?: boolean }) {
   const reason = reasonOf(o.reason);
   const email = o.email.trim().toLowerCase();
   if (!email.includes("@")) throw new HttpError(400, "Enter an email address.");
   if (blockedEmailHash(email) === blockedEmailHash(actor.email)) throw new HttpError(403, "You can't block your own address.");
-  const user = await db.user.findUnique({ where: { email }, select: { id: true } });
+  const user = await db.user.findUnique({ where: { email }, select: { id: true, email: true } });
   guard(actor, { userId: user?.id });
+  if (user && !o.category) throw new HttpError(400, "Choose the reason the email gives.");
+  const renewing = user
+    ? await db.workspace.findFirst({ where: { members: { some: { userId: user.id, role: "OWNER" } }, stripeSubscriptionId: { not: null }, cancelsAt: null, closedAt: null } })
+    : null;
+  if (renewing)
+    throw new HttpError(
+      409,
+      `${renewing.name}'s subscription still renews, and a blocked address can't sign in to cancel it. Close the account (it can block the address), or suspend the workspace with Stop renewal first.`,
+    );
+  const notify = !!user && (o.notify ?? true);
   const hash = blockedEmailHash(email);
   const row = await db.$transaction(async (tx) => {
     if (await tx.blockedEmail.findUnique({ where: { emailHash: hash } })) throw new HttpError(409, "This address is already blocked.");
     await tx.blockedEmail.create({ data: { emailHash: hash, reason, actorEmail: actor.email, userId: o.userId ?? user?.id ?? null } });
-    return logAdmin(tx, actor, { action: "email.block", userId: o.userId ?? user?.id ?? null, target: email, reason });
+    return logAdmin(tx, actor, { action: "email.block", userId: o.userId ?? user?.id ?? null, target: email, reason, details: { category: o.category ?? null, notify } });
   });
-  return { actionId: row.id };
+  let emailed = false;
+  if (notify && user && o.category) {
+    emailed = await sendNotice(
+      row.id,
+      user.email,
+      notice({
+        subject: `This email address can no longer be used with ${BRAND.name}`,
+        lead: `We've stopped this email address (${email}) being used to sign in or sign up to ${BRAND.name} ${NOTICE_REASONS[o.category]}.`,
+        lines: [{ text: "Nothing has been deleted by this." }, termsLine()],
+        footer: REVIEW,
+      }),
+    );
+  }
+  return { actionId: row.id, emailed };
 }
 
 export async function unblockEmail(actor: SupportAdmin, o: { email: string; reason: string }) {
@@ -869,6 +969,20 @@ export async function unblockEmail(actor: SupportAdmin, o: { email: string; reas
     return logAdmin(tx, actor, { action: "email.unblock", target: email, reason });
   });
   return { actionId: row.id };
+}
+
+/**
+ * The account's data download (the same as Settings > Account), for an
+ * account that can't sign in to get it: one support closed, or whose address
+ * is blocked. Support sends it to the account's own address. Logged.
+ */
+export async function exportUserData(actor: SupportAdmin, o: { userId: string; reason: string }) {
+  const reason = reasonOf(o.reason);
+  guard(actor, { userId: o.userId });
+  const user = await loadUser(o.userId);
+  const data = await exportAccount(user.id);
+  const row = await logAdmin(db, actor, { action: "account.export", userId: user.id, target: user.email, reason });
+  return { actionId: row.id, email: user.email, data };
 }
 
 /** Lets the founder know when a closure couldn't tidy up after itself. Never throws: the account is closed. */

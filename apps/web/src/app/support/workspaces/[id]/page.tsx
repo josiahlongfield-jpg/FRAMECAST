@@ -205,7 +205,7 @@ export default async function SupportWorkspace({ params, searchParams }: { param
                 power="suspendWorkspace"
                 hidden={{ workspaceId: w.id }}
                 title="Suspend workspace"
-                intro="Members see the suspended page and can't use it, clients see that its videos are unavailable right now, and reminders and emails in its name stop. Nothing is deleted because of it, but recordings without cloud backup still expire and removed clients are still deleted on their dates, unless legal hold is on. Billing carries on unless you stop renewal."
+                intro="Members see the suspended page and can't use it, clients see that its videos are unavailable right now, and reminders and emails in its name stop. Nothing is deleted because of it, but recordings without cloud backup still expire and removed clients are still deleted on their dates, unless legal hold is on. Billing carries on unless you stop renewal. If cloud backup ends meanwhile (the plan ends), backed-up recordings wait until it's lifted, then get 30 days."
                 category
                 notify={emailOwner}
                 submit="Suspend"
@@ -219,7 +219,7 @@ export default async function SupportWorkspace({ params, searchParams }: { param
                   <Check
                     name="stopRenewal"
                     label="Stop renewal at period end"
-                    hint="The plan ends when the paid period does (no refund). You can turn renewal back on when unsuspending."
+                    hint={`The plan ends when the paid period does (no refund). You can turn renewal back on when unsuspending.${w.cloudBackup ? " Cloud backup ends with the plan: backed-up recordings are kept while it's suspended, then deleted 30 days after it's lifted unless backup is renewed." : ""}`}
                   />
                 )}
               </PowerForm>
@@ -238,7 +238,7 @@ export default async function SupportWorkspace({ params, searchParams }: { param
                     label="Resume renewal"
                     hint={
                       stoppedBySuspension
-                        ? "Renewal was stopped when it was suspended. Turns it back on if the subscription is still running."
+                        ? "Renewal was stopped when it was suspended. Turns it back on if the subscription is still running and no payment has been disputed."
                         : "Renewal is off, but not because of the suspension (the owner or a dispute may have stopped it)."
                     }
                     defaultChecked={stoppedBySuspension}

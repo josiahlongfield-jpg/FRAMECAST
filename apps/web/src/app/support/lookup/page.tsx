@@ -45,6 +45,7 @@ export default async function Lookup({ searchParams }: { searchParams: Promise<{
   const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(q);
   const email = q.toLowerCase();
   const blocked = isEmail && (await isEmailBlocked(email));
+  const hasLogin = users.some((u) => u.email === email);
   const nothing = searching && !users.length && !workspaces.length && !clients.length && !video;
 
   return (
@@ -179,7 +180,13 @@ export default async function Lookup({ searchParams }: { searchParams: Promise<{
                 power="blockEmail"
                 hidden={{ email }}
                 title="Block this address"
-                intro="It can't sign in or sign up by any method until unblocked; a login already signed in stays signed in until you use Sign out everywhere on its page. Only a hash of the address is stored. Nobody is emailed."
+                intro={
+                  hasLogin
+                    ? "It can't sign in or sign up by any method until unblocked; a login already signed in stays signed in until you use Sign out everywhere on its page. Only a hash of the address is stored. Refused while a plan it owns still renews."
+                    : "It can't sign up by any method until unblocked. Only a hash of the address is stored. Nobody is emailed: no login uses it."
+                }
+                category={hasLogin}
+                notify={hasLogin ? `Email ${email} that the address is blocked, and why` : undefined}
                 submit="Block"
                 danger
               />

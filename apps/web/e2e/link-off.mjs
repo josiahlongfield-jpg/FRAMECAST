@@ -179,6 +179,7 @@ row = await lastAction({ clientId: bea.id, action: "client.link_on" });
 ok("logged with what was before", row?.details?.before?.linkDisabledReason === reason && row.reason === "Owner confirmed a new device", JSON.stringify(row));
 const onMail = await waitMail(ownerEmail, (m) => m.subject === `${bea.name}'s link has been turned back on`);
 ok("owner's email: back on, can be sent videos again", norm(onMail?.text).includes(`${bea.name} can open their videos and be sent new ones again.`), onMail?.text);
+ok("owner's email: the button opens that workspace's Clients", !!onMail && onMail.text.includes(`/clients?ws=${ws}`), onMail?.text);
 const beaAgain = await (await browser.newContext()).newPage();
 await beaAgain.goto(`${BASE}/c/${b.token}`);
 ok("Bea's (new) link opens her inbox again", new URL(beaAgain.url()).pathname === "/inbox" && (await beaAgain.locator(`a[href*="/v/${beaVideo.id}"]`).count()) > 0 && (await beaAgain.locator("[data-testid=client-link-off]").count()) === 0);

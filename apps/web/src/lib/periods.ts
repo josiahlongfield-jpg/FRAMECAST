@@ -17,6 +17,11 @@ export const DELETION_GRACE_DAYS = 30;
 export const DELETION_WARN_DAYS = 3;
 /** Time to ask for a review of a suspension, closure or turned-off link (support's notices, the Terms). */
 export const REVIEW_DAYS = 30;
+/**
+ * An account support closed is deleted this long after the closure (lib/support/admin.ts closeAccount):
+ * the review window plus two weeks, so a review asked for on its last day can still reopen it.
+ */
+export const CLOSURE_DELETE_DAYS = REVIEW_DAYS + 14;
 /** Support records (AdminAction) are kept this long: tax and legal-claims periods (lib/support/admin.ts). */
 export const ADMIN_ACTION_KEEP_YEARS = 7;
 /** Records of agreeing to the Terms and Privacy Policy (TermsAcceptance) are kept this long (lib/terms.ts). */

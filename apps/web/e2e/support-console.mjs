@@ -372,6 +372,14 @@ ok("free videos used: done, before and after", r.done && r.message.includes("Fre
 ok("free videos used: set and shown", (await prisma.workspace.findUnique({ where: { id: wsB } })).videosRecorded === 4 && (await text("[data-testid=videos-used]")).includes("4 of 25"));
 mail = await waitMail(bEmail, (m) => m.subject === "We've corrected your count of videos");
 ok("free videos used: owner emailed how many are left", !!mail && norm(mail.text).includes("It's now 4.") && norm(mail.text).includes("That's 4 of the Free plan's 25 videos used, so you have 21 left."), mail?.text);
+ok("free videos used: the email's button opens that workspace", !!mail && mail.text.includes(`/library?ws=${wsB}`), mail?.text);
+// With a recording still uploading, the email says why the two numbers differ.
+const uploadingB = await prisma.video.create({ data: { id: `conup${stamp.toString(36)}`, mimeType: "video/webm", storageKey: `test/${stamp}/con-up`, status: "RECORDING", workspaceId: wsB, ownerId: bUser.id } });
+r = await power("power-setVideosRecorded", { reason: "Second correction", fields: { value: 5 } });
+mail = await waitMail(bEmail, (m) => m.subject === "We've corrected your count of videos" && norm(m.text).includes("It's now 5."));
+ok("free videos used: counts a recording still uploading, and says so", r.done && !!mail && norm(mail.text).includes("It's now 5.") && norm(mail.text).includes("That's 6 of the Free plan's 25 videos used, including 1 recording still uploading, so you have 19 left."), mail?.text);
+await prisma.video.delete({ where: { id: uploadingB.id } });
+await prisma.workspace.update({ where: { id: wsB }, data: { videosRecorded: 4 } });
 
 // =====================================================================================================
 // 9. Removed clients: restore, keep 30 more days, delete now
@@ -428,7 +436,7 @@ r = await power("power-closeAccount", { category: "unlawful", reason: "Used to s
 ok("close: done", r.done && r.message.includes("Account closed permanently") && r.message.includes("Address blocked") && r.message.includes("Legal hold set"), r.message);
 const eRow = await prisma.user.findUnique({ where: { id: eUser.id } });
 w = await prisma.workspace.findUnique({ where: { id: wsE } });
-ok("close: login and workspace closed, deletion in 30 days, legal hold on", !!eRow.closedAt && !!w.closedAt && !!w.legalHoldAt && Math.abs(eRow.deleteAt.getTime() - Date.now() - 30 * D) < 120_000);
+ok("close: login and workspace closed, deletion in 44 days (the review time plus two weeks), legal hold on", !!eRow.closedAt && !!w.closedAt && !!w.legalHoldAt && Math.abs(eRow.deleteAt.getTime() - Date.now() - 44 * D) < 120_000);
 ok("close: subscription cancelled now", state.subs.find((s) => s.id === eSub.id)?.status === "canceled");
 ok("close: staff taken off the team", !(await prisma.membership.findFirst({ where: { userId: fay.id, workspaceId: wsE } })));
 ok("close: address blocked", !!(await prisma.blockedEmail.findUnique({ where: { emailHash: createHash("sha256").update(eEmail).digest("hex") } })));
@@ -437,6 +445,16 @@ const eBadges = await text("[data-testid=user-badges]");
 ok("close: page shows closed, deletion date, blocked, legal hold", eBadges.includes("Closed by support") && eBadges.includes(`Deletion ${isoDay(eRow.deleteAt)}`) && eBadges.includes("Email blocked") && eBadges.includes("Legal hold"), eBadges);
 ok("close: no Cancel deletion for a support-closed account; Reopen instead", (await admin.locator("[data-testid=power-cancelDeletion]").count()) === 0 && (await admin.locator("[data-testid=power-reopenAccount]").count()) === 1);
 ok("close: Delete now not offered under legal hold", (await text("main")).includes("Delete now isn’t available while legal hold is on"));
+// The closed account can't sign in for its data, so support downloads it for them (DPA section 10).
+ok("close: 'Download their data' offered", (await admin.locator("[data-testid=export-user] form[action='/api/support/export']").count()) === 1);
+let exp = await admin.request.post(BASE + "/api/support/export", { form: { userId: eUser.id, reason: "" } });
+ok("download their data: a reason is needed", exp.status() === 400);
+exp = await admin.request.post(BASE + "/api/support/export", { form: { userId: eUser.id, reason: "Closed account asked for a copy within 30 days" } });
+const expData = exp.ok() ? await exp.json() : null;
+ok("download their data: the account's export, as a file", exp.ok() && /attachment/.test(exp.headers()["content-disposition"] ?? "") && expData?.user?.email === eEmail, String(exp.status()));
+ok("download their data: logged", (await lastAction({ userId: eUser.id, action: "account.export" }))?.reason === "Closed account asked for a copy within 30 days");
+ok("download their data: not for anyone but a support admin", (await bOwner.request.post(BASE + "/api/support/export", { form: { userId: eUser.id, reason: "x" } })).status() === 404);
+ok("download their data: not from another site", (await admin.request.post(BASE + "/api/support/export", { form: { userId: eUser.id, reason: "x" }, headers: { "sec-fetch-site": "cross-site" } })).status() === 404);
 await open(`/support/workspaces/${wsE}`);
 status = await text("[data-testid=ws-status]");
 ok("close: the workspace page shows closed, held, the deletion date and the blocked owner", status.includes("Owner's email blocked Yes") && status.includes("Closed by support 20") && status.includes("Legal hold On since") && status.includes(`Scheduled for ${isoDay(eRow.deleteAt)} (closed by support)`), status);
@@ -512,18 +530,27 @@ await open("/support/accounts");
 await admin.fill('input[name="email"]', bEmail);
 await admin.selectOption("select", "STUDIO");
 await admin.click("text=Save");
+ok("complimentary plan: a reason is needed", (await admin.evaluate(() => document.querySelector('textarea[name="reason"]').validity.valueMissing)) && !(await prisma.workspace.findUnique({ where: { id: wsB } })).complimentaryPlan);
+await admin.fill('textarea[name="reason"]', "Partner trial agreed by email");
+await admin.click("text=Save");
 await admin.waitForSelector("text=free of charge");
 row = await lastAction({ workspaceId: wsB, action: "plan.complimentary" });
-ok("complimentary plan: logged with before and after", row?.actorEmail === ADMIN && row.details.before.plan === "FREE" && row.details.after.plan === "STUDIO" && row.details.after.complimentaryPlan === "STUDIO" && row.target === `${bName} (${bEmail})`);
+ok("complimentary plan: logged with before and after, and the reason", row?.actorEmail === ADMIN && row.reason === "Partner trial agreed by email" && row.details.before.plan === "FREE" && row.details.after.plan === "STUDIO" && row.details.after.complimentaryPlan === "STUDIO" && row.target === `${bName} (${bEmail})`);
+mail = await waitMail(bEmail, (m) => m.subject === "You have the Studio plan free of charge");
+ok("complimentary plan: the owner is told", !!mail && norm(mail.text).includes(`SureFrame has given ${bName} the Studio plan free of charge. It was on Free before.`) && row.details.emailedTo === bEmail, mail?.text);
 await admin.fill('[data-testid=comp-ai] input[name="email"]', bEmail);
+await admin.fill('[data-testid=comp-ai] textarea[name="reason"]', "Partner trial agreed by email");
 await admin.click("button:text-is('Save AI')");
 await admin.waitForSelector("text=AI summaries free of charge");
 row = await lastAction({ workspaceId: wsB, action: "plan.complimentary_ai" });
 ok("complimentary AI summaries: logged", row?.details?.before?.aiAssist === false && row.details.after.aiAssist === true);
 await admin.fill('input[name="email"]', bEmail);
 await admin.selectOption("select", "FREE");
+await admin.fill('textarea[name="reason"]', "Partner trial ended");
 await admin.click("text=Save");
 await admin.waitForSelector("text=back on the Free plan");
+mail = await waitMail(bEmail, (m) => m.subject === "Your free SureFrame plan has ended");
+ok("ending a complimentary plan: the owner is told, with the Free videos left", !!mail && norm(mail.text).includes(`The Studio plan SureFrame gave ${bName} free of charge has ended, so it's now on the Free plan.`) && norm(mail.text).includes("The Free plan includes 25 videos in total. You've used 4, so you have 21 left."), mail?.text);
 row = await lastAction({ workspaceId: wsB, action: "plan.complimentary" });
 ok("back to Free: logged", row?.details?.before?.plan === "STUDIO" && row.details.after.plan === "FREE" && row.details.after.aiAssist === false);
 
@@ -538,6 +565,25 @@ ok("log: no link to a deleted account", (await admin.locator(`a[href="/support/u
 await admin.screenshot({ path: `${shots}/log-phone.png` });
 
 ok("every console page fits a phone screen (no sideways scrolling)", wide.length === 0, wide.join(", "));
+
+// A support agent who isn't an admin is cut off once their login is suspended. Needs the server started with
+// SUPPORT_AGENTS=owner@test.dev,agent@test.dev; skipped otherwise.
+const AGENT = "agent@test.dev";
+const agentPage = await signIn(AGENT, "/library");
+await agentPage.goto(BASE + "/support");
+const isAgent = !!(await agentPage.waitForSelector("h1:text-is('Support inbox')", { timeout: 15000 }).catch(() => null));
+if (isAgent) {
+  const agentUser = await prisma.user.findUnique({ where: { email: AGENT } });
+  await prisma.user.update({ where: { id: agentUser.id }, data: { suspendedAt: new Date() } });
+  await agentPage.goto(BASE + "/support");
+  await agentPage.waitForURL((u) => u.pathname === "/suspended", { timeout: 15000 }).catch(() => null);
+  ok("a suspended agent: sent away from the support inbox", new URL(agentPage.url()).pathname === "/suspended", agentPage.url());
+  await agentPage.goto(BASE + "/support/accounts");
+  await agentPage.waitForURL((u) => u.pathname === "/suspended", { timeout: 15000 }).catch(() => null);
+  ok("a suspended agent: and from the free plans page", new URL(agentPage.url()).pathname === "/suspended", agentPage.url());
+  ok("a suspended agent: the support API refuses them", (await agentPage.request.post(BASE + "/api/support/speech-model", { data: { step: "plan" } })).status() === 404);
+  await prisma.user.update({ where: { id: agentUser.id }, data: { suspendedAt: null } });
+} else console.log("SKIP suspended support agent: start the server with SUPPORT_AGENTS=owner@test.dev,agent@test.dev");
 
 await browser.close();
 server.close();

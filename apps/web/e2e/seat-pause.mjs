@@ -41,6 +41,7 @@ async function setPlan(plan) {
   await founder.goto(BASE + "/support/accounts");
   await founder.fill('input[name="email"]', ownerEmail);
   await founder.selectOption("select", plan);
+  await founder.fill('textarea[name="reason"]', "Test plan change");
   await founder.click("text=Save");
   await founder.waitForSelector(plan === "FREE" ? "text=back on the Free plan" : "text=free of charge");
 }

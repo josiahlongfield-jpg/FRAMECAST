@@ -110,6 +110,7 @@ const LABELS: Record<string, string> = {
   "workspace.seat_check": "Seat check re-run",
   "plan.complimentary": "Complimentary plan changed",
   "plan.complimentary_ai": "Complimentary AI summaries changed",
+  "account.export": "Account data downloaded",
 };
 export const actionLabel = (action: string) => LABELS[action] ?? action;
 

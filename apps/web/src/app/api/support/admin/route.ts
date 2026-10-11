@@ -45,7 +45,7 @@ const Body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("disableClientLink"), clientId: id, reason, category, notify }),
   z.object({ action: z.literal("enableClientLink"), clientId: id, reason, notify }),
   z.object({ action: z.literal("signOutEverywhere"), userId: id, reason, category: category.optional(), notify }),
-  z.object({ action: z.literal("blockEmail"), email: z.string().max(320), reason }),
+  z.object({ action: z.literal("blockEmail"), email: z.string().max(320), reason, category: category.optional(), notify }),
   z.object({ action: z.literal("unblockEmail"), email: z.string().max(320), reason }),
 ]);
 

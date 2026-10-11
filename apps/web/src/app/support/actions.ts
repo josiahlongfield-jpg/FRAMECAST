@@ -2,13 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
 import { db } from "@/lib/db";
-import { isSupportAgent, staffReply } from "@/lib/support/tickets";
+import { activeSupportAgent } from "@/lib/support/admin";
+import { staffReply } from "@/lib/support/tickets";
 
 async function requireAgent() {
-  const session = await auth();
-  if (!isSupportAgent(session?.user?.email)) redirect("/library");
+  if (!(await activeSupportAgent())) redirect("/library");
 }
 
 export async function reply(ticketId: string, form: FormData) {

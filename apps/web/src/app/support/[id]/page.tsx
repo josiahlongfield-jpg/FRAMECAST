@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { PLANS } from "@/lib/plans";
 import { requirePageUser } from "@/lib/session";
+import { isSupportAdmin } from "@/lib/support/admin";
 import { isSupportAgent } from "@/lib/support/tickets";
 import { deleteTicket, reply, setStatus } from "../actions";
 
@@ -15,6 +16,7 @@ export default async function SupportTicketPage({ params }: { params: Promise<{ 
   const { id } = await params;
   const { user } = await requirePageUser(`/support/${id}`, { allowPaused: true, allowSuspended: true, allowTermsPending: true });
   if (!isSupportAgent(user.email)) notFound();
+  if (user.suspendedAt && !isSupportAdmin(user.email)) redirect("/suspended");
   const ticket = await db.supportTicket.findUnique({ where: { id }, include: { user: true, messages: { orderBy: { createdAt: "asc" } } } });
   if (!ticket) notFound();
   const workspace = ticket.workspaceId ? await db.workspace.findUnique({ where: { id: ticket.workspaceId } }) : null;

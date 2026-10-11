@@ -10,6 +10,7 @@ import crypto, { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { PrismaClient } from "@prisma/client";
+import Stripe from "stripe";
 import { start, state, createSubscription } from "./fake-stripe.mjs";
 import { agreed } from "./agree.mjs";
 
@@ -49,11 +50,19 @@ const putFile = (key) => {
 };
 const has = (key) => existsSync(path.join(uploads, key));
 const lastAction = (where) => prisma.adminAction.findFirst({ where, orderBy: { createdAt: "desc" } });
+const sig = new Stripe("sk_test_fake");
+async function webhook(page, type, sub) {
+  const payload = JSON.stringify({ id: `evt_${Date.now()}`, object: "event", type, data: { object: sub } });
+  const header = sig.webhooks.generateTestHeaderString({ payload, secret: "whsec_test" });
+  return page.request.post(BASE + "/api/webhooks/stripe", { headers: { "stripe-signature": header, "content-type": "application/json" }, data: payload });
+}
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM });
 async function signIn(email, next = "/library", lands = next.split("?")[0]) {
   // Agreed to the current Terms and Privacy Policy, so signing in isn't stopped at /agree (e2e/agree.mjs).
   await agreed(email);
+  // This suite signs in more often than the dev login's 20 per 15 minutes allows.
+  await prisma.rateLimit.deleteMany({ where: { key: { contains: "dev-login" } } });
   const page = await (await browser.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
   await page.goto(`${BASE}/login?next=${encodeURIComponent(next)}`);
   await page.fill('input[name="email"]', email);
@@ -117,6 +126,9 @@ const anon = await (await browser.newContext()).newPage();
 ok("signed out: 404", (await act({ action: "suspendWorkspace", workspaceId: ws, reason, category: "terms" }, anon)).status === 404);
 ok("a reason is required", (await act({ action: "suspendWorkspace", workspaceId: ws, reason: "  ", category: "terms" })).status === 400);
 ok("reasons over 500 characters refused", (await act({ action: "suspendWorkspace", workspaceId: ws, reason: "r".repeat(501), category: "terms" })).status === 400);
+// Blocking the address of an owner whose plan still renews would leave them paying with no way to sign in and cancel.
+const renewGuard = await act({ action: "blockEmail", email: ownerEmail, reason: "Checking the renewal guard", category: "terms" });
+ok("block: refused while the owner's plan still renews", renewGuard.status === 409 && String(renewGuard.body?.error).includes("still renews") && !(await prisma.blockedEmail.findUnique({ where: { emailHash: sha(ownerEmail) } })), JSON.stringify(renewGuard));
 const adminUser = await prisma.user.findUnique({ where: { email: ADMIN } });
 ok("can't use it on your own login", (await act({ action: "suspendUser", userId: adminUser.id, reason, category: "terms" })).status === 403);
 const adminWs = await prisma.membership.findFirst({ where: { userId: adminUser.id } });
@@ -157,6 +169,7 @@ const st = norm(suspMail?.text);
 ok("suspension email: why, what it means, nothing deleted", st.includes(`We've suspended ${business} on SureFrame because of suspected fraud, including payment fraud or false information.`) && st.includes("Nothing has been deleted.") && st.includes("your clients see that your videos are unavailable right now"), st);
 ok("suspension email: renewal stopped, the note, how to ask for a review", st.includes("Your subscription won't renew, so it ends on") && st.includes(note) && st.includes("If you think this is a mistake, reply to this email or email support@sureframe.app within 30 days and we'll review it."), st);
 ok("suspension email: no internal reason", !st.includes("Chargeback"), st);
+ok("suspension email: deletion schedules line is always the same (gives nothing away about a legal hold)", st.includes("The usual deletion schedules in our Terms carry on: recordings without cloud backup still leave our servers, and removed clients are deleted when their 30 days end."), st);
 
 // The team's side.
 await owner.goto(BASE + "/library");
@@ -166,6 +179,7 @@ ok("suspended page: says so, nothing deleted, contact support", norm(await owner
 ok("suspended page: shows support's note to members", norm(await owner.textContent("[data-testid=suspended-note]").catch(() => "")) === note);
 ok("suspended page: owner can still manage billing; data download offered", (await owner.locator("text=You can still manage or cancel your subscription.").count()) === 1 && (await owner.locator("[data-testid=suspended-export]").count()) === 1);
 ok("suspended page: never shows the internal reason", !(await owner.textContent("body")).includes("Chargeback"));
+ok("suspended page: deletion schedule line points to the Terms", norm(await owner.textContent("body")).includes("Recordings without cloud backup still follow the usual deletion schedule in our Terms."));
 await owner.screenshot({ path: `${shots}/suspend-page.png`, fullPage: true });
 let res = await apiStatus(owner);
 ok("owner: API answers 403 ACCOUNT_SUSPENDED", res.status === 403 && res.body?.code === "ACCOUNT_SUSPENDED" && res.body?.error === "This account is suspended. Nothing has been deleted. Contact support@sureframe.app.", JSON.stringify(res));
@@ -225,11 +239,21 @@ ok("still no reminder email to Ana", mailTo(ana.email).length === 0);
 row = await lastAction({ workspaceId: ws, action: "workspace.unsuspend" });
 ok("unsuspend logged with what was before", row?.details?.before?.suspendedReason === reason && row.details?.remindersSkipped === 1 && row.details?.billing?.renewal === "resumed", JSON.stringify(row));
 const backMail = await waitMail(ownerEmail, (m) => m.subject === "Your SureFrame account is no longer suspended");
+ok("unsuspend email: the button opens that workspace", !!backMail && backMail.text.includes(`/library?ws=${ws}`), backMail?.text);
 ok("unsuspend email: back, reminders not sent, renews", norm(backMail?.text).includes("Reminders that came due while it was suspended weren't sent.") && norm(backMail?.text).includes("Your subscription renews as normal again."), backMail?.text);
 ok("owner: API works again", (await apiStatus(owner)).status === 200);
 await anaPhone.goto(BASE + "/inbox");
 ok("Ana: inbox works again", (await anaPhone.locator("[data-testid=client-unavailable]").count()) === 0 && (await anaPhone.locator(`a[href*="/v/${anaVideo.id}"]`).count()) > 0);
 ok("unsuspend twice: 409", (await act({ action: "unsuspendWorkspace", workspaceId: ws, reason: "again" })).status === 409);
+// A payment disputed while it was suspended: Resume renewal leaves renewal off (a person turns it back on in Stripe).
+await act({ action: "suspendWorkspace", workspaceId: ws, reason: "Dispute check", category: "terms", stopRenewal: true, notify: false });
+const disputedCharge = `ch_su${stamp}`;
+state.charges = { ...(state.charges ?? {}), [disputedCharge]: { id: disputedCharge, object: "charge", customer, disputed: true } };
+r = await act({ action: "unsuspendWorkspace", workspaceId: ws, reason: "Dispute check done", resumeRenewal: true, notify: false });
+ok("unsuspend after a dispute: renewal stays off", r.status === 200 && r.body.billing?.renewal === "disputed" && state.subs.find((s) => s.id === sub.id)?.cancel_at_period_end === true, JSON.stringify(r));
+delete state.charges[disputedCharge];
+state.subs.find((s) => s.id === sub.id).cancel_at_period_end = false;
+await prisma.workspace.update({ where: { id: ws }, data: { cancelsAt: null } });
 
 // =====================================================================================================
 // Suspending one login
@@ -238,6 +262,7 @@ r = await act({ action: "suspendUser", userId: staffUser.id, reason: "Harassment
 ok("suspend login: done and emailed", r.status === 200 && r.body.emailed, JSON.stringify(r));
 res = await apiStatus(staff);
 ok("suspended login: API 403 ACCOUNT_SUSPENDED", res.status === 403 && res.body?.code === "ACCOUNT_SUSPENDED");
+ok("suspended staff login: no billing portal", (await staff.request.post(BASE + "/api/billing/portal")).status() === 403);
 await staff.goto(BASE + "/library");
 await staff.waitForURL((u) => u.pathname === "/suspended", { timeout: 15000 }).catch(() => null);
 ok("suspended login: page names the login", norm(await staff.textContent("[data-testid=suspended-message]").catch(() => "")) === `Your SureFrame login (${staffEmail}) has been suspended. Nothing has been deleted. Contact support@sureframe.app.`);
@@ -256,6 +281,15 @@ r = await act({ action: "unsuspendUser", userId: staffUser.id, reason: "Report w
 ok("unsuspend login: done", r.status === 200 && r.body.emailed);
 ok("unsuspended login: API works again", (await apiStatus(staff)).status === 200);
 ok("login suspend/unsuspend both logged", !!(await lastAction({ userId: staffUser.id, action: "user.suspend" })) && !!(await lastAction({ userId: staffUser.id, action: "user.unsuspend" })));
+// An owner whose own login is suspended can still manage or cancel the subscription (staff can't: checked above).
+r = await act({ action: "suspendUser", userId: ownerUser.id, reason: "Checking the owner's billing while suspended", category: "terms", notify: false });
+ok("owner's login suspended", r.status === 200);
+await owner.goto(BASE + "/library");
+await owner.waitForURL((u) => u.pathname === "/suspended", { timeout: 15000 }).catch(() => null);
+ok("suspended owner login: billing still offered", (await owner.locator("text=You can still manage or cancel your subscription.").count()) === 1);
+ok("suspended owner login: the billing portal opens", (await owner.request.post(BASE + "/api/billing/portal")).status() === 200);
+ok("suspended owner login: the rest of the API is still refused", (await apiStatus(owner)).status === 403);
+await act({ action: "unsuspendUser", userId: ownerUser.id, reason: "Done checking", notify: false });
 
 // =====================================================================================================
 // Signing a login out everywhere
@@ -279,12 +313,21 @@ ok("sign out everywhere logged", row?.reason === "Owner reports a lost laptop" &
 const ownerLaptop = await signIn(ownerEmail, "/library");
 ok("close: needs the typed confirmation", (await act({ action: "closeAccount", userId: ownerUser.id, reason, category: "unlawful", confirm: `CLOSE someone@else.com`, blockEmail: true })).status === 400);
 ok("close: nothing changed by the refused attempt", !(await prisma.user.findUnique({ where: { id: ownerUser.id } })).closedAt && state.subs.find((s) => s.id === sub.id)?.status === "active");
+// A Checkout the owner opened before the closure.
+const openCheckout = { id: `cs_su${stamp}`, object: "checkout.session", status: "open", url: "https://checkout.stripe.test/su", params: { customer } };
+state.sessions.push(openCheckout);
 r = await act({ action: "closeAccount", userId: ownerUser.id, reason, category: "unlawful", confirm: `CLOSE ${ownerEmail.toUpperCase()}`, blockEmail: true });
+ok("close: an open Checkout can't be paid any more", state.sessions.find((x) => x.id === openCheckout.id)?.status === "expired");
 ok("close: done", r.status === 200 && r.body.emailed && r.body.staffRemoved === 1 && r.body.workspaces?.[0] === ws, JSON.stringify(r));
 ok("close: Stripe subscription cancelled now", state.subs.find((s) => s.id === sub.id)?.status === "canceled");
+// A subscription that starts after the closure anyway (say, an invoice paid late) is cancelled, not applied.
+const lateSub = createSubscription(customer, ws, "sureframe_studio_monthly");
+ok("a subscription started after the closure: taken", (await webhook(admin, "customer.subscription.created", lateSub)).status() === 200);
+const lateW = await prisma.workspace.findUnique({ where: { id: ws } });
+ok("a subscription started after the closure: cancelled straight away, the plan not applied", lateSub.status === "canceled" && lateW.stripeSubscriptionId !== lateSub.id && lateW.plan !== "STUDIO", JSON.stringify({ status: lateSub.status, plan: lateW.plan }));
 let u = await prisma.user.findUnique({ where: { id: ownerUser.id } });
 w = await prisma.workspace.findUnique({ where: { id: ws } });
-ok("close: login closed, suspended, signed out, deleted in 30 days", !!u.closedAt && !!u.suspendedAt && !!u.sessionsValidAfter && Math.abs(u.deleteAt.getTime() - (u.closedAt.getTime() + 30 * D)) < 1000, JSON.stringify(u));
+ok("close: login closed, suspended, signed out, deleted in 44 days (after the review window)", !!u.closedAt && !!u.suspendedAt && !!u.sessionsValidAfter && Math.abs(u.deleteAt.getTime() - (u.closedAt.getTime() + 44 * D)) < 1000, JSON.stringify(u));
 ok("close: workspace closed and suspended with the same date", !!w.closedAt && !!w.suspendedAt && w.deleteAt?.getTime() === u.deleteAt.getTime() && !w.legalHoldAt);
 ok("close: staff taken off the team, keeping their login", !(await prisma.membership.findFirst({ where: { workspaceId: ws, userId: staffUser.id } })) && !!(await prisma.user.findUnique({ where: { id: staffUser.id } })));
 ok("close: address blocked by a hash of the inbox", !!(await prisma.blockedEmail.findUnique({ where: { emailHash: sha(ownerEmail) } })) && (await prisma.blockedEmail.count({ where: { emailHash: ownerEmail } })) === 0);
@@ -295,6 +338,7 @@ const closeMail = await waitMail(ownerEmail, (m) => m.subject === "Your SureFram
 const cm = norm(closeMail?.text);
 ok("closure email: permanent, why, cancelled, deletion date", cm.includes(`We've closed your SureFrame account (${ownerEmail}) and ${business} because we believe it was used for something unlawful or harmful. This is permanent.`) && cm.includes("Your subscription has been cancelled, so you won't be charged again.") && cm.includes("will be deleted for good on"), cm);
 ok("closure email: blocked, review route, no internal reason", cm.includes("This email address can't be used to sign up to SureFrame again.") && cm.includes("within 30 days") && !cm.includes("Chargeback"), cm);
+ok("closure email: how to get a copy of the data", cm.includes("For a copy of your account data download before then, email support@sureframe.app within 30 days."), cm);
 const staffNotice = await waitMail(staffEmail, (m) => m.subject === `You're no longer on ${business}'s team`);
 ok("staff are told the account was closed, not why", norm(staffNotice?.text).includes(`${business}'s SureFrame account has been closed, so you're no longer on its team.`) && norm(staffNotice?.text).includes("Your own SureFrame login still works."), staffNotice?.text);
 ok("staff member's own login still works", (await apiStatus(again)).status === 200);
@@ -355,6 +399,9 @@ putFile(heldKey);
 const held = await prisma.video.create({ data: { id: `suh${stamp.toString(36)}`, mimeType: "video/webm", storageKey: heldKey, status: "UPLOADED", workspaceId: ws, ownerId: ownerUser.id, clientId: ana.id, purgeAt: new Date(Date.now() - 60000) } });
 const removedClient = await prisma.client.create({ data: { name: "Removed", token: `su-${stamp}-rm-${"x".repeat(20)}`, workspaceId: ws, removedAt: new Date(Date.now() - 31 * D), purgeAt: new Date(Date.now() - 60000) } });
 const past = new Date(Date.now() - 60000);
+// Staff who left the team before the hold, closed their own account and are due now: their recording in it stays.
+const leaver = await prisma.user.create({ data: { email: `leaver-${stamp}@example.com`, deleteAt: past, deletionRequestedAt: new Date(Date.now() - 31 * D) } });
+const leaverVideo = await prisma.video.create({ data: { id: `sul${stamp.toString(36)}`, mimeType: "video/webm", storageKey: `test/${stamp}/susp-leaver`, status: "UPLOADED", workspaceId: ws, ownerId: leaver.id } });
 await prisma.user.update({ where: { id: ownerUser.id }, data: { deleteAt: past } });
 await prisma.workspace.update({ where: { id: ws }, data: { deleteAt: past } });
 await cron("reminders");
@@ -363,11 +410,12 @@ ok("held: the account isn't deleted on its date", !!(await prisma.user.findUniqu
 ok("held: an expired recording isn't deleted", (await prisma.video.findUnique({ where: { id: held.id } }))?.status === "UPLOADED" && has(heldKey));
 ok("held: a removed client isn't deleted", !!(await prisma.client.findUnique({ where: { id: removedClient.id } })));
 ok("held: nobody was emailed", mailTo(ownerEmail).length === mailsBefore);
+ok("held: a former staff member's account isn't deleted while rows of the held workspace point at it", !!(await prisma.user.findUnique({ where: { id: leaver.id } })) && !!(await prisma.video.findUnique({ where: { id: leaverVideo.id } })));
 ok("legal hold logged", (await lastAction({ workspaceId: ws, action: "workspace.legal_hold_on" }))?.reason === "Preservation request from police, ref 123");
 ok("legal hold on twice: 409", (await act({ action: "setLegalHold", workspaceId: ws, on: true, reason: "again" })).status === 409);
 
 // Lifted (and blocked again): the next run deletes what was due.
-await act({ action: "blockEmail", email: ownerEmail, reason: "Block again after the review" });
+await act({ action: "blockEmail", email: ownerEmail, reason: "Block again after the review", category: "unlawful", notify: false });
 r = await act({ action: "setLegalHold", workspaceId: ws, on: false, reason: "Police confirmed copy received" });
 ok("legal hold off", r.status === 200 && !(await prisma.workspace.findUnique({ where: { id: ws } })).legalHoldAt);
 await cron("reminders");
@@ -405,6 +453,72 @@ ok("reopen: signing in works", (await apiStatus(soloAgain)).status === 200);
 ok("reopen email", !!(await waitMail(soloEmail, (m) => m.subject === "Your SureFrame account is open again")));
 await act({ action: "setLegalHold", workspaceId: soloWs, on: false, reason: "Not needed after review" });
 
+// An account its holder had already deleted, then closed by support: reopening goes back to the holder's own request.
+const selfEmail = `susp-self${stamp}@example.com`;
+await signIn(selfEmail, "/library");
+const selfUser = await prisma.user.findUnique({ where: { email: selfEmail } });
+const selfWs = (await prisma.membership.findFirst({ where: { userId: selfUser.id } })).workspaceId;
+const selfAsked = new Date(Date.now() - 5 * D);
+const selfDate = new Date(selfAsked.getTime() + 30 * D);
+await prisma.user.update({ where: { id: selfUser.id }, data: { deletionRequestedAt: selfAsked, deleteAt: selfDate } });
+await prisma.workspace.update({ where: { id: selfWs }, data: { deleteAt: selfDate } });
+const selfClient = await prisma.client.create({ data: { name: "Paused by closing", token: `su-${stamp}-self-${"x".repeat(20)}`, workspaceId: selfWs, pausedAt: selfAsked } });
+r = await act({ action: "closeAccount", userId: selfUser.id, reason, category: "terms", confirm: `CLOSE ${selfEmail}` });
+let selfNow = await prisma.user.findUnique({ where: { id: selfUser.id } });
+ok("close after their own deletion: their earlier date stays", r.status === 200 && selfNow.deleteAt?.getTime() === selfDate.getTime() && selfNow.deletionRequestedAt?.getTime() === selfAsked.getTime(), JSON.stringify(selfNow));
+const selfCloseMail = await waitMail(selfEmail, (m) => m.subject === "Your SureFrame account has been closed");
+ok("closure email: says the date is the one they set", norm(selfCloseMail?.text).includes("the date set when you deleted your account"), selfCloseMail?.text);
+const selfConsole = await admin.goto(`${BASE}/support/users/${selfUser.id}`).then(() => admin.textContent("[data-testid=user-status]"));
+ok("console: shows they had closed it themselves first", norm(selfConsole).includes("they had closed it themselves on"), selfConsole);
+r = await act({ action: "reopenAccount", userId: selfUser.id, reason: "Review: closure was a mistake" });
+selfNow = await prisma.user.findUnique({ where: { id: selfUser.id } });
+const selfWsNow = await prisma.workspace.findUnique({ where: { id: selfWs } });
+ok("reopen after their own deletion: support's closure lifted, their deletion date stays", r.status === 200 && r.body.selfDeleted === true && !selfNow.closedAt && !selfNow.suspendedAt && selfNow.deleteAt?.getTime() === selfDate.getTime() && !!selfNow.deletionRequestedAt && !selfWsNow.closedAt && selfWsNow.deleteAt?.getTime() === selfDate.getTime(), JSON.stringify({ r, selfNow }));
+ok("reopen after their own deletion: their clients stay paused", !!(await prisma.client.findUnique({ where: { id: selfClient.id } })).pausedAt);
+ok("reopen after their own deletion: logged", (await lastAction({ userId: selfUser.id, action: "account.reopen" }))?.details?.selfDeleted === true);
+const liftMail = await waitMail(selfEmail, (m) => m.subject === "We've lifted the closure of your SureFrame account");
+ok("reopen email: still due to be deleted, as they asked, unless they keep it", norm(liftMail?.text).includes("still due to be deleted for good on") && norm(liftMail?.text).includes("choose Keep my account") && !norm(liftMail?.text).includes("won't be deleted"), liftMail?.text);
+const selfBack = await signIn(selfEmail, "/library", "/account/restore");
+ok("reopen after their own deletion: they can keep it themselves", !!(await selfBack.waitForSelector("text=Keep my account", { timeout: 15000 }).catch(() => null)));
+
+// =====================================================================================================
+// Cloud backup ending while suspended: backed-up recordings wait (no 30-day clock, nothing deleted unseen),
+// and get their 30 days, with the owner told, once it's lifted. Unfinished uploads wait too.
+// =====================================================================================================
+const bkEmail = `susp-backup${stamp}@example.com`;
+await signIn(bkEmail, "/library");
+const bkUser = await prisma.user.findUnique({ where: { email: bkEmail } });
+const bkWs = (await prisma.membership.findFirst({ where: { userId: bkUser.id } })).workspaceId;
+const bkSub = createSubscription(`cus_bk${stamp}`, bkWs, "sureframe_solo_monthly");
+await prisma.workspace.update({ where: { id: bkWs }, data: { name: `Backup ${stamp}`, plan: "SOLO", cloudBackup: true, stripeCustomerId: `cus_bk${stamp}`, stripeSubscriptionId: bkSub.id, subscriptionStatus: "active", currentPeriodEnd: new Date(Date.now() + 30 * D) } });
+const bkVideo = await prisma.video.create({ data: { id: `sub${stamp.toString(36)}`, mimeType: "video/webm", storageKey: `test/${stamp}/susp-bk`, status: "UPLOADED", workspaceId: bkWs, ownerId: bkUser.id } });
+const bkUpload = await prisma.video.create({ data: { id: `suu${stamp.toString(36)}`, mimeType: "video/webm", storageKey: `test/${stamp}/susp-bk-up`, status: "RECORDING", uploadId: "u-bk", workspaceId: bkWs, ownerId: bkUser.id } });
+r = await act({ action: "suspendWorkspace", workspaceId: bkWs, reason: "Backup test", category: "terms", stopRenewal: true });
+ok("backup: suspended with renewal stopped", r.status === 200 && r.body.billing?.renewal === "stopped", JSON.stringify(r));
+const bkSusp = norm((await waitMail(bkEmail, (m) => m.subject === "Your SureFrame account has been suspended"))?.text);
+ok("suspension email: says cloud backup ends with the plan and backed-up recordings wait", bkSusp.includes("Cloud backup ends with your plan. Backed-up recordings are kept while the account is suspended; once it's lifted, our copies are deleted 30 days later"), bkSusp);
+// The plan ends while it's suspended.
+const bkStripe = state.subs.find((x) => x.id === bkSub.id);
+bkStripe.status = "canceled";
+ok("backup: the subscription-ended webhook is taken", (await webhook(admin, "customer.subscription.deleted", bkStripe)).status() === 200);
+let bkW = await prisma.workspace.findUnique({ where: { id: bkWs } });
+ok("backup: cloud backup is off once the plan ends", !bkW.cloudBackup && !bkW.stripeSubscriptionId);
+ok("backup: but no deletion date while suspended", (await prisma.video.findUnique({ where: { id: bkVideo.id } })).purgeAt === null);
+ok("backup: and no 'backup ended' email while nobody can save them", !mailTo(bkEmail).some((m) => m.subject === "Cloud backup has ended for your recordings"));
+// An upload refused for more than a week while suspended isn't thrown away.
+await prisma.$executeRaw`UPDATE "Video" SET "updatedAt" = now() - interval '8 days' WHERE id = ${bkUpload.id}`;
+await cron("purge");
+ok("backup: an unfinished upload waits while suspended, past the week", !!(await prisma.video.findUnique({ where: { id: bkUpload.id } })));
+r = await act({ action: "unsuspendWorkspace", workspaceId: bkWs, reason: "Backup test done" });
+ok("backup: unsuspended", r.status === 200, JSON.stringify(r));
+const bkPurge = (await prisma.video.findUnique({ where: { id: bkVideo.id } })).purgeAt;
+ok("backup: the 30 days start when it's lifted", !!bkPurge && Math.abs(bkPurge.getTime() - (Date.now() + 30 * D)) < 120_000, String(bkPurge));
+const bkEnded = await waitMail(bkEmail, (m) => m.subject === "Cloud backup has ended for your recordings");
+ok("backup: the owner is told the date then", !!bkEnded && norm(bkEnded.text).includes("will be deleted on"), bkEnded?.text);
+ok("backup: the waiting upload gets a new week", Date.now() - (await prisma.video.findUnique({ where: { id: bkUpload.id } })).updatedAt.getTime() < 120_000);
+await cron("purge");
+ok("backup: so it isn't aborted on the next run", !!(await prisma.video.findUnique({ where: { id: bkUpload.id } })));
+
 // =====================================================================================================
 // Blocking an address on its own (no account yet), and the support log's 7-year limit
 // =====================================================================================================
@@ -422,8 +536,11 @@ ok("no account was made for it", !(await prisma.user.findFirst({ where: { email:
 await act({ action: "unblockEmail", email: stranger, reason: "cleanup" });
 // A login still signed in when its address is blocked can't join a team with it.
 const joinerEmail = `susp-joiner${stamp}@example.com`;
-r = await act({ action: "blockEmail", email: joinerEmail, reason: "Blocked while signed in" });
+ok("block a signed-up address: needs the reason the email gives", (await act({ action: "blockEmail", email: joinerEmail, reason: "Blocked while signed in" })).status === 400);
+r = await act({ action: "blockEmail", email: joinerEmail, reason: "Blocked while signed in", category: "terms" });
 ok("block a signed-up address: linked to its account", r.status === 200 && (await prisma.blockedEmail.findUnique({ where: { emailHash: sha(joinerEmail) } }))?.userId === (await prisma.user.findUnique({ where: { email: joinerEmail } })).id);
+const blockMail = await waitMail(joinerEmail, (m) => m.subject === "This email address can no longer be used with SureFrame");
+ok("block a signed-up address: the login is emailed why, with the review route", r.body?.emailed === true && norm(blockMail?.text).includes(`We've stopped this email address (${joinerEmail}) being used to sign in or sign up to SureFrame because of a breach of our Terms of Service.`) && norm(blockMail?.text).includes("within 30 days"), blockMail?.text);
 res = await joiner.request.post(BASE + "/api/team/join", { data: { token: `su-other-${stamp}` } });
 ok("blocked address with an old sign-in: joining a team refused", res.status() === 403 && (await res.json()).code === "EMAIL_BLOCKED");
 await joiner.goto(`${BASE}/join/su-other-${stamp}`);

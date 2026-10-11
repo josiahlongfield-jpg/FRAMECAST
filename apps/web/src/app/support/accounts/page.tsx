@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { PLANS } from "@/lib/plans";
 import { requirePageUser } from "@/lib/session";
+import { isSupportAdmin } from "@/lib/support/admin";
 import { isSupportAgent } from "@/lib/support/tickets";
 import { canInstall, readManifest } from "@/lib/ai/speechModel";
 import CompForm, { CompAiForm } from "./CompForm";
@@ -15,6 +16,7 @@ export const metadata: Metadata = { title: "Free plans" };
 export default async function Accounts() {
   const { user } = await requirePageUser("/support/accounts", { allowPaused: true, allowSuspended: true, allowTermsPending: true });
   if (!isSupportAgent(user.email)) notFound();
+  if (user.suspendedAt && !isSupportAdmin(user.email)) redirect("/suspended");
   const comped = await db.workspace.findMany({
     where: { complimentaryPlan: { not: null } },
     orderBy: { createdAt: "desc" },

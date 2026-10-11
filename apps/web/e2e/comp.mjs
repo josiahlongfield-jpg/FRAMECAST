@@ -33,11 +33,13 @@ ok("non-founder sees no free plans", !(await stranger.isVisible("text=Currently 
 
 const owner = await signIn("owner@test.dev", "/support/accounts");
 await owner.fill('input[name="email"]', "nobody@example.com");
+await owner.fill('textarea[name="reason"]', "Trial for a partner");
 await owner.click("text=Save");
 await owner.waitForSelector("text=hasn't signed up yet");
 ok("unknown email is refused", true);
 await owner.fill('input[name="email"]', tester.toUpperCase());
 await owner.selectOption("select", "STUDIO");
+await owner.fill('textarea[name="reason"]', "Trial for a partner");
 await owner.click("text=Save");
 await owner.waitForSelector("text=free of charge");
 ok("listed as currently free", (await owner.textContent("main")).includes(tester));
@@ -50,6 +52,7 @@ ok("can still choose a paid plan", text.includes("Choose a paid plan"));
 
 await owner.fill('input[name="email"]', tester);
 await owner.selectOption("select", "FREE");
+await owner.fill('textarea[name="reason"]', "Trial ended");
 await owner.click("text=Save");
 await owner.waitForSelector("text=back on the Free plan");
 await t.goto(BASE + "/settings/billing");

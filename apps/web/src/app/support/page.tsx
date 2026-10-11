@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { requirePageUser } from "@/lib/session";
 import { isSupportAdmin } from "@/lib/support/admin";
@@ -15,6 +15,8 @@ const LABEL = { NEEDS_HUMAN: "Needs you", ANSWERED: "Answered", OPEN: "Assistant
 export default async function SupportInbox({ searchParams }: { searchParams: Promise<{ show?: string; error?: string; cleared?: string }> }) {
   const { user } = await requirePageUser("/support", { allowPaused: true, allowSuspended: true, allowTermsPending: true });
   if (!isSupportAgent(user.email)) notFound();
+  // A suspended agent is cut off; only a support admin keeps working while their own login is suspended.
+  if (user.suspendedAt && !isSupportAdmin(user.email)) redirect("/suspended");
   const { show, error, cleared } = await searchParams;
   const tickets = await db.supportTicket.findMany({
     where: show === "all" ? {} : { status: { in: ["NEEDS_HUMAN", "ANSWERED"] } },

@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { onLegalHold } from "@/lib/accountDeletion";
 import { isEmailBlocked } from "@/lib/blockedEmail";
 import { db } from "@/lib/db";
+import { CLOSURE_DELETE_DAYS } from "@/lib/periods";
 import { closeConfirmation } from "@/lib/support/admin";
 import { deleteConfirmation } from "@/lib/support/console";
 import PowerForm, { Check } from "../../_console/PowerForm";
@@ -36,8 +38,11 @@ export default async function SupportUser({ params, searchParams }: { params: Pr
   const owned = u.memberships.filter((m) => m.role === "OWNER" || m.workspace._count.members === 1);
   const ownsTeam = u.memberships.some((m) => m.role === "OWNER" && m.workspace._count.members > 1);
   const staffOn = u.memberships.filter((m) => m.role === "OWNER" && m.workspace._count.members > 1).reduce((n, m) => n + m.workspace._count.members - 1, 0);
-  const held = u.memberships.some((m) => m.workspace.legalHoldAt);
+  // On a held workspace, or rows of one point at it (lib/accountDeletion.ts): not deleted while the hold lasts.
+  const held = await onLegalHold(u.id);
   const reopenable = !!u.closedAt && !!u.deleteAt && u.deleteAt > now;
+  // They'd closed it themselves before support did (closeAccount stamps both at once otherwise).
+  const selfDeleted = !!u.closedAt && !!u.deletionRequestedAt && u.deletionRequestedAt < u.closedAt;
   const emailThem = `Email ${u.email}`;
 
   return (
@@ -75,7 +80,7 @@ export default async function SupportUser({ params, searchParams }: { params: Pr
               [
                 "Deletion",
                 u.deleteAt
-                  ? `Scheduled for ${day(u.deleteAt)}${u.closedAt ? " (closed by support: they can't keep it)" : `, they closed it on ${day(u.deletionRequestedAt)} and can keep it by signing in before then`}${held ? "; held while legal hold is on" : ""}`
+                  ? `Scheduled for ${day(u.deleteAt)}${u.closedAt ? ` (closed by support: they can't keep it${selfDeleted ? `; they had closed it themselves on ${day(u.deletionRequestedAt)}` : ""})` : `, they closed it on ${day(u.deletionRequestedAt)} and can keep it by signing in before then`}${held ? "; held while legal hold is on" : ""}`
                   : "Not scheduled",
               ],
               ["Email blocked", blocked ? "Yes: it can't sign in or sign up" : "No"],
@@ -154,6 +159,27 @@ export default async function SupportUser({ params, searchParams }: { params: Pr
                 />
               ))}
 
+            <details className="group rounded-2xl border border-slate-200 bg-white" data-testid="export-user">
+              <summary className="cursor-pointer list-none p-4 text-sm font-semibold text-slate-900">
+                <span className="mr-2 inline-block text-slate-400 transition-transform group-open:rotate-90" aria-hidden>
+                  ▸
+                </span>
+                Download their data
+              </summary>
+              <form method="post" action="/api/support/export" className="grid gap-3 border-t border-slate-100 p-4">
+                <input type="hidden" name="userId" value={u.id} />
+                <p className="text-sm text-slate-600">
+                  The same download as Settings &gt; Account, for an account that can&rsquo;t sign in to get it (closed by support, or its address blocked). Send it only to{" "}
+                  {u.email}, from the support inbox. Encrypted recordings and messages stay encrypted.
+                </p>
+                <label className="grid gap-1 text-sm text-slate-700">
+                  Reason (internal: kept in the support log, never shown to the customer)
+                  <textarea name="reason" required maxLength={500} rows={2} className={field} />
+                </label>
+                <button className="justify-self-start rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">Download</button>
+              </form>
+            </details>
+
             <PowerForm
               power="signOutEverywhere"
               hidden={{ userId: u.id }}
@@ -185,7 +211,11 @@ export default async function SupportUser({ params, searchParams }: { params: Pr
                 power="reopenAccount"
                 hidden={{ userId: u.id }}
                 title="Reopen after a review"
-                intro={`Only when a review finds the closure was wrong, before ${day(u.deleteAt)}. The login and its workspaces work again and the address is unblocked. The cancelled subscription and the staff taken off the team don't come back.`}
+                intro={
+                  selfDeleted
+                    ? `Only when a review finds the closure was wrong, before ${day(u.deleteAt)}. They had closed the account themselves first, so it goes back to that: still deleted on ${day(u.deleteAt)} unless they sign in and keep it, with its clients paused until then. The address is unblocked. The cancelled subscription doesn't come back.`
+                    : `Only when a review finds the closure was wrong, before ${day(u.deleteAt)}. The login and its workspaces work again and the address is unblocked. The cancelled subscription and the staff taken off the team don't come back.`
+                }
                 notify={emailThem}
                 submit="Reopen account"
               />
@@ -202,8 +232,11 @@ export default async function SupportUser({ params, searchParams }: { params: Pr
                     {owned.length ? ` and ${owned.map((m) => m.workspace.name).join(", ")}` : ""} are suspended and closed, any subscription is cancelled now (no further charges;
                     refunds only in Stripe where the law requires), it&rsquo;s signed out everywhere and invites are cancelled.
                     {ownsTeam ? ` ${staffOn} staff ${staffOn === 1 ? "member is" : "members are"} taken off the team (they keep their own logins).` : ""} It leaves any team
-                    it&rsquo;s staff on. Everything is deleted for good 30 days later unless legal hold is on. The account holder can&rsquo;t undo it; you can reopen it after a
-                    review before then.
+                    it&rsquo;s staff on.{" "}
+                    {u.deleteAt
+                      ? `Everything is deleted for good on ${day(u.deleteAt)}, the date already set when they closed it themselves, unless legal hold is on.`
+                      : `Everything is deleted for good ${CLOSURE_DELETE_DAYS} days later unless legal hold is on.`}{" "}
+                    The account holder can&rsquo;t undo it; you can reopen it after a review before then.
                   </>
                 }
                 category
@@ -214,7 +247,7 @@ export default async function SupportUser({ params, searchParams }: { params: Pr
               >
                 <Check name="blockEmail" label="Block this email from signing up again" hint="Only a hash of the address is kept." />
                 {owned.length > 0 && (
-                  <Check name="legalHold" label="Put legal hold on" hint="Nothing of the closed workspace is deleted, even after the 30 days, until you lift it." />
+                  <Check name="legalHold" label="Put legal hold on" hint="Nothing of the closed workspace is deleted, even after the deletion date, until you lift it." />
                 )}
               </PowerForm>
             )}
@@ -254,7 +287,9 @@ export default async function SupportUser({ params, searchParams }: { params: Pr
                 power="blockEmail"
                 hidden={{ email: u.email }}
                 title="Block this email"
-                intro="It can't sign in or sign up by any method until unblocked; sessions already signed in carry on until you use Sign out everywhere. Only a hash of the address is stored. Nobody is emailed."
+                intro="It can't sign in or sign up by any method until unblocked; sessions already signed in carry on until you use Sign out everywhere. Only a hash of the address is stored. Refused while a plan it owns still renews: close the account, or suspend with Stop renewal, first."
+                category
+                notify={`Email ${u.email} that the address is blocked, and why`}
                 submit="Block"
                 danger
               />
