@@ -5,6 +5,7 @@
 import { chromium } from "@playwright/test";
 import { readdirSync, readFileSync } from "node:fs";
 import { PrismaClient } from "@prisma/client";
+import { agreed } from "./agree.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const prisma = new PrismaClient();
@@ -16,6 +17,8 @@ const mailTo = (to) => { try { return readdirSync(outbox).map((f) => JSON.parse(
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM });
 async function signIn(email, next) {
+  // Agreed to the current Terms and Privacy Policy, so signing in isn't stopped at /agree (e2e/agree.mjs).
+  await agreed(email);
   const page = await (await browser.newContext()).newPage();
   await page.goto(`${BASE}/login?next=${next}`);
   await page.fill('input[name="email"]', email);

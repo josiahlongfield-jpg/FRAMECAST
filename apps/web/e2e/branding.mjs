@@ -5,6 +5,7 @@ import { deflateSync } from "node:zlib";
 import Stripe from "stripe";
 import { PrismaClient } from "@prisma/client";
 import { start, state, createSubscription } from "./fake-stripe.mjs";
+import { agreed } from "./agree.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const ok = (label, cond, extra = "") => {
@@ -34,7 +35,9 @@ function png(w, h, [r, g, b], pad = 0) {
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM });
 const page = await browser.newPage();
 await page.goto(BASE + "/login?next=/settings/branding");
-await page.fill('input[name="email"]', `brand${Date.now()}@example.com`);
+const loginEmail = `brand${Date.now()}@example.com`;
+await agreed(loginEmail);
+await page.fill('input[name="email"]', loginEmail);
 await page.click("text=Continue");
 await page.waitForURL((u) => u.pathname === "/settings/branding");
 // The page streams in after the URL changes (app/loading.tsx), so wait for it rather than checking at once.

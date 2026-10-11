@@ -2,6 +2,7 @@
 // beeps as "working", and warns when the microphone only gives silence.
 import { chromium } from "@playwright/test";
 import { writeFileSync } from "node:fs";
+import { agreed } from "./agree.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const shots = process.argv[2] ?? "/tmp";
@@ -40,7 +41,9 @@ async function open(extraArgs) {
   });
   const page = await ctx.newPage();
   await page.goto(BASE + "/record");
-  await page.fill('input[name="email"]', `mic${Date.now()}@acme.com`);
+  const loginEmail = `mic${Date.now()}@acme.com`;
+  await agreed(loginEmail);
+  await page.fill('input[name="email"]', loginEmail);
   await page.click("text=Continue");
   await page.waitForURL("**/record");
   await page.click("text=I've saved it");

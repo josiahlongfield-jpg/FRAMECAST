@@ -5,6 +5,7 @@
 import { chromium } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
 import { mkdirSync } from "node:fs";
+import { agreed } from "./agree.mjs";
 
 const shots = process.argv[2] ?? "/tmp/claude-0/video-frame-shots";
 mkdirSync(shots, { recursive: true });
@@ -54,6 +55,7 @@ await ctx.addInitScript(() => {
 const page = await ctx.newPage();
 const email = `frame${Date.now()}@acme.com`;
 await page.goto(BASE + "/record");
+await agreed(email);
 await page.fill('input[name="email"]', email);
 await page.click("text=Continue");
 await page.waitForURL("**/record");

@@ -8,6 +8,7 @@ import { chromium } from "@playwright/test";
 import { readdirSync, readFileSync, rmSync } from "node:fs";
 import { requests, startFakeAnthropic } from "./fake-anthropic.mjs";
 import { PrismaClient } from "@prisma/client";
+import { agreed } from "./agree.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const AGENT = "owner@test.dev";
@@ -69,7 +70,9 @@ ok("inbox told about the new message", outbox().slice(mailsBefore).some((m) => m
 // 4. Not an agent: the inbox is hidden
 const other = await (await browser.newContext()).newPage();
 await other.goto(BASE + "/support");
-await other.fill('input[name="email"]', `someone${Date.now()}@peak.com`);
+const otherEmail = `someone${Date.now()}@peak.com`;
+await agreed(otherEmail);
+await other.fill('input[name="email"]', otherEmail);
 await other.click("text=Continue");
 await other.waitForURL("**/support");
 await other.waitForSelector("text=Page not found");
@@ -79,6 +82,7 @@ ok("inbox hidden from customers", !(await other.textContent("body")).includes("v
 const agentCtx = await browser.newContext({ viewport: { width: 1280, height: 1000 } });
 const agent = await agentCtx.newPage();
 await agent.goto(BASE + "/support");
+await agreed(AGENT);
 await agent.fill('input[name="email"]', AGENT);
 await agent.click("text=Continue");
 await agent.waitForURL("**/support");
@@ -107,7 +111,9 @@ await fromEmail.screenshot({ path: `${shots}/support-help-page.png` });
 // 7. A signed-in customer asks about their plan
 const owner = await (await browser.newContext()).newPage();
 await owner.goto(BASE + "/settings/billing");
-await owner.fill('input[name="email"]', `plan${Date.now()}@peak.com`);
+const planEmail = `plan${Date.now()}@peak.com`;
+await agreed(planEmail);
+await owner.fill('input[name="email"]', planEmail);
 await owner.click("text=Continue");
 await owner.waitForURL("**/settings/billing");
 await owner.click("button:has-text('Help')");

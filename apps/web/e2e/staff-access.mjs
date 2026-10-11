@@ -18,6 +18,7 @@ import { readdirSync, readFileSync, existsSync } from "node:fs";
 import Stripe from "stripe";
 import { PrismaClient } from "@prisma/client";
 import { start, state, createSubscription } from "./fake-stripe.mjs";
+import { agreed } from "./agree.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const CRON = process.env.CRON_SECRET ?? "test-cron-secret";
@@ -46,6 +47,7 @@ const waitFor = async (fn, ms = 8000) => {
 // ---- An Agency owner with two staff members ----
 const owner = await (await browser.newContext()).newPage();
 await owner.goto(`${BASE}/login?next=/record`);
+await agreed(`sa-owner${stamp}@example.com`);
 await owner.fill('input[name="email"]', `sa-owner${stamp}@example.com`);
 await owner.click("text=Continue");
 await owner.waitForURL((u) => u.pathname === "/record");
@@ -68,6 +70,7 @@ async function join(email) {
   const page = await (await browser.newContext()).newPage();
   await page.goto(link);
   await page.click("text=Sign in to join");
+  await agreed(email);
   await page.fill('input[name="email"]', email);
   await page.click("text=Continue");
   await page.waitForURL((u) => u.pathname.startsWith("/join/"));

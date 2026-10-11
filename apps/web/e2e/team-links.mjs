@@ -2,6 +2,7 @@
 // a browser that is signed out and has the client's personal link saved.
 import { chromium } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
+import { agreed } from "./agree.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const prisma = new PrismaClient();
@@ -18,6 +19,7 @@ const ownerEmail = `tl-owner${stamp}@example.com`;
 
 const owner = await (await browser.newContext(perms)).newPage();
 await owner.goto(`${BASE}/login?next=/record`);
+await agreed(ownerEmail);
 await owner.fill('input[name="email"]', ownerEmail);
 await owner.click("text=Continue");
 await owner.waitForURL((u) => u.pathname === "/record");

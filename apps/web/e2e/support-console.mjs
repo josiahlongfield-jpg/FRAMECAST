@@ -11,6 +11,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import path from "node:path";
 import { PrismaClient } from "@prisma/client";
 import { start, state, createSubscription } from "./fake-stripe.mjs";
+import { agreed } from "./agree.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const ADMIN = "owner@test.dev";
@@ -49,6 +50,8 @@ const longDay = (d) => new Intl.DateTimeFormat("en-US", { dateStyle: "long", tim
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM });
 async function signIn(email, next = "/library", { phone = false, lands = next.split("?")[0] } = {}) {
+  // Agreed to the current Terms and Privacy Policy, so signing in isn't stopped at /agree (e2e/agree.mjs).
+  await agreed(email);
   const ctx = await browser.newContext(phone ? { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } : { viewport: { width: 1280, height: 900 } });
   const page = await ctx.newPage();
   await page.goto(`${BASE}/login?next=${encodeURIComponent(next)}`);

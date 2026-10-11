@@ -11,6 +11,7 @@
 import { chromium } from "@playwright/test";
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { PrismaClient } from "@prisma/client";
+import { agreed } from "./agree.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const CRON = process.env.CRON_SECRET ?? "test-cron-secret";
@@ -35,6 +36,8 @@ const cron = async (path = "reminders", secret = CRON) => {
 };
 
 async function signIn(email, next = "/library") {
+  // Agreed to the current Terms and Privacy Policy, so signing in isn't stopped at /agree (e2e/agree.mjs).
+  await agreed(email);
   const page = await (await browser.newContext({ timezoneId: TZ, viewport: { width: 1360, height: 1000 } })).newPage();
   await page.goto(`${BASE}/login?next=${encodeURIComponent(next)}`);
   await page.fill('input[name="email"]', email);

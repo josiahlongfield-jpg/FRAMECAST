@@ -1,6 +1,7 @@
 // Drives a real Chromium with fake camera/mic through: sign in, record, stop,
 // watch; then a crash mid-recording followed by automatic recovery.
 import { chromium } from "@playwright/test";
+import { agreed } from "./agree.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const shots = process.argv[2] ?? "/tmp";
@@ -19,7 +20,9 @@ await page.goto(BASE + "/pricing");
 await page.screenshot({ path: `${shots}/pricing.png`, fullPage: true });
 
 await page.goto(BASE + "/record");
-await page.fill('input[name="email"]', `demo${Date.now()}@acme.com`);
+const loginEmail = `demo${Date.now()}@acme.com`;
+await agreed(loginEmail);
+await page.fill('input[name="email"]', loginEmail);
 await page.click("text=Continue");
 await page.waitForURL("**/record");
 await page.click("text=I've saved it"); // first device: recovery key shown once

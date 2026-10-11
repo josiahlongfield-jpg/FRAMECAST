@@ -7,6 +7,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import Stripe from "stripe";
 import { PrismaClient } from "@prisma/client";
 import { start, state, createSubscription } from "./fake-stripe.mjs";
+import { agreed } from "./agree.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const shots = process.argv[2] ?? "/tmp";
@@ -32,6 +33,7 @@ const finiteDuration = (el) => new Promise((r) => {
 // A Studio owner with a staff member and four clients, two assigned to the staff member.
 const owner = await (await browser.newContext(perms)).newPage();
 await owner.goto(`${BASE}/login?next=/record`);
+await agreed(`sm-owner${stamp}@example.com`);
 await owner.fill('input[name="email"]', `sm-owner${stamp}@example.com`);
 await owner.click("text=Continue");
 await owner.waitForURL((u) => u.pathname === "/record");
@@ -49,6 +51,7 @@ const invite = await (await owner.waitForSelector("[data-testid=invite-link]")).
 const staff = await (await browser.newContext(perms)).newPage();
 await staff.goto(invite);
 await staff.click("text=Sign in to join");
+await agreed(`sm-staff${stamp}@example.com`);
 await staff.fill('input[name="email"]', `sm-staff${stamp}@example.com`);
 await staff.click("text=Continue");
 await staff.waitForURL((u) => u.pathname.startsWith("/join/"));

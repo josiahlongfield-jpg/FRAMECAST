@@ -2,6 +2,7 @@
 // preview before saving, and is saved with the branding.
 import { chromium } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
+import { agreed } from "./agree.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const db = new PrismaClient();
@@ -15,6 +16,7 @@ const browser = await chromium.launch({ executablePath: process.env.CHROMIUM ?? 
 const page = await (await browser.newContext({ viewport: { width: 1360, height: 900 } })).newPage();
 const email = `brandname${Date.now()}@acme.com`;
 await page.goto(BASE + "/record");
+await agreed(email);
 await page.fill('input[name="email"]', email);
 await page.click("text=Continue");
 await page.waitForURL("**/record");

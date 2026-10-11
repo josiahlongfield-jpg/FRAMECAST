@@ -1,6 +1,7 @@
 // Sign-ins end when the browser is closed, or after a long stretch of no use,
 // without cutting off API calls (uploads, replies) already under way.
 import { chromium } from "@playwright/test";
+import { agreed } from "./agree.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 let failed = 0;
@@ -13,7 +14,9 @@ const browser = await chromium.launch({ executablePath: process.env.CHROMIUM ?? 
 const ctx = await browser.newContext();
 const page = await ctx.newPage();
 await page.goto(BASE + "/record");
-await page.fill('input[name="email"]', `timeout${Date.now()}@acme.com`);
+const loginEmail = `timeout${Date.now()}@acme.com`;
+await agreed(loginEmail);
+await page.fill('input[name="email"]', loginEmail);
 await page.click("text=Continue");
 await page.waitForURL("**/record");
 await page.click("text=I've saved it").catch(() => {});

@@ -5,6 +5,7 @@ import { chromium } from "@playwright/test";
 import Stripe from "stripe";
 import { PrismaClient } from "@prisma/client";
 import { start, state, createSubscription } from "./fake-stripe.mjs";
+import { agreed } from "./agree.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const ok = (label, cond, extra = "") => {
@@ -20,6 +21,7 @@ const browser = await chromium.launch({ executablePath: process.env.CHROMIUM });
 const owner = await (await browser.newContext({ permissions: ["clipboard-read", "clipboard-write"] })).newPage();
 const stamp = Date.now();
 await owner.goto(BASE + "/login?next=/settings/team");
+await agreed(`owner${stamp}@example.com`);
 await owner.fill('input[name="email"]', `owner${stamp}@example.com`);
 await owner.click("text=Continue");
 await owner.waitForURL((u) => u.pathname === "/settings/team");
@@ -67,6 +69,7 @@ const staffCtx = await browser.newContext();
 const staff = await staffCtx.newPage();
 await staff.goto(link);
 await staff.click("text=Sign in to join");
+await agreed(`staff${stamp}@example.com`);
 await staff.fill('input[name="email"]', `staff${stamp}@example.com`);
 await staff.click("text=Continue");
 await staff.waitForURL((u) => u.pathname.startsWith("/join/"));
@@ -99,6 +102,7 @@ ok("member sees billing is owner-only", !!(await staff.waitForSelector("text=Onl
 // A used link can't be reused by someone else.
 const other = await (await browser.newContext()).newPage();
 await other.goto(BASE + `/login?next=/library`);
+await agreed(`other${stamp}@example.com`);
 await other.fill('input[name="email"]', `other${stamp}@example.com`);
 await other.click("text=Continue");
 await other.waitForURL((u) => u.pathname === "/library");

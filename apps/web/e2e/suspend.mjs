@@ -11,6 +11,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import path from "node:path";
 import { PrismaClient } from "@prisma/client";
 import { start, state, createSubscription } from "./fake-stripe.mjs";
+import { agreed } from "./agree.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const CRON = process.env.CRON_SECRET ?? "test-cron-secret";
@@ -51,11 +52,17 @@ const lastAction = (where) => prisma.adminAction.findFirst({ where, orderBy: { c
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM });
 async function signIn(email, next = "/library", lands = next.split("?")[0]) {
+  // Agreed to the current Terms and Privacy Policy, so signing in isn't stopped at /agree (e2e/agree.mjs).
+  await agreed(email);
   const page = await (await browser.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
   await page.goto(`${BASE}/login?next=${encodeURIComponent(next)}`);
   await page.fill('input[name="email"]', email);
   await page.click("text=Continue");
-  await page.waitForURL((u) => u.pathname === lands, { timeout: 60000 });
+  // In development a page compiling for the first time can refresh every open tab and cut a redirect short: reload once.
+  await page.waitForURL((u) => u.pathname === lands, { timeout: 30000 }).catch(async () => {
+    await page.reload();
+    await page.waitForURL((u) => u.pathname === lands, { timeout: 60000 });
+  });
   return page;
 }
 const admin = await signIn(ADMIN, "/library");

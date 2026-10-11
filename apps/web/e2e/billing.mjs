@@ -6,6 +6,7 @@ import Stripe from "stripe";
 import { PrismaClient } from "@prisma/client";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { start, state, control, createSubscription } from "./fake-stripe.mjs";
+import { agreed } from "./agree.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const ok = (label, cond) => {
@@ -22,6 +23,7 @@ const browser = await chromium.launch({ executablePath: process.env.CHROMIUM });
 const page = await browser.newPage();
 const email = `bill${Date.now()}@example.com`;
 await page.goto(BASE + "/login?next=/settings/billing");
+await agreed(email);
 await page.fill('input[name="email"]', email);
 await page.click("text=Continue");
 await page.waitForURL((u) => u.pathname === "/settings/billing");

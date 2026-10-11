@@ -4,6 +4,7 @@
 // shared to-dos. Checks the server stores only ciphertext.
 import { chromium, devices } from "@playwright/test";
 import { execSync } from "node:child_process";
+import { agreed } from "./agree.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const shots = process.argv[2] ?? "/tmp";
@@ -18,7 +19,9 @@ const ctx = await browser.newContext({ permissions: ["clipboard-read", "clipboar
 const pro = await ctx.newPage();
 pro.on("console", (m) => m.type() === "error" && console.log("business console:", m.text()));
 await pro.goto(BASE + "/library");
-await pro.fill('input[name="email"]', `owner${Date.now()}@business.com`);
+const loginEmail = `owner${Date.now()}@business.com`;
+await agreed(loginEmail);
+await pro.fill('input[name="email"]', loginEmail);
 await pro.click("text=Continue");
 await pro.waitForURL("**/library");
 await pro.click("text=I've saved it");

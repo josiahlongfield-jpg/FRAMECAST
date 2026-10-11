@@ -1,6 +1,7 @@
 // The reply box under a video: Enter sends a text reply (Shift+Enter is a new
 // line), and voice and video replies show the live microphone bar.
 import { chromium } from "@playwright/test";
+import { agreed } from "./agree.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 let failed = 0;
@@ -17,7 +18,9 @@ const ctx = await browser.newContext({ permissions: ["camera", "microphone"], vi
 const page = await ctx.newPage();
 
 await page.goto(BASE + "/record");
-await page.fill('input[name="email"]', `composer${Date.now()}@acme.com`);
+const loginEmail = `composer${Date.now()}@acme.com`;
+await agreed(loginEmail);
+await page.fill('input[name="email"]', loginEmail);
 await page.click("text=Continue");
 await page.waitForURL("**/record");
 await page.click("text=I've saved it");

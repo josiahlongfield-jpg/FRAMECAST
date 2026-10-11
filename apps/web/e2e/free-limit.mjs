@@ -6,6 +6,7 @@ import { chromium } from "@playwright/test";
 import crypto from "node:crypto";
 import { readFileSync } from "node:fs";
 import { PrismaClient } from "@prisma/client";
+import { agreed } from "./agree.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const shots = process.argv[2] ?? "/tmp";
@@ -22,6 +23,8 @@ const browser = await chromium.launch({
   args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"],
 });
 async function signIn(email, next, opts = {}) {
+  // Agreed to the current Terms and Privacy Policy, so signing in isn't stopped at /agree (e2e/agree.mjs).
+  await agreed(email);
   const page = await (await browser.newContext({ permissions: ["camera", "microphone"], viewport: { width: 1360, height: 900 }, ...opts })).newPage();
   await page.goto(`${BASE}/login?next=${next}`);
   await page.fill('input[name="email"]', email);

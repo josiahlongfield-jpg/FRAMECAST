@@ -18,6 +18,7 @@ import Stripe from "stripe";
 import { PrismaClient } from "@prisma/client";
 import { start, state, createSubscription } from "./fake-stripe.mjs";
 import { requests, startFakeAnthropic } from "./fake-anthropic.mjs";
+import { agreed } from "./agree.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const shots = process.argv[2] ?? "/tmp";
@@ -65,6 +66,8 @@ function stubTranscriber({ gpu = true, memory = 8 } = {}) {
 }
 
 async function signIn(context, email, next) {
+  // Agreed to the current Terms and Privacy Policy, so signing in isn't stopped at /agree (e2e/agree.mjs).
+  await agreed(email);
   const page = await context.newPage();
   await page.goto(`${BASE}/login?next=${next}`);
   await page.fill('input[name="email"]', email);

@@ -3,6 +3,7 @@
 import { chromium } from "@playwright/test";
 import { readdirSync, readFileSync } from "node:fs";
 import { PrismaClient } from "@prisma/client";
+import { passAgree } from "./agree.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const outbox = ".data/outbox";
@@ -42,6 +43,10 @@ ok("a link that isn't ours is refused", await (async () => {
 
 await page.goto(link);
 await page.click("[data-testid=confirm-sign-in]");
+// A new account agrees to the Terms of Service and Privacy Policy first (e2e/agree-gate.mjs), then carries on.
+await page.waitForURL((u) => u.pathname === "/agree", { timeout: 30000 });
+ok("a new account is asked to agree to the terms first", new URL(page.url()).searchParams.get("next") === "/clients");
+await passAgree(page);
 await page.waitForURL("**/clients");
 ok("link signs in and returns to the page asked for", true);
 

@@ -15,6 +15,7 @@ import { chromium } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
 import { startFakeHf, files, MODEL, REVISION, sha256, requests as hfRequests } from "./fake-hf.mjs";
 import { startFakeS3, objects, log as s3Log } from "./fake-s3.mjs";
+import { agreed } from "./agree.mjs";
 
 // The AI section starts collapsed; open it before using its buttons.
 async function openAi(page) {
@@ -42,6 +43,8 @@ const model = (p) => `${BASE}/models/${p}`;
 const prefix = `${MODEL}/${REVISION}/`;
 
 async function signIn(context, email, next) {
+  // Agreed to the current Terms and Privacy Policy, so signing in isn't stopped at /agree (e2e/agree.mjs).
+  await agreed(email);
   const page = await context.newPage();
   await page.goto(`${BASE}/login?next=${next}`);
   await page.fill('input[name="email"]', email);

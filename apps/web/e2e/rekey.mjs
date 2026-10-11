@@ -7,6 +7,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import Stripe from "stripe";
 import { PrismaClient } from "@prisma/client";
 import { start, state, createSubscription } from "./fake-stripe.mjs";
+import { agreed } from "./agree.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const shots = process.argv[2] ?? "/tmp";
@@ -29,6 +30,8 @@ const finiteDuration = (el) => new Promise((r) => {
   setTimeout(() => r(el.duration), 10000);
 });
 async function signIn(page, email, next) {
+  // Agreed to the current Terms and Privacy Policy, so signing in isn't stopped at /agree (e2e/agree.mjs).
+  await agreed(email);
   await page.goto(`${BASE}/login?next=${next}`);
   await page.fill('input[name="email"]', email);
   await page.click("text=Continue");
@@ -99,6 +102,7 @@ const staffCtx = await browser.newContext(perms);
 const staff = await staffCtx.newPage();
 await staff.goto(invite);
 await staff.click("text=Sign in to join");
+await agreed(`rk-staff${stamp}@example.com`);
 await staff.fill('input[name="email"]', `rk-staff${stamp}@example.com`);
 await staff.click("text=Continue");
 await staff.waitForURL((u) => u.pathname.startsWith("/join/"));
@@ -194,6 +198,7 @@ const invite2 = await (await owner.waitForSelector("[data-testid=invite-link]"))
 const leaver = await (await browser.newContext()).newPage();
 await leaver.goto(invite2);
 await leaver.click("text=Sign in to join");
+await agreed(`rk-leaver${stamp}@example.com`);
 await leaver.fill('input[name="email"]', `rk-leaver${stamp}@example.com`);
 await leaver.click("text=Continue");
 await leaver.waitForURL((u) => u.pathname.startsWith("/join/"));

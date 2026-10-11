@@ -8,6 +8,7 @@ import { chromium, devices } from "@playwright/test";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { execSync } from "node:child_process";
+import { agreed } from "./agree.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const shots = process.argv[2] ?? "/tmp";
@@ -27,6 +28,7 @@ const coach = await coachCtx.newPage();
 coach.on("console", (m) => m.type() === "error" && console.log("coach console:", m.text()));
 const email = `coach${Date.now()}@studio.com`;
 await coach.goto(BASE + "/record");
+await agreed(email);
 await coach.fill('input[name="email"]', email);
 await coach.click("text=Continue");
 await coach.waitForURL("**/record");

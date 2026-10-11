@@ -5,6 +5,7 @@
 import { chromium } from "@playwright/test";
 import { readdirSync, readFileSync, mkdirSync } from "node:fs";
 import { PrismaClient } from "@prisma/client";
+import { agreed } from "./agree.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const prisma = new PrismaClient();
@@ -30,6 +31,7 @@ const perms = { permissions: ["camera", "microphone", "clipboard-read", "clipboa
 const stamp = Date.now();
 const owner = await (await browser.newContext(perms)).newPage();
 await owner.goto(`${BASE}/login?next=/record`);
+await agreed(`fl-owner${stamp}@example.com`);
 await owner.fill('input[name="email"]', `fl-owner${stamp}@example.com`);
 await owner.click("text=Continue");
 await owner.waitForURL((u) => u.pathname === "/record");

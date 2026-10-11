@@ -7,6 +7,7 @@
 import { chromium, devices } from "@playwright/test";
 import { execSync } from "node:child_process";
 import { readdirSync, readFileSync, rmSync } from "node:fs";
+import { agreed } from "./agree.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const CRON = process.env.CRON_SECRET ?? "test-cron-secret";
@@ -38,7 +39,9 @@ const ctx = await browser.newContext({ permissions: ["clipboard-read", "clipboar
 const pro = await ctx.newPage();
 pro.on("console", (m) => m.type() === "error" && console.log("business console:", m.text()));
 await pro.goto(BASE + "/settings/reminders");
-await pro.fill('input[name="email"]', `trainer${Date.now()}@peak.com`);
+const loginEmail = `trainer${Date.now()}@peak.com`;
+await agreed(loginEmail);
+await pro.fill('input[name="email"]', loginEmail);
 await pro.click("text=Continue");
 await pro.waitForURL("**/settings/reminders");
 

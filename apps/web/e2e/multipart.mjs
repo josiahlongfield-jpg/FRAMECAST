@@ -1,10 +1,12 @@
 // API-level check of the resumable upload protocol: out-of-order parts,
 // a retried (duplicate) part, a missing-part rejection, then a clean finish.
 import { chromium } from "@playwright/test";
+import { agreed } from "./agree.mjs";
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM });
 const page = await browser.newPage();
 await page.goto(BASE + "/login");
+await agreed("api@acme.com");
 await page.fill('input[name="email"]', "api@acme.com");
 await page.click("text=Continue");
 await page.waitForURL("**/library");

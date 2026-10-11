@@ -2,6 +2,7 @@
 // Needs the app running with AUTH_DEV_LOGIN=true and SUPPORT_EMAIL=owner@test.dev.
 import { chromium } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
+import { agreed } from "./agree.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const prisma = new PrismaClient();
@@ -11,6 +12,8 @@ const ok = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"} ${name}`); i
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM });
 async function signIn(email, next) {
+  // Agreed to the current Terms and Privacy Policy, so signing in isn't stopped at /agree (e2e/agree.mjs).
+  await agreed(email);
   const page = await (await browser.newContext()).newPage();
   await page.goto(`${BASE}/login?next=${next}`);
   await page.fill('input[name="email"]', email);

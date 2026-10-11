@@ -2,6 +2,7 @@
 import { chromium } from "@playwright/test";
 import crypto from "node:crypto";
 import { PrismaClient } from "@prisma/client";
+import { agreed } from "./agree.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const ok = (label, cond, extra = "") => {
@@ -16,6 +17,7 @@ const ctx = await browser.newContext();
 const page = await ctx.newPage();
 const email = `sec${Date.now()}@example.com`;
 await page.goto(BASE + "/login?next=/library");
+await agreed(email);
 await page.fill('input[name="email"]', email);
 await page.click("text=Continue");
 await page.waitForURL((u) => u.pathname === "/library");
