@@ -44,8 +44,8 @@ export default function Page() {
       </p>
       <p>
         Information we handle for our own purposes isn&rsquo;t covered by this DPA: your account, sign-in, billing and support information, the information we use
-        to keep {LEGAL.product} secure, and the records we keep when we act under section 9 of the Terms (which can include, for example, the name of a client whose
-        link we turned off). We&rsquo;re the controller of that information, and our <Link href="/legal/privacy">privacy policy</Link> covers it.
+        to keep {LEGAL.product} secure, records of agreement to the Terms and our privacy policy, and the records we keep when we act under section 9 of the Terms
+        (which can include, for example, the name and email address of a client whose link we turned off). We&rsquo;re the controller of that information, and our <Link href="/legal/privacy">privacy policy</Link> covers it.
       </p>
 
       <h2>3. Details of the processing</h2>
@@ -152,11 +152,11 @@ export default function Page() {
         <li>Without cloud backup, recordings are deleted from our servers {LEGAL.retentionDays} days after they&rsquo;re recorded.</li>
         <li>
           When you remove a client, their link stops working straight away, and we delete their details and conversations {LEGAL.removedClientDays} days later,
-          unless you restore them first. Recordings you also sent to other clients stay with those clients.
+          even with cloud backup, unless you restore them first. Recordings you also sent to other clients stay with those clients.
         </li>
         <li>
           When you delete your account, we keep Customer Personal Data for {LEGAL.deletionGraceDays} days so you can reactivate it, then delete it. If we close your
-          account under section 9 of the Terms, we delete it {LEGAL.deletionGraceDays} days after closure.
+          account under section 9 of the Terms, we delete it {LEGAL.deletionGraceDays} days after closure. Either way, a legal hold (below) can keep it longer.
         </li>
         <li>
           If we need to keep Customer Personal Data longer because the law requires it, or for a legal claim or a report to the authorities (a legal hold, as
@@ -259,7 +259,7 @@ export default function Page() {
         </li>
         <li>
           <strong>Signature and date:</strong> both parties agree to this DPA, including the SCCs and the UK Addendum where they apply, when the data exporter
-          accepts the Terms, and that acceptance counts as signing it on that date.
+          accepts the Terms (by ticking the box we show, which we keep a record of), and that acceptance counts as signing it on that date.
         </li>
         <li>The rest of Annex I of the SCCs is completed by section 3 (description of the transfer) and section 13 (competent supervisory authority).</li>
       </ul>
@@ -290,12 +290,14 @@ export default function Page() {
         </li>
         <li>
           <strong>Access control:</strong> roles and permissions are checked by our servers on every request, and staff see only the clients assigned to them
-          unless an owner or admin allows more. Clients get access only through their secret personal link, which stops working if the business removes or pauses
-          them. Our support tools are limited to named accounts, and we record each action taken with them.
+          unless an owner or admin allows more. Clients get access only through their secret personal link, which stops working if the business removes them or
+          its plan no longer covers them, or if we turn the link off or suspend or close the business&rsquo;s account. Our support tools are limited to named
+          accounts, and we record each action taken with them.
         </li>
         <li>
           <strong>Sign-in:</strong> passwordless sign-in links that work once and expire after 24 hours, or Google (verified email addresses only). Sessions usually
-          end when the browser closes, and after 8 hours without use. Repeated attempts are rate-limited, and scheduled jobs need a secret to run.
+          end when the browser closes, and after 8 hours without use, and we can sign a login out on every device. Repeated attempts are rate-limited, and
+          scheduled jobs need a secret to run.
         </li>
         <li>
           <strong>Data minimisation:</strong> notification emails don&rsquo;t include video titles, replies or to-do text. Copies of recordings are deleted from our servers

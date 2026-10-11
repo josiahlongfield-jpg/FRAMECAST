@@ -9,10 +9,15 @@ export default function Page() {
   const mail = <a href={`mailto:${LEGAL.email}`}>{LEGAL.email}</a>;
   const freeVideos = PLANS.FREE.maxVideos;
   return (
-    <LegalPage title="Terms of Service">
+    <LegalPage title="Terms of Service" version={LEGAL.termsVersion}>
       <p>
-        {operatorLine()} (&ldquo;we&rdquo;, &ldquo;us&rdquo;). These terms apply when you use {LEGAL.product} at {LEGAL.website} (and in any apps we release). By creating an account
-        or using the service, you agree to them.
+        {operatorLine()} (&ldquo;we&rdquo;, &ldquo;us&rdquo;). These terms apply when you use {LEGAL.product} at {LEGAL.website} (and in any apps we release).
+      </p>
+      <p>
+        To use {LEGAL.product} with an account, you must agree to these terms and our <Link href="/legal/privacy">privacy policy</Link> by ticking the box we show
+        you, when you sign up and again whenever we update them (see section 18). We keep a record of each time you agree: when, which versions, and the email
+        address, IP address and browser you used. Until you agree, you can still sign out, download your data and delete your account, and a recording that was
+        already uploading still finishes, but you can&rsquo;t otherwise use {LEGAL.product}.
       </p>
 
       <h2>1. Who can use {LEGAL.product}</h2>
@@ -58,7 +63,10 @@ export default function Page() {
         <li>Keep client links private. Anyone with a client&rsquo;s link can see what was shared with that client.</li>
         <li>
           When you remove a client, their link stops working straight away. We keep their details and conversations for {LEGAL.removedClientDays} days in case you
-          restore them, then delete them for good, including your team&rsquo;s replies to them. Recordings you also sent to other clients stay with those clients.
+          restore them, then delete them for good, even with cloud backup, including the recordings sent only to them and your team&rsquo;s replies to them.
+          Recordings you also sent to other clients stay with those clients. We try to email the owner, and whoever removed them, about{" "}
+          {LEGAL.removedClientWarningDays} days before. You can choose to email the client that their access has ended; where the law requires you to tell them,
+          that&rsquo;s your responsibility. At your request, we can also restore a removed client, keep them for longer or delete them sooner (see section 9).
         </li>
         <li>
           Clients under 18 may use a client link only with a parent&rsquo;s or guardian&rsquo;s permission, which the business is responsible for getting.
@@ -121,7 +129,8 @@ export default function Page() {
         once it finishes uploading, whatever plan the workspace is on, so videos recorded on a paid or complimentary plan count too. Deleting a video, or its copy
         being deleted from our servers, doesn&rsquo;t give a place back. Replies, and sending a video to more clients, don&rsquo;t count. Once a Free workspace has
         used all {freeVideos}, it can&rsquo;t record new videos unless it moves to a paid plan, but its team can still watch videos, send existing videos to more
-        clients and reply. On the Free plan, your team&rsquo;s video and voice replies can be up to {PLANS.FREE.maxDurationMin} minutes long.
+        clients and reply. On the Free plan, your team&rsquo;s video and voice replies can be up to {PLANS.FREE.maxDurationMin} minutes long. We may correct the
+        count of videos your workspace has used (for example after a failed upload), and we&rsquo;ll usually tell the owner by email when we do.
       </p>
       <p>
         Clients of Free workspaces see a short {LEGAL.product} introduction before videos. We may change or end the Free plan with reasonable notice.
@@ -134,7 +143,7 @@ export default function Page() {
         stays on the device it was made on only until its upload finishes. To keep your own copy, open the video and choose Save
         to device. With cloud backup, content is kept until you delete it or your account is permanently deleted (see section 17). If cloud backup ends (you switch
         it off, cancel, or your paid plan ends), our copies are deleted {LEGAL.retentionDays} days later. Removing a client also deletes their conversations after{" "}
-        {LEGAL.removedClientDays} days (see section 4). We may pause these deletions where we need to keep information for legal reasons (see section 9). Please
+        {LEGAL.removedClientDays} days, even with cloud backup (see section 4). We may pause these deletions where we need to keep information for legal reasons (see section 9). Please
         keep your own copies of anything important.
       </p>
       <p>
@@ -192,31 +201,45 @@ export default function Page() {
       <h3>What each step does</h3>
       <ul>
         <li>
-          <strong>Suspending an account:</strong> your team can&rsquo;t use the workspace, apart from downloading its data and contacting support, and your
-          clients&rsquo; links show that your videos are unavailable for now. Reminders and other emails stop. Nothing is deleted, though recordings without cloud
-          backup still leave our servers on their usual schedule. A suspension lasts until we lift it or close the account. We may also suspend a single team
-          member&rsquo;s login in the same way.
+          <strong>Warning:</strong> we email you about the problem. Nothing in the account changes.
         </li>
         <li>
-          <strong>Turning off a client&rsquo;s link:</strong> the client can&rsquo;t open anything through their link and you can&rsquo;t send them anything, but
-          they keep their seat and nothing is deleted. For example, we might do this after a report under section 11.
+          <strong>Suspending an account:</strong> your team can&rsquo;t use the workspace, apart from getting help, downloading their data, switching to another
+          workspace they&rsquo;re on and, for the owner, managing or cancelling the subscription. Your clients&rsquo; links show that your videos are unavailable
+          for now, and nobody new can join the team. Reminders and other emails stop, and reminders that come due meanwhile aren&rsquo;t sent later. Nothing is
+          deleted because of a suspension, but the usual schedules carry on: recordings without cloud backup still leave our servers, and removed clients are
+          still deleted when their {LEGAL.removedClientDays} days end, unless there&rsquo;s a legal hold. A suspension lasts until we lift it or close the account.
+          We may also suspend a single team member&rsquo;s login in the same way: it can&rsquo;t use any workspace or join a team, and the rest of its team carries
+          on.
         </li>
         <li>
-          <strong>Closing an account:</strong> the account and the workspaces it owns are suspended straight away and can&rsquo;t be reactivated, unlike when you
-          delete your own account (section 17). If the owner has a team, the whole workspace is closed and its staff leave it, keeping their own logins. Any
-          subscription is cancelled straight away. We may also stop the account&rsquo;s email address being used to sign up again. The account, its workspaces and
-          their content are permanently deleted {LEGAL.deletionGraceDays} days after closure, unless the law requires us to keep them or they&rsquo;re on legal hold.
+          <strong>Turning off a client&rsquo;s link:</strong> the client sees that their link has been turned off and can&rsquo;t open or reply to anything through
+          it, and you can&rsquo;t send them anything, but they keep their seat and nothing is deleted. For example, we might do this after a report under section 11.
+        </li>
+        <li>
+          <strong>Closing an account:</strong> the account is signed out on every device, and it and the workspaces it owns (or is the only member of) are
+          suspended straight away. Unlike when you delete your own account (section 17), you can&rsquo;t keep or reactivate it by signing in. If the owner has a
+          team, the whole workspace is closed and its staff are taken off it, keeping their own logins. A closed login is also taken off any other team it&rsquo;s
+          on, and pending invites are cancelled. Any subscription is cancelled straight away. We may also stop the account&rsquo;s email address being used to sign
+          in or sign up again. The account, its workspaces and their content are permanently deleted {LEGAL.deletionGraceDays} days after closure (or on the date
+          already set, if you&rsquo;d already deleted your account), unless the law requires us to keep them or they&rsquo;re on legal hold. If a review finds we
+          got it wrong before then, we can reopen the account; a subscription we cancelled and staff taken off the team don&rsquo;t come back, so you would
+          subscribe and invite them again.
         </li>
         <li>
           <strong>Legal hold:</strong> where the law requires it, to deal with a legal claim, or for a report to the authorities, we may keep an account&rsquo;s
-          information and pause its automatic deletion (including the deletion of recordings and removed clients) until it&rsquo;s no longer needed.
+          information and pause all of its automatic deletion (including the deletion of recordings, unfinished uploads, removed clients and the account itself)
+          until it&rsquo;s no longer needed. While it lasts, the account isn&rsquo;t deleted, even if you delete it or ask us to. We may not tell you about a legal hold, for
+          example where it&rsquo;s for a report to the authorities. When it ends, anything already past its deletion date is deleted.
         </li>
       </ul>
       <p>
-        We also use these support tools to keep accounts secure, to correct errors and to act on your requests. For example, we can sign an account out on every
-        device, correct the number of Free plan videos used, re-check billing with our payment provider and re-apply plan limits, give a complimentary plan or
-        add-on, lift a block on an email address, restore a removed client, keep a removed client for longer or delete them sooner, and delete an account sooner or
-        cancel its deletion when its owner asks from the account&rsquo;s email address.
+        We also use these support tools to keep accounts secure, to correct errors and to act on requests. For example, we can sign a login out on every device;
+        correct the number of Free plan videos used; re-check a subscription with our payment provider and re-apply plan limits (which can pause or restore
+        clients and staff); give or end a complimentary plan or add-on; stop an email address being used to sign in or sign up, or lift that block; and reopen an
+        account we closed, after a review. When a business asks, we can restore a removed client (even beyond its plan&rsquo;s client seats, in which case the
+        newest clients over the limit are paused), keep a removed client for longer, or delete them sooner. When an account holder asks from the account&rsquo;s
+        email address, we can delete the account straight away, or cancel its scheduled deletion (except for an account we closed).
       </p>
 
       <h3>Telling you and asking for a review</h3>
@@ -250,8 +273,9 @@ export default function Page() {
 
       <h3>Records</h3>
       <p>
-        We keep a record of each of these actions, including those we take at your request: what we did, when, why and who did it. Our{" "}
-        <Link href="/legal/privacy">privacy policy</Link> explains how long we keep these records.
+        We keep a record of each of these actions, including those we take at your request: what we did, when, why, who did it, and the account, workspace,
+        client or email address it was about, as named at the time. Our <Link href="/legal/privacy">privacy policy</Link> explains how long we keep these
+        records.
       </p>
       <p>Nothing in this section limits your rights under the Australian Consumer Law (see section 15).</p>
 
@@ -319,16 +343,20 @@ export default function Page() {
 
       <h2>17. Closing your account</h2>
       <p>
-        You can delete your account at any time in Settings &gt; Account. It&rsquo;s closed straight away: you&rsquo;re signed out on every device, your
-        clients&rsquo; links stop working, reminders and other emails stop, and your plan won&rsquo;t renew. We email you to confirm, and again shortly before
-        it&rsquo;s deleted.
+        You can delete your account at any time in Settings &gt; Account, including before you&rsquo;ve agreed to an updated version of these terms. It&rsquo;s
+        closed straight away: you&rsquo;re signed out on every device, your clients&rsquo; links stop working, reminders and other emails stop (reminders that
+        come due while it&rsquo;s closed aren&rsquo;t sent later), pending team invites are cancelled, and your plan won&rsquo;t renew. A paid-up plan stays
+        until the end of the period you&rsquo;ve paid for, as when you cancel; a subscription with a payment outstanding is cancelled straight away. We email you
+        to confirm, and again about {LEGAL.deletionWarningDays} days before it&rsquo;s deleted.
       </p>
       <p>
         We keep your workspace and content for {LEGAL.deletionGraceDays} days in case you change your mind: sign in within that time to reactivate your account
-        with everything as it was, except that recordings without cloud backup still leave our servers on their usual schedule. If your paid period ends during
-        those days, your workspace moves to the Free plan, and you can subscribe again after reactivating. After {LEGAL.deletionGraceDays} days, your account,
-        workspace and content are permanently deleted and can&rsquo;t be recovered, so save anything you want to keep first: save videos from each video&rsquo;s
-        page (text in the data export stays encrypted). To have your account deleted sooner, email {mail} from your account&rsquo;s email address.
+        with everything as it was, except that recordings without cloud backup still leave our servers on their usual schedule, and removed clients whose{" "}
+        {LEGAL.removedClientDays} days end meanwhile are still deleted. A browser that was still signed in when you deleted your account can&rsquo;t reactivate
+        it: sign in again first. If your paid period ends during those days, your workspace moves to the Free plan, and you can subscribe again after
+        reactivating. After {LEGAL.deletionGraceDays} days, your account, workspace and content are permanently deleted and can&rsquo;t be recovered, so save
+        anything you want to keep first: save videos from each video&rsquo;s page (text in the data export stays encrypted). To have your account deleted sooner,
+        or to cancel the deletion before the date if you can&rsquo;t sign in, email {mail} from your account&rsquo;s email address.
       </p>
       <p>
         If you own a workspace with staff, remove them first. If you&rsquo;re on someone else&rsquo;s team, deleting your account takes you off that team straight
@@ -338,9 +366,15 @@ export default function Page() {
 
       <h2>18. Changes to these terms</h2>
       <p>
-        We may update these terms. If a change is significant, we&rsquo;ll email you at least 30 days before it takes effect. Continuing to use {LEGAL.product} after
-        that means you accept the new terms. If you already have an account, we may also ask you to review and accept updated terms in the app. If you don&rsquo;t
-        agree to a change, you can stop using {LEGAL.product} and delete your account before it takes effect (see section 17).
+        We may update these terms. If a change is significant, we&rsquo;ll email you at least 30 days before it takes effect. When we update them, we&rsquo;ll ask
+        you to read the new version and agree to it by ticking the box before you carry on using {LEGAL.product}, and we keep a record of your agreement (see the
+        start of these terms). Continuing to use {LEGAL.product} after agreeing to an updated version means that version applies. If you don&rsquo;t agree to a
+        change, don&rsquo;t tick the box: you can stop using {LEGAL.product}, and you can still download your data and delete your account (see section 17). If you
+        use {LEGAL.product} only as a client, through a business&rsquo;s link, the version published here when you use it applies.
+      </p>
+      <p>
+        Each version has a number, shown at the top. Earlier versions are listed in our <Link href="/legal/archive">archive of versions</Link>, and we&rsquo;ll
+        send you a copy of any of them if you ask.
       </p>
 
       <h2>19. Disputes</h2>

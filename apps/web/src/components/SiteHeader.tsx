@@ -9,7 +9,8 @@ export default async function SiteHeader() {
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
         <Logo />
         <nav className="flex items-center gap-1 text-sm sm:gap-4">
-          <Link href="/pricing" className="whitespace-nowrap rounded-lg px-2 py-2 text-slate-600 hover:text-slate-900 sm:px-3">Pricing</Link>
+          {/* Left to the footer on the narrowest phones (under 360px), so the bar never scrolls sideways. */}
+          <Link href="/pricing" className="whitespace-nowrap rounded-lg px-2 py-2 text-slate-600 hover:text-slate-900 max-[359px]:hidden sm:px-3">Pricing</Link>
           {signedIn ? (
             <Link href="/library" className="whitespace-nowrap rounded-lg px-2 py-2 text-slate-600 hover:text-slate-900 sm:px-3">Library</Link>
           ) : (

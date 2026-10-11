@@ -7,7 +7,7 @@ export const metadata = { title: "Privacy Policy" };
 export default function Page() {
   const mail = <a href={`mailto:${LEGAL.email}`}>{LEGAL.email}</a>;
   return (
-    <LegalPage title="Privacy Policy">
+    <LegalPage title="Privacy Policy" version={LEGAL.privacyVersion}>
       <p>
         {operatorLine()} (&ldquo;we&rdquo;, &ldquo;us&rdquo;). This policy explains what personal information we collect when you use {LEGAL.product}, why, and what
         choices you have. We handle personal information in line with the Australian Privacy Principles in the Privacy Act 1988 (Cth). Where they apply, we also
@@ -27,7 +27,10 @@ export default function Page() {
 
       <h2>What we collect</h2>
       <ul>
-        <li><strong>Account details:</strong> your name, email address, business name, branding and settings.</li>
+        <li>
+          <strong>Account details:</strong> your name, email address, business name, branding and settings, and how many videos your workspace has recorded
+          (for the Free plan&rsquo;s limit).
+        </li>
         <li>
           <strong>Team details:</strong> for businesses with staff, each team member&rsquo;s name, email address and role, which clients they look after, what
           they&rsquo;re allowed to see and do, and their own email and reminder settings (such as a reply-to address for their clients). Reminders that owners and admins send to staff are stored and emailed as written, so
@@ -55,8 +58,22 @@ export default function Page() {
         </li>
         <li>
           <strong>Support and safety records:</strong> when we act on an account through our support tools (for example a warning, a suspension, turning off a
-          client&rsquo;s link, closing an account or correcting a plan), we record what we did, when, why and who did it. If we close an account for breaking our
-          terms, we may also keep a one-way fingerprint (a hash) of its email address so it can&rsquo;t be used to sign up again.
+          client&rsquo;s link, closing an account, blocking an email address, deleting an account at its holder&rsquo;s request or correcting a plan), we record
+          what we did, when, why and who did it. The record names who or what it was about as they were at the time, such as the login&rsquo;s email address, the
+          workspace&rsquo;s name with its owner&rsquo;s email address, a client&rsquo;s name and email address, or the email address blocked. It also notes the
+          changes made (including to billing) and whether we emailed anyone about it. When we delete an account at its holder&rsquo;s request, the record also
+          keeps details that show the account existed and was deleted: when it was created, its workspaces&rsquo; names and plans, and its references with our
+          payment provider.
+        </li>
+        <li>
+          <strong>Blocked email addresses:</strong> if we block an email address from being used with {LEGAL.product} (usually when we close an account for
+          breaking our terms), we keep a one-way fingerprint (a hash) of the address, with the reason, the date, who blocked it and the account it came from, so it
+          can&rsquo;t be used to sign in or sign up again.
+        </li>
+        <li>
+          <strong>Records of agreement:</strong> each time you agree to our Terms of Service and this policy, we record which versions you agreed to, when, the
+          email address on your account at the time, your IP address and browser, the version of {LEGAL.product} that showed them to you, and whether it was when
+          you signed up or for an update.
         </li>
       </ul>
 
@@ -65,11 +82,14 @@ export default function Page() {
         <li>
           To provide {LEGAL.product}: storing and delivering your videos, and sending client links, reminders, sign-in emails, team emails (such as a client
           replying, or a staff member sending videos), a warning before a recording is deleted from our servers, and notices about accounts, such as when a
-          client&rsquo;s access ends, before a removed client or a deleted account is deleted for good, or when we take action on an account.
+          client&rsquo;s access ends, about {LEGAL.removedClientWarningDays} days before a removed client is deleted for good, about{" "}
+          {LEGAL.deletionWarningDays} days before an account you deleted is deleted for good, when an account is closed, kept or deleted, or when we take action
+          on an account.
         </li>
         <li>To bill you and manage your subscription.</li>
         <li>To answer support requests.</li>
         <li>To keep the service secure, prevent misuse, enforce our terms (including suspending or closing accounts that break them) and meet our legal obligations.</li>
+        <li>To keep evidence that you agreed to our Terms of Service and this policy, in case there&rsquo;s ever a dispute or legal claim about them.</li>
         <li>To tell you about important changes to the service. We&rsquo;ll only send marketing emails if you&rsquo;ve agreed to them, and you can opt out at any time.</li>
       </ul>
       <p>
@@ -101,7 +121,7 @@ export default function Page() {
 
       <h2>Our AI support assistant</h2>
       <p>
-        The help chat is answered first by an AI assistant provided by Anthropic. Your messages, and for signed-in customers a summary of your plan and usage, are sent
+        The help chat is answered first by an AI assistant provided by Anthropic. Your messages, and for signed-in customers a summary of your plan, usage and account status, are sent
         to Anthropic to generate replies. The assistant can&rsquo;t see your videos, replies, to-dos or notes. Anything it can&rsquo;t resolve is passed to a person on our
         team, who can read the conversation. Please don&rsquo;t share passwords, recovery keys or card numbers in the chat. We don&rsquo;t use your content or chats to train AI models, and Anthropic doesn&rsquo;t use them to train its models either.
       </p>
@@ -177,41 +197,62 @@ export default function Page() {
           don&rsquo;t rely on that email alone.
         </li>
         <li>
-          With cloud backup, encrypted content is kept until you delete it or your account is permanently deleted. If cloud backup ends (you switch it off, cancel,
-          or your paid plan ends), our copies are deleted {LEGAL.retentionDays} days later.
+          With cloud backup, encrypted content is kept until you delete it, the client it was sent to is removed and then deleted (see below), or your account is
+          permanently deleted. If cloud backup ends (you switch it off, cancel, or your paid plan ends), our copies are deleted {LEGAL.retentionDays} days later.
         </li>
         <li>Text replies, to-dos and notes are kept until they&rsquo;re deleted, the client they belong to is deleted (see below), or the account is permanently deleted.</li>
         <li>
           When a business removes a client, the client&rsquo;s personal link stops working straight away. We keep the client&rsquo;s details and conversations for{" "}
-          {LEGAL.removedClientDays} days in case the business restores them, then delete them for good: the client&rsquo;s name and email address, their to-dos
-          and notes, and their conversations, including the team&rsquo;s replies in them. Recordings the business also sent to other clients stay with those clients.
+          {LEGAL.removedClientDays} days in case the business restores them, then delete them for good, even with cloud backup: the client&rsquo;s name and email
+          address, the recordings sent only to them, their to-dos and notes, and their conversations, including the team&rsquo;s replies in them. Recordings the
+          business also sent to other clients stay with those clients. We try to email the business about {LEGAL.removedClientWarningDays} days before. At the
+          business&rsquo;s request, we can restore a removed client, keep them for longer, or delete them sooner.
         </li>
-        <li>Support chats are kept for as long as we need them to help you, and we delete them if you ask.</li>
+        <li>
+          Support chats are kept for as long as we need them to help you, and we delete them if you ask. They aren&rsquo;t deleted automatically when an account is
+          deleted.
+        </li>
         <li>
           Records of team emails (who was told about which reply or video) are deleted about 30 days after the email is sent. Reminders sent to staff are kept
           with the account as a history for owners and admins.
         </li>
         <li>
           Account details are kept while your account is open. When you delete your account, it&rsquo;s closed straight away: you&rsquo;re signed out on every
-          device, your clients&rsquo; links stop working and your plan won&rsquo;t renew. You then have {LEGAL.deletionGraceDays} days to change your mind: sign in
-          within that time to reactivate your account, with your workspace and content as they were, except that recordings without cloud backup still leave our
-          servers on their usual schedule. After {LEGAL.deletionGraceDays} days we permanently delete your account, workspace and content. If you&rsquo;re on
-          someone else&rsquo;s team, deleting your account takes you off that team straight away, and the recordings and replies you made for it stay with the team.
-        </li>
-        <li>If we close an account under our terms, we permanently delete the account, its workspaces and their content {LEGAL.deletionGraceDays} days later.</li>
-        <li>
-          Records of support actions on an account (what we did, when and why) are kept for {LEGAL.supportRecordYears} years, even after the account is deleted, so
-          we can deal with legal claims and repeated abuse.
+          device, your clients&rsquo; links stop working, emails in your business&rsquo;s name stop, pending team invites are cancelled and your plan won&rsquo;t
+          renew. You then have {LEGAL.deletionGraceDays} days to change your mind: sign in within that time to reactivate your account, with your workspace and
+          content as they were, except that recordings without cloud backup still leave our servers on their usual schedule and removed clients whose{" "}
+          {LEGAL.removedClientDays} days end in the meantime are still deleted. We email you a reminder about {LEGAL.deletionWarningDays} days before the date.
+          After {LEGAL.deletionGraceDays} days we permanently delete your account, workspace and content, and ask our payment provider to delete your customer
+          record and saved cards. If you&rsquo;re on someone else&rsquo;s team, deleting your account takes you off that team straight away, and the recordings and replies you
+          made for it stay with the team.
         </li>
         <li>
-          If we close an account for breaking our terms, we may keep a one-way fingerprint (a hash) of its email address for as long as we need to stop that address
-          being used to sign up again.
+          If we close an account under our terms, we permanently delete the account, its workspaces and their content {LEGAL.deletionGraceDays} days later, unless
+          we need to keep them for legal reasons (see the last point below).
+        </li>
+        <li>
+          After an account is deleted, some records stay, as described here: billing records, support chats until you ask us to delete them, records of support
+          actions and of agreement, and a blocked address&rsquo;s fingerprint. Our providers&rsquo; logs and backups, and our payment provider&rsquo;s own records,
+          are kept on their own schedules.
+        </li>
+        <li>
+          Records of support actions on an account are kept for {LEGAL.supportRecordYears} years, even after the account is deleted, so we can deal with legal
+          claims and repeated abuse. They include the email addresses and names they were about (see What we collect).
+        </li>
+        <li>
+          Records of agreement to our Terms of Service and this policy are kept for {LEGAL.agreementRecordYears} years after each agreement, even after the account
+          is deleted, as evidence of the agreement if there&rsquo;s ever a dispute or legal claim.
+        </li>
+        <li>
+          A blocked email address&rsquo;s fingerprint is kept for as long as we need to stop that address being used again, until we lift the block. The record
+          of blocking it, which includes the address itself, is a support record and is kept for {LEGAL.supportRecordYears} years.
         </li>
         <li>IP addresses we count to limit repeated attempts (for example at sign-in) are deleted within about two days.</li>
         <li>We keep billing records for as long as tax law requires, usually 5 years.</li>
         <li>
-          We may keep information for longer than described here, and pause its automatic deletion, where the law requires it, to deal with a legal claim, or for a
-          report to the authorities. We delete it once it&rsquo;s no longer needed for that.
+          We may keep information for longer than described here, and pause its automatic deletion (a legal hold), where the law requires it, to deal with a legal
+          claim, or for a report to the authorities. We delete it once it&rsquo;s no longer needed for that: anything already past its deletion date is then
+          deleted.
         </li>
       </ul>
 
@@ -219,7 +260,8 @@ export default function Page() {
       <p>We only use cookies needed to run {LEGAL.product}:</p>
       <ul>
         <li>
-          <strong>Sign-in cookie:</strong> keeps you signed in to your account.
+          <strong>Sign-in cookie:</strong> keeps you signed in to your account. It holds your account&rsquo;s id and when you signed in, so a sign-in from before
+          you closed your account, or before we signed your account out everywhere, no longer works.
         </li>
         <li>
           <strong>Sign-in security cookies:</strong> short-lived cookies our sign-in system uses to protect the sign-in process, for example against forged requests.
@@ -235,6 +277,10 @@ export default function Page() {
           <strong>Client link cookie:</strong> remembers a client&rsquo;s personal link on their device for up to a year, so they can get back to
           their videos without an account.
         </li>
+        <li>
+          <strong>fc_removed:</strong> set for 10 minutes after opening a client link that no longer opens anything (access ended, the link was turned off, or
+          the business&rsquo;s account is closed or unavailable), so the page can say why. It holds that link&rsquo;s code and gives no access.
+        </li>
       </ul>
       <p>
         We also use your browser&rsquo;s storage to hold your encryption keys and recordings that haven&rsquo;t finished uploading, a link back to your help chat so
@@ -247,8 +293,9 @@ export default function Page() {
       <ul>
         <li>You can view and update your account details in Settings.</li>
         <li>
-          You can export your data, or delete your account, from Settings &gt; Account. After you delete it, you have {LEGAL.deletionGraceDays} days to change
-          your mind. If you&rsquo;d like it deleted sooner, email {mail} from your account&rsquo;s email address.
+          You can export your data, or delete your account, from Settings &gt; Account, including before you&rsquo;ve agreed to an updated version of our terms
+          or this policy. After you delete it, you have {LEGAL.deletionGraceDays} days to change your mind. If you&rsquo;d like it deleted sooner, or to cancel
+          the deletion before the date, email {mail} from your account&rsquo;s email address.
         </li>
         <li>You can ask us for a copy of the personal information we hold about you, or ask us to correct it, by emailing {mail}.</li>
         <li>Clients can turn off emails from a business (reminders and new-video emails) from the link in any of them.</li>
@@ -262,7 +309,14 @@ export default function Page() {
       </p>
       <p>
         If a business removes you as a client, your link stops working straight away, and the business may email you to let you know. Your details and
-        conversations with that business are deleted for good {LEGAL.removedClientDays} days later, unless the business restores your access before then.
+        conversations with that business are deleted for good {LEGAL.removedClientDays} days later, unless the business restores your access before then. The
+        business can also ask us to restore your access, keep your details for longer, or delete them sooner.
+      </p>
+      <p>
+        If a business deletes its {LEGAL.product} account, your link stops working and says the business has closed its account. Your details and conversations
+        with that business are deleted with its account {LEGAL.deletionGraceDays} days later, unless it keeps its account before then. If we suspend or close a
+        business&rsquo;s account, or turn off your link, your link stops working and says the videos are unavailable or that the link has been turned off. When we
+        close a business&rsquo;s account, your details and conversations with it are deleted with that account.
       </p>
 
       <h2>Security</h2>
@@ -294,8 +348,8 @@ export default function Page() {
         </li>
         <li>
           <strong>For our own purposes:</strong> we&rsquo;re the controller of account holders&rsquo; account, sign-in and billing details, help chat and support
-          conversations, support and safety records (including email fingerprints kept to stop closed accounts signing up again), and the technical information we
-          use to keep {LEGAL.product} secure for everyone who uses it, including clients.
+          conversations, support and safety records (including email fingerprints kept to stop closed accounts signing up again), records of agreement to our
+          terms and this policy, and the technical information we use to keep {LEGAL.product} secure for everyone who uses it, including clients.
         </li>
         <li>
           <strong>Others:</strong> Link and Stripe are separate controllers for the payment and tax details they collect at checkout. Google is a separate controller
@@ -306,14 +360,15 @@ export default function Page() {
       <h3>Our legal bases</h3>
       <ul>
         <li>
-          <strong>Contract:</strong> to create and run your account, provide {LEGAL.product}, bill you and answer your support requests. We need your email address to
-          create an account; without it we can&rsquo;t provide the service.
+          <strong>Contract:</strong> to create and run your account, provide {LEGAL.product}, bill you, answer your support requests and record that you&rsquo;ve
+          agreed to our terms. We need your email address to create an account; without it we can&rsquo;t provide the service.
         </li>
         <li>
           <strong>Legitimate interests:</strong> to keep {LEGAL.product} secure, prevent misuse and enforce our terms (for example sign-in protection, limits on
           repeated attempts, suspending or closing accounts and turning off links that break our terms, keeping records of those actions, and stopping closed
-          accounts signing up again), to deal with legal claims, to fix problems, to answer the help chat with our AI assistant, and to tell you about important
-          changes. We&rsquo;ve weighed these against your rights and use as little information as we can for them.
+          accounts signing up again), to keep records of agreement to our terms and this policy as evidence if there&rsquo;s a dispute or legal claim (for{" "}
+          {LEGAL.agreementRecordYears} years, including after an account is deleted), to deal with legal claims, to fix problems, to answer the help chat with our
+          AI assistant, and to tell you about important changes. We&rsquo;ve weighed these against your rights and use as little information as we can for them.
         </li>
         <li>
           <strong>Legal obligation:</strong> to keep tax and business records, to keep information when the law requires it, and to respond to lawful requests from
@@ -334,8 +389,8 @@ export default function Page() {
         You can ask us to give you a copy of the personal information we hold about you, correct it, delete it, restrict how we use it, or send it to you or another
         provider in a machine-readable format (account holders can also download a copy from Settings &gt; Account). You can also object to our use of it based on
         legitimate interests. Email {mail}. We&rsquo;ll reply within one month, or tell you within that time if a complex request needs up to two more months, and we
-        may need to confirm your identity first. Some rights have legal limits; for example, we may need to keep billing records, or records of action we&rsquo;ve
-        taken on an account. Because content is end-to-end encrypted, we can&rsquo;t read or search it to answer a request: the business, or you for your own
+        may need to confirm your identity first. Some rights have legal limits; for example, we may need to keep billing records, records of action we&rsquo;ve
+        taken on an account, or records of your agreement to our terms. Because content is end-to-end encrypted, we can&rsquo;t read or search it to answer a request: the business, or you for your own
         account, can see, export and delete it in the app.
       </p>
 
@@ -369,7 +424,11 @@ export default function Page() {
       </p>
 
       <h2>Changes</h2>
-      <p>We&rsquo;ll update this page when our practices change, and tell you by email about significant changes.</p>
+      <p>
+        We&rsquo;ll update this page when our practices change, and tell you by email about significant changes. When we update it, we ask account holders to
+        read and agree to the new version before carrying on, and we keep a record of that. Each version has a number, shown at the top. Earlier versions are
+        listed in our <Link href="/legal/archive">archive of versions</Link>, and we&rsquo;ll send you a copy of any of them if you ask.
+      </p>
 
       <h2>Contact and complaints</h2>
       <p>
