@@ -38,8 +38,8 @@ export const POST = handle(async (req: Request) => {
     if (limit !== null) {
       // Counted under a lock so two recordings started at once can't both take the last place.
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"videos:" + workspace.id}))`;
-      const { used, uploading } = await videosUsed(workspace.id, tx);
-      if (used >= limit) throw new HttpError(402, videoLimitMessage(PLANS[workspace.plan].name, limit, uploading));
+      const { used, uploading, oldRule } = await videosUsed(workspace.id, tx);
+      if (used >= limit) throw new HttpError(402, videoLimitMessage(PLANS[workspace.plan].name, limit, uploading, oldRule));
     }
     const uploadId = await storage().begin(storageKey, body.data.mimeType);
     return tx.video.create({

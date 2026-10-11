@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import type { Membership, Role, User } from "@prisma/client";
 import { db, type Workspace } from "@/lib/db";
-import { hasAgreed, TERMS_REQUIRED } from "@/lib/terms";
+import { hasAgreed, noticePeriod, TERMS_REQUIRED } from "@/lib/terms";
 
 /** Shown to staff the plan no longer covers (lib/seatLimits.ts). */
 export const STAFF_PAUSED = "Your access to this team is paused because its plan changed. Ask the owner to restore it.";
@@ -36,7 +36,9 @@ export class HttpError extends Error {
  * here, flagged `suspended`, so the suspended page, help chat and data
  * download work; requireUser and requirePageUser keep it out of everything else.
  * So does someone who hasn't agreed to the current Terms and Privacy Policy
- * (`agreed` false, lib/terms.ts), until they do on /agree.
+ * (`agreed` false, lib/terms.ts), until they do on /agree. An existing account
+ * holder in the notice period of new versions counts as agreed meanwhile, with
+ * `termsNotice` set for the banner asking them to agree.
  */
 export const currentUser = cache(async () => {
   const session = await auth();
@@ -49,7 +51,9 @@ export const currentUser = cache(async () => {
     include: { memberships: { include: { workspace: true }, orderBy: { id: "asc" } } },
   });
   if (!user || user.deleteAt) return null;
-  const agreed = await hasAgreed(userId);
+  const agreedNow = await hasAgreed(userId);
+  const termsNotice = agreedNow ? null : await noticePeriod(user);
+  const agreed = agreedNow || !!termsNotice;
   // The workspace they last joined or switched to, else their first one they can still use.
   const membership =
     user.memberships.find((m) => m.workspaceId === user.activeWorkspaceId) ??
@@ -59,7 +63,7 @@ export const currentUser = cache(async () => {
   if (membership) {
     const { workspace, ...m } = membership;
     // Staff over the plan's limits (lib/seatLimits.ts) can't use the team until restored.
-    return { user, workspace, role: membership.role, membership: m as Membership, paused: !!membership.pausedAt, suspended: suspensionOf(user, workspace), agreed };
+    return { user, workspace, role: membership.role, membership: m as Membership, paused: !!membership.pausedAt, suspended: suspensionOf(user, workspace), agreed, termsNotice };
   }
   // One at a time per user, so two tabs opening at once can't make two personal workspaces.
   const made = await db.$transaction(async (tx) => {
@@ -77,7 +81,7 @@ export const currentUser = cache(async () => {
     return { ...members[0], workspace: ws };
   });
   const { workspace, ...m } = made;
-  return { user, workspace, role: m.role, membership: m as Membership, paused: !!m.pausedAt, suspended: suspensionOf(user, workspace), agreed };
+  return { user, workspace, role: m.role, membership: m as Membership, paused: !!m.pausedAt, suspended: suspensionOf(user, workspace), agreed, termsNotice };
 });
 
 /** Throws unless the signed-in member has one of the given roles. */

@@ -8,8 +8,10 @@
 // Needs the app running with AUTH_DEV_LOGIN=true, SUPPORT_EMAIL=owner@test.dev (the support admin), local file
 // storage, no RESEND_API_KEY and CRON_SECRET (the usual test env).
 import { chromium } from "@playwright/test";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { PrismaClient } from "@prisma/client";
 import { PRIVACY_VERSION, TERMS_VERSION } from "./agree.mjs";
+import { start as startStripe, state as stripeState } from "./fake-stripe.mjs";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";
 const CRON = process.env.CRON_SECRET ?? "test-cron-secret";
@@ -48,6 +50,8 @@ async function visit(page, p, lands) {
 const noSideways = (page) => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1);
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM });
+// The billing portal (managing or cancelling a subscription works before agreeing) talks to the fake Stripe.
+const stripeServer = await startStripe();
 /** Dev login, without agreeing to anything: waits until it lands on `lands` (or gives up and leaves it where it is). */
 async function signIn(email, next = "/library", { lands = "/agree", viewport = { width: 1280, height: 900 } } = {}) {
   const page = await (await browser.newContext({ viewport })).newPage();
@@ -62,6 +66,14 @@ async function signIn(email, next = "/library", { lands = "/agree", viewport = {
   await page.waitForLoadState("networkidle").catch(() => {});
   return page;
 }
+/** The notice of the current versions went out more than 30 days ago, so they're in effect for this existing account holder. */
+const noticeOver = (userId, email) =>
+  prisma.termsNotice.upsert({
+    where: { userId_termsVersion_privacyVersion: { userId, termsVersion: TERMS_VERSION, privacyVersion: PRIVACY_VERSION } },
+    update: { sentAt: new Date(Date.now() - 31 * D) },
+    create: { userId, email, termsVersion: TERMS_VERSION, privacyVersion: PRIVACY_VERSION, sentAt: new Date(Date.now() - 31 * D) },
+  });
+const outbox = () => (existsSync(".data/outbox") ? readdirSync(".data/outbox").map((f) => JSON.parse(readFileSync(`.data/outbox/${f}`, "utf8"))) : []);
 const tickAndAgree = async (page) => {
   await page.check("[data-testid=agree-checkbox]");
   await page.click("[data-testid=agree-submit]");
@@ -85,6 +97,7 @@ ok("the box says what it means", norm(await fresh.textContent("label:has([data-t
 ok("Agree is off until it's ticked", await fresh.isDisabled("[data-testid=agree-submit]"));
 ok("a Sign out button", (await fresh.locator("button:text-is('Sign out')").count()) === 1);
 ok("a way to download data or delete the account instead", (await fresh.getAttribute("[data-testid=agree-account]", "href")) === "/settings/account");
+ok("which says the subscription can be cancelled there too", norm(await fresh.textContent("[data-testid=agree-account]")).includes("manage or cancel your subscription"));
 ok("fits a phone", await noSideways(fresh));
 await fresh.screenshot({ path: `${shots}/agree-new-phone.png`, fullPage: true });
 
@@ -134,6 +147,7 @@ ok("agreeing twice records nothing more", (await rows(newUser.id)).length === 1)
 
 // ---- A version change: an existing account holder is asked again, as an update -----------------------------
 await prisma.termsAcceptance.create({ data: { userId: newUser.id, email: newEmail, termsVersion: "2026-01-01", privacyVersion: "2026-01-01", method: "signup" } });
+await noticeOver(newUser.id, newEmail);
 await visit(fresh, "/clients", "/agree");
 ok("a newer agreement to older versions: sent back to /agree", path(fresh) === "/agree", fresh.url());
 ok("heading: We've updated our Terms of Service and Privacy Policy", norm(await fresh.textContent("[data-testid=agree-heading]")) === "We’ve updated our Terms of Service and Privacy Policy");
@@ -148,12 +162,46 @@ ok("and carries on", path(fresh) === "/clients");
 // An account from before agreements were recorded, with no record at all: also an update.
 const oldEmail = `agree-old${stamp}@example.com`;
 const oldUser = await prisma.user.create({ data: { email: oldEmail, name: "Old Timer", createdAt: new Date("2026-01-15T00:00:00Z") } });
-const old = await signIn(oldEmail, "/library");
-ok("an older account with no record lands on /agree", path(old) === "/agree");
+// Notice first (Terms section 18): until it has been emailed, and for 30 days after, it carries on as before.
+const old = await signIn(oldEmail, "/library", { lands: "/library" });
+ok("notice period: an existing account isn't sent to /agree before it's been told", path(old) === "/library", old.url());
+ok("notice period: the API works meanwhile", (await api(old, "GET", "/api/clients")).status === 200);
+ok("notice period: a banner asks them to agree", (await old.locator("[data-testid=terms-notice] a[href='/agree']").count()) === 1);
+const purgeRun = await cron("purge");
+const noticeRow = await prisma.termsNotice.findUnique({ where: { userId_termsVersion_privacyVersion: { userId: oldUser.id, termsVersion: TERMS_VERSION, privacyVersion: PRIVACY_VERSION } } });
+const effective = new Intl.DateTimeFormat("en-US", { dateStyle: "long", timeZone: "UTC" }).format(new Date((noticeRow?.sentAt?.getTime() ?? 0) + 30 * D));
+const noticeMail = outbox().find((m) => m.to === oldEmail && m.subject === "We're updating our Terms of Service and Privacy Policy");
+ok("notice: the daily job emails existing account holders once, and records it", typeof purgeRun.termsNotices === "number" && purgeRun.termsNotices >= 1 && !!noticeRow && !!noticeMail, JSON.stringify(purgeRun));
+ok("notice: gives the date they apply (30 days on), the changes and links", !!noticeMail && norm(noticeMail.text).includes(`The new versions apply to you from ${effective}`) && noticeMail.text.includes("25 videos in total") && noticeMail.text.includes("/legal/terms") && noticeMail.text.includes("/legal/privacy") && noticeMail.text.includes("cancel your subscription"), noticeMail?.text);
+await cron("purge");
+ok("notice: not sent twice", outbox().filter((m) => m.to === oldEmail && m.subject === "We're updating our Terms of Service and Privacy Policy").length === 1);
+await visit(old, "/library", "/library");
+ok("notice period: the banner gives the date", norm(await old.textContent("[data-testid=terms-notice]").catch(() => "")).includes(`they apply to you from ${effective}`));
+// Meanwhile the Free plan counts as it did: deleting a video frees a place. The 25-in-total count carries on underneath.
+const oldWs = (await prisma.membership.findFirst({ where: { userId: oldUser.id } })).workspaceId;
+const ofp = "o".repeat(32), owrap = "w".repeat(44);
+await prisma.workspace.update({ where: { id: oldWs }, data: { keyFingerprint: ofp, videosRecorded: 30 } });
+await prisma.video.createMany({ data: Array.from({ length: 25 }, (_, i) => ({ id: `ag${stamp.toString(36)}o${i}`, mimeType: "video/webm", storageKey: `test/${stamp}/old-${i}`, status: "UPLOADED", workspaceId: oldWs, ownerId: oldUser.id })) });
+const oldStart = () => api(old, "POST", "/api/videos", { mimeType: "video/webm", teamKeyWrap: owrap, keyFingerprint: ofp });
+r = await oldStart();
+ok("notice period: the old Free rule (25 videos kept at a time)", r.status === 402 && r.body?.error === "The Free plan allows 25 videos. Delete one or upgrade to record more.", JSON.stringify(r));
+await prisma.video.delete({ where: { id: `ag${stamp.toString(36)}o0` } });
+r = await oldStart();
+ok("notice period: deleting one frees a place, though 30 were recorded", r.status === 201 && !!r.body?.video?.id, JSON.stringify(r));
+if (r.body?.video?.id) await prisma.video.delete({ where: { id: r.body.video.id } });
+// Once the 30 days are up: the new versions apply, so it's /agree, and the 25-in-total rule.
+await noticeOver(oldUser.id, oldEmail);
+r = await oldStart();
+ok("after the notice period: recording waits for agreeing", r.status === 403 && r.body?.code === "TERMS_REQUIRED", JSON.stringify(r));
+await visit(old, "/library", "/agree");
+ok("an older account with no record lands on /agree once its notice period is over", path(old) === "/agree");
 ok("told the terms were updated", norm(await old.textContent("[data-testid=agree-heading]")) === "We’ve updated our Terms of Service and Privacy Policy");
 await tickAndAgree(old);
 rec = await rows(oldUser.id);
 ok("its first agreement is recorded as an update", rec.length === 1 && rec[0].method === "update", JSON.stringify(rec));
+r = await oldStart();
+ok("agreed: the 25-in-total rule applies", r.status === 402 && String(r.body?.error).includes("25 videos in total"), JSON.stringify(r));
+await prisma.video.deleteMany({ where: { workspaceId: oldWs } });
 
 // ---- An upload already under way finishes; nothing new starts --------------------------------------------
 const upEmail = `agree-up${stamp}@example.com`;
@@ -174,6 +222,7 @@ const toDiscard = (await start()).body?.video?.id;
 ok("recordings started while agreed", !!done && !!inFlight && !!toDiscard);
 // The terms change mid-recording (the latest agreement is now to older versions).
 await prisma.termsAcceptance.create({ data: { userId: upUser.id, email: upEmail, termsVersion: "2026-01-01", privacyVersion: "2026-01-01", method: "signup" } });
+await noticeOver(upUser.id, upEmail);
 r = await start();
 ok("a new recording can't start before agreeing", r.status === 403 && r.body?.code === "TERMS_REQUIRED", JSON.stringify(r));
 const p1 = await part(inFlight);
@@ -200,6 +249,15 @@ await visit(up, "/settings/account");
 ok("Settings > Account opens before agreeing", path(up) === "/settings/account");
 ok("with only the data download and account deletion", (await up.isVisible("text=Download your data")) && (await up.isVisible("text=Delete account")) && !(await up.isVisible("text=Your name")) && !(await up.isVisible("text=Recovery key")));
 ok("and a way back to /agree", (await up.locator('a[href="/agree"]').count()) === 1);
+ok("no subscription section without a Stripe customer", (await up.locator("[data-testid=account-subscription]").count()) === 0);
+// An owner with a subscription can still manage or cancel it without agreeing, so declining never leaves a plan renewing.
+await prisma.workspace.update({ where: { id: wsUp }, data: { stripeCustomerId: `cus_agree${stamp}` } });
+await visit(up, "/settings/account");
+ok("Settings > Account offers Manage subscription before agreeing", (await up.locator("[data-testid=account-subscription] button:text-is('Manage subscription')").count()) === 1);
+r = await api(up, "POST", "/api/billing/portal");
+ok("the billing portal opens before agreeing", r.status === 200 && !!r.body?.url, JSON.stringify(r));
+ok("and comes back to Settings > Account (not a page that bounces to /agree)", /\/settings\/account$/.test(stripeState.portalSessions.at(-1)?.return_url ?? ""), stripeState.portalSessions.at(-1)?.return_url);
+await prisma.workspace.update({ where: { id: wsUp }, data: { stripeCustomerId: null } });
 const recBefore = await rows(upUser.id);
 await up.fill('input[name="confirm"]', upEmail);
 await up.click("text=Delete my account");
@@ -218,8 +276,10 @@ ok("a closed account signing in is offered to keep it (not /agree)", path(keep) 
 await keep.click("button:text-is('Keep my account')");
 await keep.waitForURL((u) => u.pathname === "/agree", { timeout: 60000 });
 ok("kept, then asked to agree", path(keep) === "/agree" && !(await prisma.user.findUnique({ where: { id: keepUser.id } })).deleteAt);
+ok("the way back keeps the 'account open again' note", new URL(keep.url()).searchParams.get("next") === "/library?restored=1", keep.url());
 await tickAndAgree(keep);
 ok("and on to the library", path(keep) === "/library");
+ok("which says the account is open again", new URL(keep.url()).searchParams.get("restored") === "1" && (await keep.waitForSelector("[data-testid=account-restored]", { timeout: 15000 }).then(() => true).catch(() => false)), keep.url());
 
 // ---- Suspended and paused still go where they did ----------------------------------------------------------
 const suspEmail = `agree-susp${stamp}@example.com`;
@@ -232,6 +292,17 @@ r = await api(susp, "GET", "/api/clients");
 ok("its API answer is still ACCOUNT_SUSPENDED", r.status === 403 && r.body?.code === "ACCOUNT_SUSPENDED", JSON.stringify(r));
 ok("nothing recorded for it", (await rows(suspUser.id)).length === 0);
 
+// The owner of a workspace support suspended, who hasn't agreed yet: /suspended's Manage subscription still works.
+const suspOwnerEmail = `agree-suspowner${stamp}@example.com`;
+const suspOwner = await prisma.user.create({ data: { email: suspOwnerEmail, name: "Sue Owner" } });
+await prisma.workspace.create({ data: { name: `Agree susp ${stamp}`, suspendedAt: new Date(), stripeCustomerId: `cus_agreesusp${stamp}`, members: { create: { userId: suspOwner.id, role: "OWNER" } } } });
+const suspOwnerPage = await signIn(suspOwnerEmail, "/library", { lands: "/suspended" });
+ok("a suspended workspace's owner who hasn't agreed lands on /suspended", path(suspOwnerPage) === "/suspended", suspOwnerPage.url());
+ok("with Manage subscription offered", (await suspOwnerPage.locator("text=You can still manage or cancel your subscription.").count()) === 1);
+r = await api(suspOwnerPage, "POST", "/api/billing/portal");
+ok("and the billing portal opens (not TERMS_REQUIRED)", r.status === 200 && !!r.body?.url, JSON.stringify(r));
+ok("coming back to /suspended", /\/suspended$/.test(stripeState.portalSessions.at(-1)?.return_url ?? ""), stripeState.portalSessions.at(-1)?.return_url);
+
 const ownerWs = (await prisma.membership.findFirst({ where: { userId: newUser.id } })).workspaceId;
 const pausedEmail = `agree-paused${stamp}@example.com`;
 const pausedUser = await prisma.user.create({ data: { email: pausedEmail, name: "Paula", activeWorkspaceId: ownerWs } });
@@ -242,6 +313,7 @@ ok("paused staff go to /paused, not /agree", path(paused) === "/paused", paused.
 // ---- Support's console works for the support admin before agreeing -----------------------------------------
 const adminUser = await prisma.user.upsert({ where: { email: ADMIN }, update: {}, create: { email: ADMIN, name: "owner" } });
 await prisma.termsAcceptance.deleteMany({ where: { userId: adminUser.id } });
+await noticeOver(adminUser.id, ADMIN);
 const admin = await signIn(ADMIN, "/support/lookup", { lands: "/support/lookup" });
 ok("the support admin reaches the console without agreeing", path(admin) === "/support/lookup", admin.url());
 for (const p of ["/support", "/support/log", `/support/workspaces/${ownerWs}`, `/support/users/${newUser.id}`, "/support/accounts"]) {
@@ -274,9 +346,22 @@ await prisma.termsAcceptance.createMany({
     { userId: ghost, email: "ghost@example.com", termsVersion: "2020-01-01", privacyVersion: "2020-01-01", method: "update", acceptedAt: new Date(Date.now() - 6 * 365 * D) },
   ],
 });
+// An account still open whose only agreement is older than 7 years (the terms haven't changed since), and a deleted one's.
+const oldTimer = await prisma.user.create({ data: { email: `oldtimer-${stamp}@example.com` } });
+const gone = `gone-${stamp}`;
+await prisma.termsAcceptance.createMany({
+  data: [
+    { userId: oldTimer.id, email: oldTimer.email, termsVersion: "2018-01-01", privacyVersion: "2018-01-01", method: "signup", acceptedAt: new Date(Date.now() - (7 * 365 + 10) * D) },
+    { userId: gone, email: "gone@example.com", termsVersion: "2018-01-01", privacyVersion: "2018-01-01", method: "signup", acceptedAt: new Date(Date.now() - (7 * 365 + 10) * D) },
+  ],
+});
 const purge = await cron("purge");
 const left = await rows(ghost);
 ok("records older than 7 years are deleted by the daily job", left.length === 1 && left[0].termsVersion === "2020-01-01", JSON.stringify(left));
+ok("an open account's latest agreement is kept, however old", (await rows(oldTimer.id)).length === 1);
+ok("a deleted account's only agreement goes after 7 years", (await rows(gone)).length === 0);
+await prisma.termsAcceptance.deleteMany({ where: { userId: oldTimer.id } });
+await prisma.user.delete({ where: { id: oldTimer.id } });
 ok("the job reports it", typeof purge.agreementsPruned === "number" && purge.agreementsPruned >= 1, JSON.stringify(purge));
 
 // ---- Legal pages: versions, the archive, and phones ---------------------------------------------------------
@@ -300,6 +385,7 @@ ok("/agree fits 320px", path(agree320) === "/agree" && (await noSideways(agree32
 await agree320.screenshot({ path: `${shots}/agree-320.png`, fullPage: true });
 
 await browser.close();
+stripeServer.close();
 await prisma.$disconnect();
 console.log(failed ? `${failed} FAILED` : "ALL PASSED");
 process.exit(failed ? 1 : 0);

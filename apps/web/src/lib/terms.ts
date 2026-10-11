@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import type { User } from "@prisma/client";
 import { db } from "@/lib/db";
 import { LEGAL } from "@/lib/legal";
-import { TERMS_RECORD_KEEP_YEARS } from "@/lib/periods";
+import { TERMS_NOTICE_DAYS, TERMS_RECORD_KEEP_YEARS } from "@/lib/periods";
 
 /**
  * Everyone with an account agrees to the current Terms of Service and Privacy
@@ -11,12 +11,19 @@ import { TERMS_RECORD_KEEP_YEARS } from "@/lib/periods";
  * agreement is a TermsAcceptance row: evidence of who agreed to which
  * versions, when and from where, if there's ever a dispute. The app only
  * ever adds rows; the daily job deletes those older than
- * TERMS_RECORD_KEEP_YEARS, and deleting an account leaves them.
+ * TERMS_RECORD_KEEP_YEARS (except a login's latest while it exists), and
+ * deleting an account leaves them.
  *
  * Until then pages send them to /agree (requirePageUser) and the API answers
  * 403 TERMS_REQUIRED (requireUser), except what they need to leave or keep
- * what they have: signing out, the data download, deleting the account, and
+ * what they have: signing out, the data download, deleting the account,
+ * managing or cancelling the subscription (/api/billing/portal), and
  * finishing an upload that had already started.
+ *
+ * Existing account holders get notice first (noticePeriod): they're emailed
+ * about the new versions (lib/termsNotice.ts) and carry on as before until
+ * TERMS_NOTICE_DAYS after that email, with a banner asking them to agree. New
+ * accounts agree straight away.
  */
 export const TERMS_REQUIRED = `Please agree to the ${LEGAL.product} Terms of Service and Privacy Policy to keep using ${LEGAL.product}. Reload the page to see them.`;
 
@@ -38,7 +45,7 @@ export async function hasAgreed(userId: string) {
  */
 const RECORDS_FALLBACK = new Date("2026-10-11T00:00:00Z");
 let recordsStarted: Promise<Date> | undefined;
-function recordsStartedAt() {
+export function recordsStartedAt() {
   recordsStarted ??= db.$queryRaw<{ finished_at: Date | null }[]>`
     SELECT finished_at FROM _prisma_migrations WHERE migration_name = '20261011060000_terms_acceptance' AND finished_at IS NOT NULL LIMIT 1`
     .then((rows) => rows[0]?.finished_at ?? RECORDS_FALLBACK)
@@ -53,6 +60,22 @@ function recordsStartedAt() {
 export async function agreementKind(user: Pick<User, "id" | "createdAt">): Promise<"signup" | "update"> {
   if (await db.termsAcceptance.count({ where: { userId: user.id } })) return "update";
   return user.createdAt < (await recordsStartedAt()) ? "update" : "signup";
+}
+
+/**
+ * While new versions aren't yet in effect for an existing account holder who hasn't agreed to them: not emailed about
+ * them yet, or emailed less than TERMS_NOTICE_DAYS ago. `from` is when they take effect (null until the email goes).
+ * Null for a new account, or once the notice period is over.
+ */
+export async function noticePeriod(user: Pick<User, "id" | "createdAt">): Promise<{ from: Date | null } | null> {
+  if ((await agreementKind(user)) !== "update") return null;
+  const notice = await db.termsNotice.findUnique({
+    where: { userId_termsVersion_privacyVersion: { userId: user.id, termsVersion: LEGAL.termsVersion, privacyVersion: LEGAL.privacyVersion } },
+    select: { sentAt: true },
+  });
+  if (!notice) return { from: null };
+  const from = new Date(notice.sentAt.getTime() + TERMS_NOTICE_DAYS * 86_400_000);
+  return from > new Date() ? { from } : null;
 }
 
 /** The caller's IP address (the first one Vercel's edge saw) and browser, for the record. */
@@ -80,11 +103,20 @@ export async function recordAgreement(user: Pick<User, "id" | "email" | "created
   });
 }
 
-/** Deletes agreement records older than TERMS_RECORD_KEEP_YEARS; called from the daily purge job. */
+/**
+ * Deletes agreement records older than TERMS_RECORD_KEEP_YEARS; called from the daily purge job. A login's
+ * latest agreement is kept while the login exists: it's what they're agreed to now (and what hasAgreed reads).
+ */
 export async function pruneTermsAcceptances(now = new Date()) {
   const cutoff = new Date(now);
   cutoff.setUTCFullYear(cutoff.getUTCFullYear() - TERMS_RECORD_KEEP_YEARS);
-  return (await db.termsAcceptance.deleteMany({ where: { acceptedAt: { lt: cutoff } } })).count;
+  // Notices of changes (lib/termsNotice.ts) are kept as long.
+  await db.termsNotice.deleteMany({ where: { sentAt: { lt: cutoff } } });
+  return db.$executeRaw`
+    DELETE FROM "TermsAcceptance" t
+    WHERE t."acceptedAt" < ${cutoff}
+      AND (EXISTS (SELECT 1 FROM "TermsAcceptance" n WHERE n."userId" = t."userId" AND n."acceptedAt" > t."acceptedAt")
+           OR NOT EXISTS (SELECT 1 FROM "User" u WHERE u."id" = t."userId"))`;
 }
 
 /** This login's agreement records, for the data download. */

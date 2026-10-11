@@ -2,10 +2,12 @@ import { BRAND } from "@/lib/brand";
 import {
   ADMIN_ACTION_KEEP_YEARS,
   CLIENT_KEEP_DAYS,
+  CLOSURE_DELETE_DAYS,
   CLIENT_PURGE_WARN_DAYS,
   DELETION_GRACE_DAYS,
   DELETION_WARN_DAYS,
   REVIEW_DAYS,
+  TERMS_NOTICE_DAYS,
   TERMS_RECORD_KEEP_YEARS,
 } from "@/lib/periods";
 import { RETENTION_DAYS } from "@/lib/retention";
@@ -30,8 +32,10 @@ export const LEGAL = {
   removedClientDays: CLIENT_KEEP_DAYS,
   /** The business is warned about this long before a removed client is deleted. */
   removedClientWarningDays: CLIENT_PURGE_WARN_DAYS,
-  /** A deleted or closed account is kept this long, then permanently deleted. */
+  /** A deleted account is kept this long, so it can be reactivated, then permanently deleted. */
   deletionGraceDays: DELETION_GRACE_DAYS,
+  /** An account we close is kept this long (the review time plus two weeks), then permanently deleted. */
+  closureDeleteDays: CLOSURE_DELETE_DAYS,
   /** The account holder is reminded about this long before a deleted account is deleted for good. */
   deletionWarningDays: DELETION_WARN_DAYS,
   /** Records of support actions on accounts are kept this long. */
@@ -40,6 +44,8 @@ export const LEGAL = {
   agreementRecordYears: TERMS_RECORD_KEEP_YEARS,
   /** Time to ask us to review a suspension, closure or turned-off link. */
   reviewDays: REVIEW_DAYS,
+  /** Existing account holders are emailed this long before a significant change takes effect for them (lib/terms.ts). */
+  changeNoticeDays: TERMS_NOTICE_DAYS,
   /**
    * The versions people agree to on /agree (lib/terms.ts). Change one whenever its page changes in a way
    * people should agree to again, add the new version to LEGAL_VERSIONS, and keep the old text (git history,

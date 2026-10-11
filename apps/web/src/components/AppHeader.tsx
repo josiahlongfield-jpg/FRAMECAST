@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { signOut } from "@/auth";
+import { zoned } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { currentUser } from "@/lib/session";
 import NamePrompt from "./NamePrompt";
@@ -55,6 +56,15 @@ export default async function AppHeader({ email, plan }: { email: string; plan: 
           <MobileMenu links={links} plan={plan} email={email} signOut={signOutForm} />
         </div>
       </div>
+      {me?.termsNotice && (
+        <p className="border-t border-amber-200 bg-amber-50 px-4 py-2 text-center text-sm text-amber-900" data-testid="terms-notice">
+          We&apos;ve updated our Terms of Service and Privacy Policy
+          {me.termsNotice.from ? `, and they apply to you from ${zoned(me.workspace.timezone).longDay(me.termsNotice.from)}` : ""}.{" "}
+          <Link href="/agree" className="font-medium underline">
+            Read and agree
+          </Link>
+        </p>
+      )}
       <StaffNotices
         initial={notices.map((n) => ({ id: n.id, from: n.from.name ?? n.from.email.split("@")[0], message: n.message, link: n.link, linkLabel: n.linkLabel, createdAt: n.createdAt.toISOString() }))}
       />

@@ -26,3 +26,8 @@ export const CLOSURE_DELETE_DAYS = REVIEW_DAYS + 14;
 export const ADMIN_ACTION_KEEP_YEARS = 7;
 /** Records of agreeing to the Terms and Privacy Policy (TermsAcceptance) are kept this long (lib/terms.ts). */
 export const TERMS_RECORD_KEEP_YEARS = 7;
+/**
+ * Existing account holders are emailed about new Terms and Privacy Policy versions this long before they take effect
+ * for them (lib/terms.ts sendTermsNotices); until then they carry on under the version they agreed to.
+ */
+export const TERMS_NOTICE_DAYS = 30;

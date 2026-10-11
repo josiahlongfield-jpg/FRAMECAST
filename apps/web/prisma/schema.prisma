@@ -704,7 +704,8 @@ model BlockedEmail {
 }
 
 /// Each time someone agreed to the Terms of Service and Privacy Policy (lib/terms.ts): evidence of the agreement.
-/// Append-only: the app only inserts rows; the daily job deletes rows older than 7 years. No foreign keys, so it
+/// Append-only: the app only inserts rows; the daily job deletes rows older than 7 years, except a login's latest while
+/// the login exists. No foreign keys, so it
 /// outlives the account.
 model TermsAcceptance {
   id             String   @id @default(cuid())
@@ -723,4 +724,20 @@ model TermsAcceptance {
 
   @@index([userId, acceptedAt])
   @@index([acceptedAt])
+}
+
+/// The email telling an existing account holder about new versions of the Terms of Service and Privacy Policy
+/// (lib/terms.ts sendTermsNotices). The new versions take effect for them TERMS_NOTICE_DAYS after sentAt; until then they
+/// carry on without agreeing. Evidence of the notice: no foreign keys, so it outlives the account, and deleted after 7 years.
+model TermsNotice {
+  id             String   @id @default(cuid())
+  userId         String
+  /// The address it was sent to.
+  email          String
+  termsVersion   String
+  privacyVersion String
+  sentAt         DateTime @default(now())
+
+  @@unique([userId, termsVersion, privacyVersion])
+  @@index([sentAt])
 }

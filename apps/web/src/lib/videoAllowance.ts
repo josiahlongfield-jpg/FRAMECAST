@@ -1,6 +1,17 @@
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { BRAND } from "@/lib/brand";
+import { hasAgreed, noticePeriod } from "@/lib/terms";
+
+/**
+ * Until the 25-in-total rule takes effect for the workspace's owner (the notice period of the Terms that brought it,
+ * lib/terms.ts), the Free plan counts the original videos it has now, as it did before: deleting one frees a place.
+ */
+async function underOldFreeRule(workspaceId: string) {
+  const owner = await db.membership.findFirst({ where: { workspaceId, role: "OWNER" }, select: { user: { select: { id: true, createdAt: true } } } });
+  if (!owner || (await hasAgreed(owner.user.id))) return false;
+  return !!(await noticePeriod(owner.user));
+}
 
 /**
  * How many of the Free plan's videos a workspace has used: every original
@@ -17,11 +28,17 @@ export async function videosUsed(workspaceId: string, tx: Prisma.TransactionClie
     FROM "Workspace" w WHERE w.id = ${workspaceId}`;
   const recorded = r?.recorded ?? 0;
   const uploading = r?.uploading ?? 0;
-  return { recorded, uploading, used: recorded + uploading };
+  // videosRecorded keeps counting meanwhile, so the new rule applies from the day it takes effect.
+  if (await underOldFreeRule(workspaceId)) {
+    const kept = await tx.video.count({ where: { workspaceId, replyToId: null, sourceId: null } });
+    return { recorded, uploading, used: kept, oldRule: true };
+  }
+  return { recorded, uploading, used: recorded + uploading, oldRule: false };
 }
 
 /** Why a new recording was refused on a plan with a lifetime limit. */
-export function videoLimitMessage(planName: string, limit: number, uploading: number) {
+export function videoLimitMessage(planName: string, limit: number, uploading: number, oldRule = false) {
+  if (oldRule) return `The ${planName} plan allows ${limit} videos. Delete one or upgrade to record more.`;
   const base = `The ${planName} plan includes ${limit} videos in total and you've used them all. Deleted videos still count. Upgrade to record more.`;
   return uploading ? `${base} ${uploadingHint(uploading)}` : base;
 }

@@ -14,6 +14,7 @@ import {
 } from "@/lib/plans";
 import { RETENTION_DAYS } from "@/lib/retention";
 import { DELETION_GRACE_DAYS } from "@/lib/accountDeletion";
+import { TERMS_NOTICE_DAYS } from "@/lib/periods";
 
 /** US dollars, with cents only when there are some: US$15, US$1.50. */
 const usd = (n: number) => `US$${Number.isInteger(n) ? n : n.toFixed(2)}`;
@@ -73,7 +74,7 @@ ${plan("AGENCY")}
 - Each video in the Library shows "Deletes from our servers on <date and time>" in the viewer's own time zone, amber when it's under 48 hours away. "Saved to cloud backup" means it's kept; "Deleted from our servers" means it's gone from the server.
 - The Library's "Deleting soon" filter lists videos deleted within 7 days, soonest first.
 - About 24 hours before, we try to email the person who recorded it (one email covering all their recordings due then, with the recorded date, the client it was sent to and a link; never the title). This is best effort: an email can be delayed or land in spam, so don't promise it arrives.
-- To keep a recording: open it and choose Save to device. To keep everything on our servers, the owner turns on cloud backup in Settings > Billing (paid plans). Turning cloud backup off again starts a fresh ${RETENTION_DAYS}-day period.
+- To keep a recording: open it and choose Save to device. To keep everything on our servers, the owner turns on cloud backup in Settings > Billing (paid plans). Turning cloud backup off again starts a fresh ${RETENTION_DAYS}-day period. If cloud backup ends because the plan ended while the account was suspended or closed, the ${RETENTION_DAYS} days start when it's unsuspended, reopened or kept, and the owner is emailed the date then.
 - Once deleted from our servers, ${BRAND.name} cannot bring a recording back.
 - Separately, everything about a removed client (their conversations and the recordings sent only to them) is deleted 30 days after they were removed, even with cloud backup on (see Clients).
 
@@ -141,9 +142,9 @@ ${plan("AGENCY")}
 
 ## Account
 - Export your data from Settings > Account. The workspace owner can't be changed or handed over to someone else.
-- The agree screen ("Before you continue", or "We've updated our Terms of Service and Privacy Policy"): account holders tick the box and press Agree to carry on, when they first sign up and again whenever either document changes; until then the rest of the app waits (a recording already uploading still finishes), and they can still sign out, or download their data or delete their account from Settings > Account. account_overview shows whether they've agreed to the current versions. Requests to see what or when they agreed: hand over.
+- The agree screen ("Before you continue", or "We've updated our Terms of Service and Privacy Policy"): account holders tick the box and press Agree to carry on, when they first sign up and again whenever either document changes; until then the rest of the app waits (a recording already uploading still finishes), and they can still sign out, manage or cancel their subscription, or download their data or delete their account from Settings > Account. Someone who had an account before a change is emailed about it first and carries on as before for ${TERMS_NOTICE_DAYS} days after that email, with a banner at the top asking them to agree (meanwhile a Free workspace whose owner hasn't agreed keeps the old rule: ${PLANS.FREE.maxVideos} videos at a time, and deleting one frees a place). account_overview shows whether they've agreed to the current versions. Requests to see what or when they agreed: hand over.
 - Deleting your account (Settings > Account > Delete my account) closes it straight away and deletes it for good ${DELETION_GRACE_DAYS} days later, with the workspace and its recordings, clients, to-dos and notes. An owner with other staff must remove them first.
-- While it's closed: they're signed out on every device, their clients' links stop working (clients see that the business closed its ${BRAND.name} account), reminders and new-video emails stop, pending invites are cancelled and the subscription doesn't renew (a paid-up plan stays until its period ends; one behind on payment is cancelled). Recordings without cloud backup still expire on their usual dates, and reminders due meanwhile aren't sent later.
+- While it's closed: they're signed out on every device, their clients' links stop working (clients see that the business closed its ${BRAND.name} account), reminders and new-video emails stop, pending invites are cancelled and the subscription doesn't renew (a paid-up plan stays until its period ends; one behind on payment is cancelled). Recordings without cloud backup still expire on their usual dates, removed clients are still deleted on their dates (without the 3-day warning, which isn't sent while it's closed), and reminders due meanwhile aren't sent later.
 - Emails: one when it's closed (with the deletion date and a Keep my account button), and a reminder about 3 days before the date. Keeping it, and the final deletion, are emailed too.
 - To keep it: sign in before the date (the button in the email leads there) and choose Keep my account. Everything comes back as it was, and clients the plan covers can open their links again. Renewal comes back on if it was stopped and the plan hasn't ended; if the plan ended meanwhile, they choose a plan again on Billing. A browser that was still signed in before closing can't keep it: they must sign in again.
 - Staff who delete their account leave their teams straight away (their recordings stay with the team, and the owner and admins are asked to reset the team's keys). Keeping the account doesn't put them back on a team; they need a new invite.
