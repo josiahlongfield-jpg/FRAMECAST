@@ -243,27 +243,34 @@ export async function purgeRemovedClients(now = new Date(), budgetMs = 40_000) {
  * Clients removed before removals were kept for 30 days (or by an older
  * version of the app during a deploy) have no deletion date. They get one,
  * 30 days from now, and the owner gets one email per workspace saying so.
- * If that email can't be sent, the date is taken back and it's tried again
- * next run: nobody's clients are dated without the owner being told.
+ * The date is only set once that email has gone out; if it can't be sent, or
+ * the run stops part way, they're left undated and tried again next run:
+ * nobody's clients are dated without the owner being told.
  */
 export async function datePendingRemovals(now = new Date()) {
-  // A stamp of our own, so a run overlapping this one can't claim (and announce) the same clients.
-  const stamp = new Date(clientPurgeDate(now).getTime() + Math.floor(Math.random() * 60_000));
   // Not while the owner's account is closed (lib/accountDeletion.ts): they go with it, or are dated once it's kept.
   // Nor while support has it suspended or on legal hold: dated once that ends.
-  const res = await db.client.updateMany({ where: { removedAt: { not: null }, purgeAt: null, workspace: tellable }, data: { purgeAt: stamp, purgeWarnedAt: null } });
-  if (!res.count) return 0;
-  const claimed = await db.client.findMany({
-    where: { removedAt: { not: null }, purgeAt: stamp },
-    select: { id: true, name: true, workspaceId: true, removedAt: true },
-    orderBy: { removedAt: "asc" },
-  });
-  const groups = new Map<string, typeof claimed>();
-  for (const c of claimed) groups.set(c.workspaceId, [...(groups.get(c.workspaceId) ?? []), c]);
+  const pending = { removedAt: { not: null }, purgeAt: null } satisfies Prisma.ClientWhereInput;
+  const workspaces = await db.client.findMany({ where: { ...pending, workspace: tellable }, select: { workspaceId: true }, distinct: ["workspaceId"] });
   let dated = 0;
-  for (const [workspaceId, clients] of groups) {
-    const ids = clients.map((c) => c.id);
+  for (const { workspaceId } of workspaces) {
+    const stamp = clientPurgeDate(now);
+    // A claim of our own (purgeWarnedAt, unused while there's no date), so a run overlapping this one can't announce the same
+    // clients. A claim left by a run that stopped part way is taken over after 10 minutes.
+    const claim = new Date(now.getTime() + Math.floor(Math.random() * 60_000));
+    const ids: string[] = [];
     try {
+      await db.client.updateMany({
+        where: { ...pending, workspaceId, workspace: tellable, OR: [{ purgeWarnedAt: null }, { purgeWarnedAt: { lt: new Date(Date.now() - 600_000) } }] },
+        data: { purgeWarnedAt: claim },
+      });
+      const clients = await db.client.findMany({
+        where: { ...pending, workspaceId, purgeWarnedAt: claim },
+        select: { id: true, name: true, removedAt: true },
+        orderBy: { removedAt: "asc" },
+      });
+      if (!clients.length) continue;
+      ids.push(...clients.map((c) => c.id));
       const [ws, owner] = await Promise.all([
         db.workspace.findUnique({ where: { id: workspaceId } }),
         db.membership.findFirst({ where: { workspaceId, role: "OWNER", ...activeMember }, include: { user: { select: { email: true } } } }),
@@ -290,10 +297,11 @@ export async function datePendingRemovals(now = new Date()) {
         color: brand.color,
       });
       await sendMail({ to: owner.user.email, ...mail, fromName: ws.name });
-      dated += n;
+      // Told: now they get the date the email gave. One restored meanwhile has lost the claim and stays restored.
+      dated += (await db.client.updateMany({ where: { id: { in: ids }, ...pending, purgeWarnedAt: claim }, data: { purgeAt: stamp, purgeWarnedAt: null } })).count;
     } catch (err) {
-      await db.client.updateMany({ where: { id: { in: ids }, purgeAt: stamp }, data: { purgeAt: null } });
       console.error(JSON.stringify({ level: "error", message: "[client-purge] couldn't tell the owner about earlier removals; retried next run", workspaceId, error: String(err) }));
+      if (ids.length) await db.client.updateMany({ where: { id: { in: ids }, purgeAt: null, purgeWarnedAt: claim }, data: { purgeWarnedAt: null } }).catch(() => {});
     }
   }
   return dated;

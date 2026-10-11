@@ -13,21 +13,30 @@ import { teamPath } from "@/lib/teamLink";
 import { activeMember } from "@/lib/team";
 import { agreementsOf } from "@/lib/terms";
 
+/**
+ * Deletes a workspace's stored files (or one person's in it). Throws if any
+ * couldn't be deleted, before any row goes, so the next run tries again
+ * rather than leaving files nobody can find.
+ */
 async function deleteVideoFiles(where: { workspaceId: string } | { ownerId: string; workspaceId: string }) {
   const videos = await db.video.findMany({ where, select: { storageKey: true, uploadId: true, status: true } });
   const driver = storage();
+  let failed = 0;
   // A few at a time, so a big account finishes well within the request.
   for (let i = 0; i < videos.length; i += 25) {
-    await Promise.all(
+    const results = await Promise.allSettled(
       videos.slice(i, i + 25).map((v) =>
         v.status === "RECORDING" && v.uploadId
-          ? driver.abort(v.storageKey, v.uploadId).catch(() => {})
+          ? // An unfinished upload may already be gone (aborted on an earlier try, or expired by the bucket).
+            driver.abort(v.storageKey, v.uploadId).catch((err) => console.error("[account] couldn't abort upload", v.storageKey, err))
           : v.status !== "EXPIRED"
-            ? driver.delete(v.storageKey).catch(() => {})
+            ? driver.delete(v.storageKey)
             : null,
       ),
     );
+    failed += results.filter((r) => r.status === "rejected").length;
   }
+  if (failed) throw new Error(`${failed} stored file(s) couldn't be deleted`);
 }
 
 /**

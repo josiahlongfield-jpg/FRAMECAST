@@ -47,7 +47,7 @@ type ClientOption = {
   /** For a copy sent to another client: that client's own conversation. */
   copyId?: string;
   /** Removed by the business: deleted for good on `until` (null once due or before it's set) unless restored. */
-  removed?: { until: string | null; keepsRecording: boolean };
+  removed?: { until: string | null; keepsRecording: boolean; recordingFirst?: boolean };
   /** Paused because the business's plan covers fewer clients. */
   paused?: boolean;
   /** Link turned off by SureFrame support. */
@@ -654,7 +654,9 @@ function WatchBody({
             {recipient.removed.until &&
               (recipient.removed.keepsRecording
                 ? ` Their conversation here will be deleted on ${recipient.removed.until} unless ${recipient.name} is restored on the Clients page. The recording itself stays, as you also sent it to other clients.`
-                : ` This conversation and recording will be deleted on ${recipient.removed.until} unless ${recipient.name} is restored on the Clients page.`)}
+                : recipient.removed.recordingFirst || expired
+                  ? ` This conversation will be deleted on ${recipient.removed.until} unless ${recipient.name} is restored on the Clients page.`
+                  : ` This conversation and recording will be deleted on ${recipient.removed.until} unless ${recipient.name} is restored on the Clients page.`)}
           </p>
         )}
         {canEdit && sendMany?.sourceId && (

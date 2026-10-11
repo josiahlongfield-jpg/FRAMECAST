@@ -63,10 +63,18 @@ export async function purgeExpired(now = new Date(), budgetMs = 40_000) {
  */
 export async function pruneLeftovers(now = new Date()) {
   const monthAgo = new Date(now.getTime() - 30 * 86_400_000);
+  // A closed account's accepted invites say which teams closing it took them off (app/account/restore); kept until it's kept or deleted.
+  const closed = (await db.user.findMany({ where: { deleteAt: { not: null } }, select: { id: true } })).map((u) => u.id);
   const [tokens, invites] = await Promise.all([
     db.verificationToken.deleteMany({ where: { expires: { lt: now } } }),
     // Kept while the workspace is on legal hold (lib/support/admin.ts).
-    db.invite.deleteMany({ where: { OR: [{ expiresAt: { lt: monthAgo } }, { revokedAt: { lt: monthAgo } }, { acceptedAt: { lt: monthAgo } }], workspace: { legalHoldAt: null } } }),
+    db.invite.deleteMany({
+      where: {
+        OR: [{ expiresAt: { lt: monthAgo } }, { revokedAt: { lt: monthAgo } }, { acceptedAt: { lt: monthAgo } }],
+        AND: [{ OR: [{ acceptedById: null }, { acceptedById: { notIn: closed } }] }],
+        workspace: { legalHoldAt: null },
+      },
+    }),
   ]);
   return { tokens: tokens.count, invites: invites.count };
 }
@@ -79,11 +87,21 @@ export async function pruneLeftovers(now = new Date()) {
  * time the app is opened.
  */
 export async function abortStaleUploads(now = new Date()) {
-  const stale = await db.video.findMany({
-    // Not while the workspace is on legal hold (lib/support/admin.ts).
-    where: { status: "RECORDING", updatedAt: { lt: new Date(now.getTime() - 7 * 86_400_000) }, workspace: { legalHoldAt: null } },
+  const found = await db.video.findMany({
+    where: {
+      status: "RECORDING",
+      updatedAt: { lt: new Date(now.getTime() - 7 * 86_400_000) },
+      // Not while the workspace is on legal hold (lib/support/admin.ts), nor while uploads are refused for a while
+      // (suspended or closed, or the owner closed their account): the recording waits on the device until access comes
+      // back, and the week starts again then.
+      workspace: { legalHoldAt: null, suspendedAt: null, closedAt: null, deleteAt: null },
+      owner: { suspendedAt: null },
+    },
+    include: { asReply: { select: { authorUser: { select: { suspendedAt: true } }, video: { select: { client: { select: { linkDisabledAt: true } } } } } } },
     take: 200,
   });
+  // Nor a reply from a team member whose login is suspended, or from a client whose link support turned off.
+  const stale = found.filter((v) => !v.asReply?.authorUser?.suspendedAt && !v.asReply?.video.client?.linkDisabledAt);
   for (const v of stale) {
     await storage().abort(v.storageKey, v.uploadId).catch(() => {});
     // Deleting a reply's media deletes its Reply row too (onDelete: Cascade).

@@ -62,6 +62,8 @@ type Props = {
   openRemoved?: boolean;
   /** The business's time zone, for dates. */
   timezone: string | null;
+  /** Cloud backup is on: recordings stay until the client is deleted. Without it they still expire on their usual dates. */
+  cloudBackup?: boolean;
 };
 
 export default function ClientsManager({ workspaceId, fingerprint, ...rest }: Props) {
@@ -93,6 +95,7 @@ function Manager({
   keepDays,
   openRemoved = false,
   timezone,
+  cloudBackup = false,
 }: Omit<Props, "workspaceId" | "fingerprint"> & { teamKey: CryptoKey }) {
   const [clients, setClients] = useState(initialClients);
   const [seats, setSeats] = useState(initialSeats);
@@ -378,6 +381,7 @@ function Manager({
                     <p className="font-medium text-slate-900">Remove {c.name}? Their personal link stops working now and their seat is freed.</p>
                     <p className="mt-2">
                       Their videos, conversations, to-dos and notes are kept until {dates.longDay(confirming.until)}, so you can restore them from Removed clients on this page.
+                      {!cloudBackup && " Recordings without cloud backup still leave our servers on their usual dates, and restoring doesn't bring those back."}
                     </p>
                     <p className="mt-2">
                       After that they&apos;re deleted for good, including your team&apos;s replies to them, even with cloud backup on. Recordings you also sent to other clients stay with those clients.
@@ -407,7 +411,9 @@ function Manager({
           <div className="px-6 pt-5">
             <h2 className="font-semibold text-slate-900">Removed clients</h2>
             <p className="mt-1 text-sm text-slate-500">
-              Their links don&apos;t work and they don&apos;t use a seat. They&apos;re kept until the date shown, then deleted for good with their videos, conversations, to-dos and notes. Restoring uses a client seat.
+              Their links don&apos;t work and they don&apos;t use a seat. They&apos;re kept until the date shown, then deleted for good with their videos, conversations, to-dos and notes.
+              {!cloudBackup && " Recordings without cloud backup still leave our servers on their usual dates before then, and restoring doesn't bring those back."} Restoring uses a client
+              seat.
             </p>
           </div>
           <ul className="mt-3 divide-y divide-slate-100">

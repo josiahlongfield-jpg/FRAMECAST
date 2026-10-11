@@ -116,6 +116,8 @@ export default async function Watch({ params, searchParams }: Props) {
     ? {
         until: recipient.purgeAt && recipient.purgeAt > new Date() ? zoned(workspace.timezone).longDay(recipient.purgeAt) : null,
         keepsRecording: !!video.sourceId || (await db.video.count({ where: { sourceId: video.id, OR: [{ clientId: null }, { clientId: { not: recipient.id } }] } })) > 0,
+        // Without cloud backup the recording can expire before the client is deleted; the page gives its own date.
+        recordingFirst: !!video.purgeAt && (!recipient.purgeAt || video.purgeAt <= recipient.purgeAt),
       }
     : undefined;
   // AI summaries add-on. Copies sent to other clients share the original recording's transcript.

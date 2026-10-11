@@ -1,6 +1,7 @@
 import type Stripe from "stripe";
 import { db, type Workspace } from "@/lib/db";
 import { deleteAccount, leaveTeam, leaverName } from "@/lib/account";
+import { startBackupEndedClock } from "@/lib/backupEnded";
 import { BRAND } from "@/lib/brand";
 import { zoned } from "@/lib/dates";
 import { isEmailBlocked } from "@/lib/blockedEmail";
@@ -12,7 +13,7 @@ import { rateLimit } from "@/lib/rateLimit";
 import { enforceSeatLimits } from "@/lib/seatLimits";
 import { HttpError } from "@/lib/session";
 import { appUrl, stripe } from "@/lib/stripe";
-import { isMissing } from "@/lib/subscription";
+import { endOpenCheckouts, isMissing } from "@/lib/subscription";
 import { teamEmail } from "@/lib/teamEmail";
 import { DELETION_GRACE_DAYS, DELETION_WARN_DAYS } from "@/lib/periods";
 
@@ -110,7 +111,10 @@ export async function requestAccountDeletion(userId: string, { notify = true } =
     }
   };
   try {
-    for (const w of own) billing.set(w.id, await stopRenewal(w));
+    for (const w of own) {
+      billing.set(w.id, await stopRenewal(w));
+      await endOpenCheckouts(w);
+    }
   } catch (err) {
     await undo();
     throw err;
@@ -196,10 +200,20 @@ export async function restoreAccount(userId: string, { notify = true } = {}) {
   if (user.closedAt) throw new HttpError(403, `This account was closed by ${BRAND.name} support, so it can't be kept. Contact ${LEGAL.email}.`);
   if (user.suspendedAt) throw new HttpError(403, `This login is suspended, so the account can't be kept right now. Contact ${LEGAL.email}.`);
   const own = await db.workspace.findMany({ where: { deleteAt: { not: null }, members: { some: { userId } } } });
+  // Sign-ins from before it was closed stay signed out (closing told them "signed out on every device"); the fresh one
+  // keeping it is newer. Never earlier than a "Sign out everywhere" made meanwhile.
+  const cutoff =
+    user.deletionRequestedAt && (!user.sessionsValidAfter || user.deletionRequestedAt > user.sessionsValidAfter) ? user.deletionRequestedAt : user.sessionsValidAfter;
   const kept = await db.$transaction(async (tx) => {
-    const res = await tx.user.updateMany({ where: { id: userId, deleteAt: { gt: now } }, data: { deleteAt: null, deletionRequestedAt: null, deletionWarnedAt: null } });
+    const res = await tx.user.updateMany({
+      where: { id: userId, deleteAt: { gt: now } },
+      data: { deleteAt: null, deletionRequestedAt: null, deletionWarnedAt: null, ...(cutoff ? { sessionsValidAfter: cutoff } : {}) },
+    });
     if (!res.count) return false;
-    await tx.workspace.updateMany({ where: { id: { in: own.map((w) => w.id) } }, data: { deleteAt: null, renewalStoppedAt: null } });
+    const ids = own.map((w) => w.id);
+    await tx.workspace.updateMany({ where: { id: { in: ids } }, data: { deleteAt: null, renewalStoppedAt: null } });
+    // Uploads refused while it was closed (lib/retention.ts abortStaleUploads) get a new week to finish.
+    await tx.video.updateMany({ where: { workspaceId: { in: ids }, status: "RECORDING" }, data: { updatedAt: now } });
     return true;
   });
   if (!kept) throw new HttpError(410, "This account has reached its deletion date, so it can't be kept");
@@ -219,6 +233,8 @@ export async function restoreAccount(userId: string, { notify = true } = {}) {
     }
     // Recalculated from the plan: clients it covers can open their links again.
     await enforceSeatLimits(w.id).catch((err) => console.error("[account] seat check after keeping", w.id, err));
+    // Cloud backup that ended while it was closed: the recordings' 30 days start now, and the owner is told the date.
+    await startBackupEndedClock(w.id).catch((err) => console.error("[account] backup clock after keeping", w.id, err));
   }
   if (notify) {
     const mail = keptEmail({ workspace: own[0]?.name ?? null, planEnded });
@@ -229,9 +245,20 @@ export async function restoreAccount(userId: string, { notify = true } = {}) {
 
 /** Refused while legal hold is on (lib/support/admin.ts setLegalHold). */
 export const LEGAL_HOLD_DELETE = "This account belongs to a workspace on legal hold, so it can't be deleted until the hold is lifted.";
-/** Nothing of a workspace on legal hold is deleted, so neither is an account on it. */
-const notHeld = { memberships: { none: { workspace: { legalHoldAt: { not: null } } } } } as const;
-const onLegalHold = async (userId: string) => (await db.user.count({ where: { id: userId, NOT: notHeld } })) > 0;
+/**
+ * Nothing of a workspace on legal hold is deleted, so neither is an account on it, nor one that rows of it point at
+ * (staff who have since left: deleting the login would take its invites, staff notices and recordings with it).
+ */
+const heldWs = { workspace: { legalHoldAt: { not: null } } } as const;
+const notHeld = {
+  memberships: { none: heldWs },
+  invitesSent: { none: heldWs },
+  noticesSent: { none: heldWs },
+  noticesReceived: { none: heldWs },
+  teamNotifications: { none: heldWs },
+  videos: { none: heldWs },
+} as const;
+export const onLegalHold = async (userId: string) => (await db.user.count({ where: { id: userId, NOT: notHeld } })) > 0;
 
 /**
  * Deletes an account for good now, without waiting for its date (support, on
@@ -345,7 +372,7 @@ function scheduledEmail(o: { deleteAt: Date; tz?: string | null; workspace: { na
     } else if (b.result === "ending") {
       lines.push({ text: `Your ${w.plan} plan was already set to end${ends ? ` on ${ends}` : ""}, and it won't renew.` });
     }
-    lines.push({ text: "Recordings without cloud backup still expire on their usual dates in the meantime, and reminders due while your account is closed aren't sent." });
+    lines.push({ text: "Recordings without cloud backup still expire on their usual dates in the meantime, removed clients are still deleted on their dates, and reminders due while your account is closed aren't sent." });
   }
   if (o.teamsLeft.length) {
     lines.push({ text: `You've left ${list(o.teamsLeft)}. Keeping your account won't put you back on ${o.teamsLeft.length === 1 ? "that team" : "those teams"}; ask them for a new invite.` });

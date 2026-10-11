@@ -76,6 +76,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
           keepDays={CLIENT_KEEP_DAYS}
           openRemoved={!!removed}
           timezone={workspace.timezone}
+          cloudBackup={workspace.cloudBackup}
           initialSeats={seats}
           includedSeats={plan.clientSeats}
           extraSeats={workspace.extraClientSeats}

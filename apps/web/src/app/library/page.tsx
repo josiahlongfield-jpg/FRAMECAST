@@ -23,7 +23,8 @@ const fmt = (ms: number | null) => {
 export default async function Library({ searchParams }: { searchParams: Promise<{ show?: string; filter?: string; ws?: string; restored?: string }> }) {
   const { show, filter, ws, restored } = await searchParams;
   await followTeamLink(ws, filter ? `/library?filter=${encodeURIComponent(filter)}` : "/library");
-  const me = await requirePageUser("/library");
+  // Kept the "restored" note through /agree, for a kept account that has to agree to new terms first.
+  const me = await requirePageUser(restored ? `/library?restored=${encodeURIComponent(restored)}` : "/library");
   const { user, workspace } = me;
   const access = accessOf(me);
   const plan = PLANS[workspace.plan];

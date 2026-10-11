@@ -99,6 +99,7 @@ const ptext = norm(await panel.textContent());
 ok("box: link stops now, seat freed", ptext.includes(`Remove Ana ${stamp}? Their personal link stops working now and their seat is freed.`), ptext);
 ok("box: kept until the date, restorable from Removed clients", ptext.includes(`kept until ${until}, so you can restore them from Removed clients`), ptext);
 ok("box: then deleted for good, replies included, shared recordings stay", ptext.includes("deleted for good, including your team's replies to them, even with cloud backup on") && ptext.includes("Recordings you also sent to other clients stay with those clients"), ptext);
+ok("box: without cloud backup, recordings still leave on their own dates", ptext.includes("Recordings without cloud backup still leave our servers on their usual dates, and restoring doesn't bring those back."), ptext);
 ok("box: 'Email Ana that their access has ended' is ticked", ptext.includes("Email Ana that their access has ended") && (await owner.isChecked("[data-testid=remove-client-email]")));
 ok("no browser confirm() any more", (await owner.locator("[data-testid=remove-client-confirm] >> button:text-is('Remove Ana')").count()) === 1);
 await owner.screenshot({ path: `${shots}/client-removal-confirm.png`, fullPage: true });
@@ -278,6 +279,12 @@ await owner2.screenshot({ path: `${shots}/client-removal-watch.png`, fullPage: t
 await owner2.goto(`${BASE}/v/${d1.id}`);
 const banner2 = norm(await owner2.textContent("[data-testid=recipient-removed]", { timeout: 30000 }).catch(() => ""));
 ok("watch page: a recording sent only to them is deleted with them", banner2.includes(`This conversation and recording will be deleted on ${xanUntil} unless Xan ${stamp} is restored`), banner2);
+// One that expires (no cloud backup) before the client is deleted: the banner doesn't promise the recording until then.
+await prisma.video.update({ where: { id: d1.id }, data: { purgeAt: new Date(Date.now() + 5 * D) } });
+await owner2.reload();
+const banner2b = norm(await owner2.textContent("[data-testid=recipient-removed]", { timeout: 30000 }).catch(() => ""));
+ok("watch page: a recording expiring first isn't said to be kept until the client's date", banner2b.includes(`This conversation will be deleted on ${xanUntil} unless Xan ${stamp} is restored`) && !banner2b.includes("and recording"), banner2b);
+await prisma.video.update({ where: { id: d1.id }, data: { purgeAt: null } });
 await owner2.goto(`${BASE}/v/${c2.id}`);
 const banner3 = norm(await owner2.textContent("[data-testid=recipient-removed]", { timeout: 30000 }).catch(() => ""));
 ok("watch page: their copy of a recording sent to several clients", banner3.includes(`Their conversation here will be deleted on ${xanUntil}`) && banner3.includes("The recording itself stays"), banner3);
@@ -287,6 +294,7 @@ const badges = await owner2.$$eval("[data-testid=client-removed-badge]", (els) =
 ok("Library marks videos of a removed client", badges.length === 3 && badges.every((b) => b === `Client removed · conversation deleted ${shortDay(xan.purgeAt, "UTC")}`), JSON.stringify(badges));
 await owner2.goto(`${BASE}/clients`);
 const removedList = norm(await owner2.textContent("[data-testid=removed-clients]", { timeout: 30000 }).catch(() => ""));
+ok("Removed clients: says recordings without cloud backup leave on their own dates", removedList.includes("Recordings without cloud backup still leave our servers on their usual dates before then"), removedList);
 ok("Removed clients: each with its deletion date", removedList.includes(`Xan ${stamp}`) && removedList.includes(`Wes ${stamp}`) && removedList.includes("deleted for good after") && !removedList.includes(`Bea ${stamp}`), removedList);
 
 // ---- Members ----
@@ -300,6 +308,8 @@ ok("restoring another workspace's client: 404", (await status(owner.request.post
 // ---- Earlier removals with no date ----
 const leg = await mk(ws2, `Leg ${stamp}`, null, 14, { removedAt: ago(200) });
 const lou = await mk(ws2, `Lou ${stamp}`, null, 15, { removedAt: ago(3) });
+// One a run claimed and then stopped on part way (killed before its email went out): still undated, so it's told about again.
+const liz = await mk(ws2, `Liz ${stamp}`, null, 18, { removedAt: ago(5), purgeWarnedAt: new Date(Date.now() - 20 * 60000) });
 
 // ---- Due: Xan's 30 days are up ----
 await prisma.client.update({ where: { id: xan.id }, data: { purgeAt: new Date(Date.now() - 60000) } });
@@ -333,13 +343,15 @@ ok("purge: the Free plan's count of recorded videos is unchanged", (await prisma
 ok("restore after the purge: 404", (await status(owner2.request.post(`${BASE}/api/clients/${xan.id}/restore`))) === 404);
 
 // Earlier removals: dated, never deleted straight away, one notice to the owner.
-const [legAfter, louAfter] = await Promise.all([leg, lou].map((c) => prisma.client.findUnique({ where: { id: c.id } })));
-ok("earlier removals are not deleted", !!legAfter && !!louAfter);
-ok("earlier removals get 30 days from now", [legAfter, louAfter].every((c) => c?.purgeAt && Math.abs(c.purgeAt.getTime() - (Date.now() + 30 * D)) < 5 * 60000), JSON.stringify([legAfter?.purgeAt, louAfter?.purgeAt]));
+const [legAfter, louAfter, lizAfter] = await Promise.all([leg, lou, liz].map((c) => prisma.client.findUnique({ where: { id: c.id } })));
+ok("earlier removals are not deleted", !!legAfter && !!louAfter && !!lizAfter);
+ok("earlier removals get 30 days from now", [legAfter, louAfter, lizAfter].every((c) => c?.purgeAt && Math.abs(c.purgeAt.getTime() - (Date.now() + 30 * D)) < 5 * 60000), JSON.stringify([legAfter?.purgeAt, louAfter?.purgeAt, lizAfter?.purgeAt]));
+ok("earlier removals: the claim is cleared once dated, so the 3-day warning still goes", [legAfter, louAfter, lizAfter].every((c) => c?.purgeWarnedAt === null));
 const notices = mailTo(owner2Email).filter((m) => m.subject === "Removed clients are now deleted after 30 days");
 ok("one notice to the owner for the workspace", notices.length === 1, String(notices.length));
 const legNote = notices[0]?.text ?? "";
 ok("notice: explains the change and lists both", legNote.includes("now kept for 30 days") && legNote.includes("even with cloud backup on") && legNote.includes(`Leg ${stamp}, removed`) && legNote.includes(`Lou ${stamp}, removed`), legNote);
+ok("notice: includes one an interrupted run had claimed but not told them about", legNote.includes(`Liz ${stamp}, removed`), legNote);
 ok("notice: links to Removed clients", legNote.includes(`/clients?removed=1&ws=${ws2}`));
 ok("nobody else told about the earlier removals", mailTo(adminEmail).every((m) => !m.subject.includes("now deleted after 30 days")));
 

@@ -7,7 +7,7 @@
 // no RESEND_API_KEY (mail goes to .data/outbox) and CRON_SECRET.
 import { chromium } from "@playwright/test";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { PrismaClient } from "@prisma/client";
 import { agreed } from "./agree.mjs";
@@ -103,7 +103,7 @@ await owner.goto(BASE + "/settings/account");
 const explainer = norm(await owner.textContent("[data-testid=delete-explainer]"));
 const roughly = longDay(new Date(Date.now() + 30 * D), TZ);
 ok("explainer: closed now, deleted on the date, sign in to keep it", explainer.includes(`Your account is closed straight away and permanently deleted on ${roughly}. Until then, sign in to keep it with everything as it was.`), explainer);
-ok("explainer: workspace goes with it, links stop, expiry carries on", explainer.includes("Your workspace goes with it") && explainer.includes("links stop working now") && explainer.includes("still expire on their usual dates") && !explainer.includes("won't renew"), explainer);
+ok("explainer: workspace goes with it, links stop, expiry carries on", explainer.includes("Your workspace goes with it") && explainer.includes("links stop working now") && explainer.includes("still expire on their usual dates") && explainer.includes("removed clients are still deleted on their dates") && !explainer.includes("won't renew"), explainer);
 ok("explainer: sooner on request", explainer.includes("Want it deleted sooner? Email support@sureframe.app."), explainer);
 await owner.screenshot({ path: `${shots}/account-grace-settings.png`, fullPage: true });
 
@@ -125,7 +125,7 @@ ok("emailed: subject has the date in the business's time zone", !!closedMail, JS
 const ct = closedMail?.text ?? "";
 ok("email: deleted for good with the workspace, sign in to keep it", ct.includes(`It will be deleted for good on ${deleteDay}, with ${business} and its recordings, clients, to-dos and notes.`) && ct.includes("Sign in before then to keep your account with everything as it was."), ct);
 ok("email: what happens now", ct.includes("You're signed out on every device.") && ct.includes(`Your clients can't open their links, and they aren't sent reminders or new-video emails from ${business}.`), ct);
-ok("email: recordings still expire; no plan line on Free", ct.includes("Recordings without cloud backup still expire on their usual dates") && !ct.includes("plan won't renew"), ct);
+ok("email: recordings still expire; no plan line on Free", ct.includes("Recordings without cloud backup still expire on their usual dates") && ct.includes("removed clients are still deleted on their dates") && !ct.includes("plan won't renew"), ct);
 ok("email: Keep my account button, and 'didn't ask for this'", ct.includes("Keep my account: http") && ct.includes("/account/restore") && ct.includes("Didn't ask for this? Sign in, keep your account and contact support@sureframe.app."), ct);
 ok("email: plain SureFrame email", !!closedMail && closedMail.from.startsWith("SureFrame"));
 
@@ -163,6 +163,7 @@ async function setPlan(plan) {
   await founder.goto(BASE + "/support/accounts");
   await founder.fill('input[name="email"]', ownerEmail);
   await founder.selectOption("select", plan);
+  await founder.fill('textarea[name="reason"]', "Test plan change");
   await founder.click("text=Save");
   await founder.waitForSelector(plan === "FREE" ? "text=back on the Free plan" : "text=free of charge");
 }
@@ -190,8 +191,13 @@ ok("the sign-in page doesn't bounce a closed account", (await back.locator('inpu
 // ---- Keeping it ----
 // As if a subscription we had stopped ended meanwhile.
 await prisma.workspace.update({ where: { id: ws }, data: { renewalStoppedAt: new Date() } });
+// And cloud backup ended with it: a backed-up recording has no deletion date yet (its 30 days wait while closed).
+const backedUp = await prisma.video.create({ data: { id: `agb${Date.now().toString(36)}`, mimeType: "video/webm", storageKey: `test/grace-backed-${Date.now()}`, status: "UPLOADED", workspaceId: ws, ownerId: ownerUser.id } });
 const keeper = await signIn(ownerEmail, "/clients", "/account/restore");
 ok("restore page: says the subscription ended", norm(await keeper.textContent("main")).includes("Your subscription has ended. Choose a plan in Settings > Billing"));
+ok("restore page: says removed clients due meanwhile are gone", norm(await keeper.textContent("[data-testid=restore-removed-clients]").catch(() => "")) === "Removed clients whose 30 days ended while it was closed have been deleted and can't be restored.");
+const waitingNote = norm(await keeper.textContent("[data-testid=restore-backup-ended]").catch(() => ""));
+ok("restore page: says backed-up recordings get 30 days once kept", /^Cloud backup ended while it was closed\. Keep it and our copies of \d+ recordings? are deleted 30 days later, on /.test(waitingNote), waitingNote);
 await keeper.click("button:text-is('Keep my account')");
 await keeper.waitForURL((u) => u.pathname === "/library", { timeout: 30000 });
 ok("kept: lands on the Library with the plan-ended note", new URL(keeper.url()).searchParams.get("restored") === "ended" && norm(await keeper.textContent("[data-testid=account-restored]")).includes("Your account is open again and won't be deleted. Your subscription ended while it was closed."));
@@ -206,6 +212,10 @@ ok("kept: emailed as a security notice", !!keptMail && keptMail.text.includes("D
 await anaPhone.goto(`${BASE}/c/${ana.token}`);
 ok("kept: Ana's same link works again", new URL(anaPhone.url()).pathname === "/inbox" && (await anaPhone.locator("[data-testid=client-closed]").count()) === 0 && (await anaPhone.textContent("main")).includes(`From ${business}`));
 ok("kept: the owner can use the app", (await status(keeper.request.get(BASE + "/api/clients"))) === 200);
+ok("kept: a sign-in from before it was closed stays signed out", (await status(laptop.request.get(BASE + "/api/clients"))) === 401);
+const backedUpNow = (await prisma.video.findUnique({ where: { id: backedUp.id } })).purgeAt;
+ok("kept: the backed-up recording's 30 days start now", !!backedUpNow && Math.abs(backedUpNow.getTime() - (Date.now() + 30 * D)) < 120_000, String(backedUpNow));
+ok("kept: the owner is told the date", !!(await waitMail(ownerEmail, (m) => m.subject === "Cloud backup has ended for your recordings")));
 
 // ---- Closing again: the 3-day reminder, too late to keep, and the deletion ----
 await closeAccount(keeper, ownerEmail);
@@ -227,6 +237,16 @@ ok("reminder: only once", mailTo(ownerEmail).filter((m) => m.text.includes("Afte
 await prisma.user.update({ where: { id: ownerUser.id }, data: { deleteAt: new Date(Date.now() - 60000) } });
 const late = await signIn(ownerEmail, "/library", "/account/restore");
 ok("after the date: 'being deleted', no Keep button", (await late.textContent("h1")).includes("Your account is being deleted") && (await late.locator("button:text-is('Keep my account')").count()) === 0);
+
+// A stored file that can't be deleted (here a folder stands in its place): nothing is deleted, so the next run tries again.
+const filePath = path.join(uploads, fileKey);
+rmSync(filePath, { force: true });
+mkdirSync(filePath, { recursive: true });
+writeFileSync(path.join(filePath, "x"), "x");
+await cron("reminders");
+ok("a file that can't be deleted: the account and its rows stay for the next run", !!(await prisma.user.findUnique({ where: { id: ownerUser.id } })) && !!(await prisma.video.findUnique({ where: { id: anaVideo.id } })));
+rmSync(filePath, { recursive: true, force: true });
+putFile(fileKey);
 
 const res = await cron("reminders");
 ok("the job deletes it once the date has passed", typeof res.accountsPurged === "number" && res.accountsPurged >= 1 && !(await prisma.user.findUnique({ where: { id: ownerUser.id } })), JSON.stringify(res));
@@ -284,7 +304,10 @@ ok("closed staff: the invite page says to keep the account first", (await samJoi
 ok("closed staff: joining is refused (403)", (await status(samJoin.request.post(BASE + "/api/team/join", { data: { token: newInvite } }))) === 403);
 ok("closed staff: still not on the team", !(await prisma.membership.findFirst({ where: { workspaceId: team, userId: sam.id } })));
 
-// Keeping it doesn't bring the team back.
+// Keeping it doesn't bring the team back. Said even when they joined over a month ago (the daily clean-up keeps that invite).
+await prisma.invite.updateMany({ where: { acceptedById: sam.id }, data: { acceptedAt: new Date(Date.now() - 60 * D) } });
+await cron("purge");
+ok("closed staff: the invite they joined with outlives the monthly clean-up while closed", (await prisma.invite.count({ where: { acceptedById: sam.id } })) > 0);
 await samJoin.goto(BASE + "/account/restore");
 ok("closed staff: the restore page says the team won't come back", norm(await samJoin.textContent("main")).includes(`Keeping it won't put you back on ${teamName}; ask them for a new invite.`));
 await samJoin.click("button:text-is('Keep my account')");

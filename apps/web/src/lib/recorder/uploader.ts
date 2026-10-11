@@ -37,8 +37,10 @@ export class FatalUploadError extends Error {
 
 /**
  * Refusals that can clear up on their own: signed out (401), access paused or
- * another account signed in (403/404). The local copy is kept and tried again
- * until the server would have given up on the upload anyway (see retention.ts).
+ * suspended, or another account signed in (403/404). The local copy is kept
+ * and tried again. After KEEP_FOR_MS it's dropped once the server says the
+ * upload is gone (404): the server keeps one waiting while access is refused
+ * (see retention.ts), however long that takes.
  */
 const KEEP_FOR_MS = 8 * 86_400_000;
 export const mayRecover = (err: unknown) => err instanceof FatalUploadError && [401, 403, 404].includes(err.status ?? 0);
@@ -235,7 +237,7 @@ export async function recoverInterrupted(onRecovered: (videoId: string, s: store
         onRecovered(s.videoId, s);
       } catch (err) {
         const stale = Date.now() - s.startedAt > KEEP_FOR_MS;
-        if (err instanceof FatalUploadError && (stale || !mayRecover(err))) await store.removeSession(s.videoId);
+        if (err instanceof FatalUploadError && (!mayRecover(err) || (stale && err.status === 404))) await store.removeSession(s.videoId);
         else console.warn("Recovery deferred", s.videoId, err);
       }
     });

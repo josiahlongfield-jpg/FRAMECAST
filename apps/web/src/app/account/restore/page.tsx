@@ -8,6 +8,7 @@ import { zoned } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { LEGAL } from "@/lib/legal";
 import { PLANS } from "@/lib/plans";
+import { purgeDate, RETENTION_DAYS } from "@/lib/retention";
 import { currentUser, HttpError, pendingDeletion } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Keep your account", robots: { index: false } };
@@ -43,11 +44,15 @@ export default async function Restore() {
   }
 
   const now = new Date();
-  const [ws, leftTeams] = await Promise.all([
-    db.workspace.findFirst({ where: { deleteAt: { not: null }, members: { some: { userId: closed.id } } } }),
-    // Teams they were staff on: closing the account took them off.
-    db.invite.findMany({ where: { acceptedById: closed.id, workspace: { members: { none: { userId: closed.id } } } }, select: { workspace: { select: { name: true } } }, distinct: ["workspaceId"] }),
-  ]);
+  const ws = await db.workspace.findFirst({ where: { deleteAt: { not: null }, members: { some: { userId: closed.id } } } });
+  // Cloud backup that ended while it was closed: their 30 days start once it's kept (lib/backupEnded.ts).
+  const waiting = ws && !ws.cloudBackup ? await db.video.count({ where: { workspaceId: ws.id, status: { not: "EXPIRED" }, purgeAt: null, replyToId: null, sourceId: null } }) : 0;
+  // Teams they were staff on: closing the account took them off.
+  const leftTeams = await db.invite.findMany({
+    where: { acceptedById: closed.id, workspace: { members: { none: { userId: closed.id } } } },
+    select: { workspace: { select: { name: true } } },
+    distinct: ["workspaceId"],
+  });
   const dates = zoned(ws?.timezone);
   const teams = [...new Set(leftTeams.map((i) => i.workspace.name))];
   const signOutButton = (label: string, primary = false) => (
@@ -111,6 +116,13 @@ export default async function Restore() {
                 <li>Your subscription has ended. Choose a plan in Settings &gt; Billing to get your paid features back; until then, clients your plan doesn&apos;t cover stay paused.</li>
               ))}
             {ws && !ws.cloudBackup && <li>Recordings that expired from our servers while it was closed can&apos;t be brought back.</li>}
+            {ws && <li data-testid="restore-removed-clients">Removed clients whose 30 days ended while it was closed have been deleted and can&apos;t be restored.</li>}
+            {waiting > 0 && (
+              <li data-testid="restore-backup-ended">
+                Cloud backup ended while it was closed. Keep it and our copies of {waiting === 1 ? "1 recording" : `${waiting} recordings`} are deleted{" "}
+                {RETENTION_DAYS} days later, on {dates.longDay(purgeDate(false, now)!)}, unless you subscribe again with cloud backup or save them to your device.
+              </li>
+            )}
             {teams.length > 0 && (
               <li>Keeping it won&apos;t put you back on {teams.join(" and ")}; ask {teams.length === 1 ? "them" : "each team"} for a new invite.</li>
             )}
