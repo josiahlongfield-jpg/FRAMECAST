@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import AppHeader from "@/components/AppHeader";
 import ShowRecoveryKey from "@/components/ShowRecoveryKey";
 import DeleteAccountButton from "@/components/DeleteAccountButton";
+import ManageBillingButton from "@/components/ManageBillingButton";
 import MyEmailPrefs from "@/components/MyEmailPrefs";
 import Link from "next/link";
 import { signOut } from "@/auth";
@@ -105,6 +106,14 @@ export default async function AccountSettings({ searchParams }: { searchParams: 
           <ShowRecoveryKey workspaceId={workspace.id} fingerprint={workspace.keyFingerprint} />
         </section>}
 
+        {!agreed && role === "OWNER" && workspace.stripeCustomerId && (
+          <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6" data-testid="account-subscription">
+            <h2 className="font-semibold text-slate-900">Subscription</h2>
+            <p className="mt-1 mb-4 text-sm text-slate-600">Manage or cancel your subscription, see invoices or update your card.</p>
+            <ManageBillingButton />
+          </section>
+        )}
+
         <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
           <h2 className="font-semibold text-slate-900">Download your data</h2>
           <p className="mt-1 text-sm text-slate-600">
@@ -121,7 +130,7 @@ export default async function AccountSettings({ searchParams }: { searchParams: 
           <p className="mt-1 text-sm text-slate-600" data-testid="delete-explainer">
             Your account is closed straight away and permanently deleted on {deletesOn}. Until then, sign in to keep it with everything as it was.
             {ownsAlone && (
-              <> Your workspace goes with it: its recordings, clients, to-dos and notes. Your clients&apos; links stop working now{ownWorkspace.stripeSubscriptionId ? <>, your plan won&apos;t renew</> : null}, and recordings without cloud backup still expire on their usual dates.</>
+              <> Your workspace goes with it: its recordings, clients, to-dos and notes. Your clients&apos; links stop working now{ownWorkspace.stripeSubscriptionId ? <>, your plan won&apos;t renew</> : null}, recordings without cloud backup still expire on their usual dates, and removed clients are still deleted on their dates.</>
             )}
             {teamNames.length > 0 && (
               <> You leave {teamNames.join(" and ")} straight away, and keeping your account won&apos;t put you back. Recordings you made for {teamNames.length === 1 ? "that team" : "those teams"} stay with {teamNames.length === 1 ? "it" : "them"}, and {teamNames.length === 1 ? "its" : "their"} clients aren&apos;t affected.</>

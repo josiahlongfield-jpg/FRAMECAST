@@ -89,16 +89,18 @@ export function requireRole(me: { role: Role }, ...roles: Role[]) {
 export const termsRequired = () => new HttpError(403, TERMS_REQUIRED, "TERMS_REQUIRED");
 
 /**
- * The signed-in member, or a 401/403. `allowSuspendedWorkspace` lets the owner
- * of a suspended workspace reach what the suspended page offers (managing the
- * subscription); a suspended login never gets through. `allowTermsPending`
- * lets someone who hasn't agreed to the current terms yet finish an upload
- * they'd already started.
+ * The signed-in member, or a 401/403. `allowSuspendedOwner` lets the owner of
+ * a suspended workspace, or an owner whose own login is suspended, reach what
+ * the suspended page offers (managing or cancelling the subscription); a
+ * suspended staff login never gets through. `allowTermsPending` lets someone
+ * who hasn't agreed to the current terms yet finish an upload they'd already
+ * started, or manage or cancel their subscription.
  */
-export async function requireUser({ allowSuspendedWorkspace = false, allowTermsPending = false } = {}) {
+export async function requireUser({ allowSuspendedOwner = false, allowTermsPending = false } = {}) {
   const me = await currentUser();
   if (!me) throw new HttpError(401, "Sign in required");
-  if (me.suspended && !(allowSuspendedWorkspace && me.suspended === "workspace")) throw new HttpError(403, ACCOUNT_SUSPENDED, "ACCOUNT_SUSPENDED");
+  if (me.suspended && !(allowSuspendedOwner && (me.suspended === "workspace" || (me.role === "OWNER" && !me.user.closedAt))))
+    throw new HttpError(403, ACCOUNT_SUSPENDED, "ACCOUNT_SUSPENDED");
   if (me.paused) throw new HttpError(403, STAFF_PAUSED);
   if (!me.agreed && !allowTermsPending) throw termsRequired();
   return me;

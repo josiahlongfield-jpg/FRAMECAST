@@ -161,6 +161,9 @@ export function start(port = Number(process.env.FAKE_STRIPE_PORT ?? 12111)) {
       }
       return send(200, req.method === "POST" ? { ...sub, pending_update: null, latest_invoice: { id: id("in"), hosted_invoice_url: null } } : sub);
     }
+    if (p === "/v1/charges" && req.method === "GET") {
+      return send(200, list(Object.values(state.charges ?? {}).filter((c) => c.customer === form.customer)));
+    }
     if ((m = p.match(/^\/v1\/charges\/([^/]+)$/)) && req.method === "GET") {
       return send(200, (state.charges ?? {})[m[1]] ?? { id: m[1], object: "charge", customer: null });
     }

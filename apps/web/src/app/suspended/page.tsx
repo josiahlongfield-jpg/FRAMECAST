@@ -58,7 +58,7 @@ export default async function Suspended() {
       )}
       <p className="mt-3 text-sm text-slate-600">
         {loginSuspended ? "While it's suspended you can't use SureFrame with this login." : "While it's suspended, nobody on the team can use it and clients can't open their videos."}
-        {!loginSuspended && !workspace.cloudBackup && !workspace.legalHoldAt && " Recordings without cloud backup are still deleted from our servers on their usual dates."}
+        {!loginSuspended && !workspace.cloudBackup && " Recordings without cloud backup still follow the usual deletion schedule in our Terms."}
       </p>
       {others.length > 0 && (
         <div className="mt-6 grid gap-2">
@@ -80,7 +80,7 @@ export default async function Suspended() {
           <a href="/api/account/export" className="font-medium text-brand-700 hover:underline" data-testid="suspended-export">Download my data</a>
         </li>
       </ul>
-      {!loginSuspended && me.role === "OWNER" && workspace.stripeCustomerId && (
+      {me.role === "OWNER" && !user.closedAt && workspace.stripeCustomerId && (
         <div className="mt-6">
           <p className="mb-2 text-sm text-slate-600">You can still manage or cancel your subscription.</p>
           <ManageBillingButton />

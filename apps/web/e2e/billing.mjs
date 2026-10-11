@@ -283,6 +283,12 @@ await page.goto(BASE + "/settings/account");
 await page.fill('input[name="confirm"]', email);
 await page.click("text=Delete my account");
 await page.waitForURL((u) => u.pathname === "/login");
+ok("closed again: renewal stopped and noted", !!(await prisma.workspace.findUnique({ where: { id: workspaceId } })).renewalStoppedAt);
+// A payment disputed while it's closed: keeping it mustn't turn renewal back on.
+const chargeId2 = `ch_d2${Date.now()}`;
+state.charges = { ...(state.charges ?? {}), [chargeId2]: { id: chargeId2, object: "charge", customer: session.customer } };
+await webhook("charge.dispute.created", { id: `dp2_${Date.now()}`, object: "dispute", charge: chargeId2, amount: 1650, currency: "usd", reason: "fraudulent" });
+ok("a dispute while it's closed: Keep my account won't turn renewal back on", !(await prisma.workspace.findUnique({ where: { id: workspaceId } })).renewalStoppedAt && sub2.cancel_at_period_end === true);
 await prisma.user.update({ where: { email }, data: { deleteAt: new Date(Date.now() - 60_000) } });
 res = await daily();
 ok("the daily job deletes it once its date has passed", res.ok() && (await res.json()).accountsPurged >= 1 && !(await prisma.user.findUnique({ where: { email } })) && !(await prisma.workspace.findUnique({ where: { id: workspaceId } })));

@@ -105,7 +105,7 @@ export default async function Agree({ searchParams }: { searchParams: Promise<{ 
         <p>
           Don&rsquo;t agree? You can{" "}
           <Link href="/settings/account" className="font-medium text-brand-700 hover:underline" data-testid="agree-account">
-            download your data or delete your account
+            download your data, manage or cancel your subscription, or delete your account
           </Link>
           .
         </p>

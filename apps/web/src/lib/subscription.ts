@@ -1,7 +1,7 @@
 import type Stripe from "stripe";
 import { ACTIVE_STATUSES, catalogOf, intervalOf, isAiItem, loadCatalog, planOf } from "@/lib/billing";
 import { db, type Workspace } from "@/lib/db";
-import { tellOwnerBackupEnded } from "@/lib/backupEnded";
+import { backupEnded } from "@/lib/backupEnded";
 import { alertFounder } from "@/lib/founderAlert";
 import { rateLimit } from "@/lib/rateLimit";
 import { applyBackupSetting } from "@/lib/retention";
@@ -34,10 +34,7 @@ export async function forgetSubscription(workspace: Workspace, { customer = fals
       cancelsAt: null,
     },
   });
-  if (workspace.cloudBackup) {
-    await applyBackupSetting(workspace.id, false);
-    if (notify) await tellOwnerBackupEnded(workspace.id);
-  }
+  if (workspace.cloudBackup) await backupEnded(workspace.id, { notify });
   await enforceSeatLimits(workspace.id, { notify });
 }
 
@@ -84,6 +81,25 @@ export async function currentCustomer(workspace: Workspace): Promise<string | nu
 /** One email per subject a day, however many times Stripe sends the event. */
 const once = (key: string) => rateLimit(`alert:${key}`, 1, 86400).then(() => true, () => false);
 
+/**
+ * When an account is closed: open Checkouts can't be paid any more, and a subscription left unpaid can't be paid from
+ * its invoice email, so neither can start a subscription afterwards. Best effort; syncSubscription catches the rest.
+ */
+export async function endOpenCheckouts(workspace: Workspace) {
+  if (!process.env.STRIPE_SECRET_KEY || !workspace.stripeCustomerId) return;
+  const customer = workspace.stripeCustomerId;
+  const [open, subs] = await Promise.all([
+    stripe().checkout.sessions.list({ customer, status: "open", limit: 20 }).catch(() => null),
+    stripe().subscriptions.list({ customer, status: "all", limit: 20 }).catch(() => null),
+  ]);
+  await Promise.all([
+    ...(open?.data ?? []).map((s) => stripe().checkout.sessions.expire(s.id).catch(() => null)),
+    ...(subs?.data ?? [])
+      .filter((s) => s.metadata?.workspaceId === workspace.id && (s.status === "incomplete" || s.status === "unpaid"))
+      .map((s) => stripe().subscriptions.cancel(s.id).catch(() => null)),
+  ]);
+}
+
 /** When a cancelled subscription ends, or null if it renews. */
 function cancelDate(sub: Stripe.Subscription, planItem?: Stripe.SubscriptionItem) {
   if (sub.cancel_at) return new Date(sub.cancel_at * 1000);
@@ -101,6 +117,23 @@ export async function syncSubscription(sub: Stripe.Subscription, { notify = true
   if (!workspaceId) return;
   const workspace = await db.workspace.findUnique({ where: { id: workspaceId } });
   if (!workspace) return;
+  // One that started after the account was closed (a Checkout opened before, or an unpaid invoice paid since).
+  if ((workspace.closedAt || workspace.deleteAt) && ACTIVE_STATUSES.has(sub.status) && sub.id !== workspace.stripeSubscriptionId) {
+    // Closed by support: cancelled now, no further charges (Terms section 9). Closed by its owner: it doesn't renew,
+    // and Keep my account turns renewal back on (lib/accountDeletion.ts).
+    if (workspace.closedAt) await stripe().subscriptions.cancel(sub.id);
+    else if (!sub.cancel_at_period_end && !sub.cancel_at) {
+      await stripe().subscriptions.update(sub.id, { cancel_at_period_end: true });
+      await db.workspace.update({ where: { id: workspace.id }, data: { renewalStoppedAt: new Date() } });
+    }
+    if (await once(`closed-sub:${sub.id}`)) {
+      await alertFounder(`${workspace.name} paid after its account was closed`, [
+        `Subscription ${sub.id} started on workspace ${workspace.name} (${workspace.id}) after the account was closed${workspace.closedAt ? " by support" : ""}.`,
+        workspace.closedAt ? "It was cancelled. Refund the payment in the Stripe Dashboard, under Customers." : "It was set not to renew. Check whether the payment should be refunded.",
+      ]);
+    }
+    if (workspace.closedAt) return;
+  }
   await loadCatalog();
   // An old subscription ending must not wipe out a newer one.
   if (workspace.stripeSubscriptionId && workspace.stripeSubscriptionId !== sub.id && !ACTIVE_STATUSES.has(sub.status)) return;
@@ -148,9 +181,9 @@ export async function syncSubscription(sub: Stripe.Subscription, { notify = true
   });
   // Only a real change to cloud backup moves deletion dates; renewals and seat changes must not.
   if (workspace.cloudBackup !== cloudBackup) {
-    await applyBackupSetting(workspaceId, cloudBackup);
     // The owner switching it off updates the workspace first, so this is the plan ending or lapsing.
-    if (!cloudBackup && notify) await tellOwnerBackupEnded(workspaceId);
+    if (cloudBackup) await applyBackupSetting(workspaceId, true);
+    else await backupEnded(workspaceId, { notify });
   }
   // A plan that ended or lapsed pauses whoever it no longer covers; an upgrade restores them.
   await enforceSeatLimits(workspaceId, { notify });

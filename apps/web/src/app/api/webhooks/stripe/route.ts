@@ -49,6 +49,8 @@ async function disputed(dispute: Stripe.Dispute) {
       .subscriptions.update(workspace.stripeSubscriptionId, { cancel_at_period_end: true })
       .then(() => true, (err) => (console.log("[billing] stopping renewal after dispute failed", String(err)), false));
   }
+  // Not turned back on by "Keep my account" either (lib/accountDeletion.ts restoreAccount), if they'd closed it.
+  if (workspace?.renewalStoppedAt) await db.workspace.update({ where: { id: workspace.id }, data: { renewalStoppedAt: null } });
   if (!(await once(`dispute:${dispute.id}`))) return;
   await alertFounder(`Payment disputed by ${workspace?.name ?? "a customer"}`, [
     `A ${money(dispute.amount, dispute.currency)} payment was disputed (reason: ${dispute.reason}).`,

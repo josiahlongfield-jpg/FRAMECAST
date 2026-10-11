@@ -2,7 +2,7 @@ import { brandOf } from "@/lib/branding";
 import { zoned } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { sendMail } from "@/lib/mail";
-import { purgeDate } from "@/lib/retention";
+import { applyBackupSetting, purgeDate } from "@/lib/retention";
 import { appUrl } from "@/lib/stripe";
 import { teamEmail } from "@/lib/teamEmail";
 import { teamPath } from "@/lib/teamLink";
@@ -16,8 +16,8 @@ import { activeMember } from "@/lib/team";
 export async function tellOwnerBackupEnded(workspaceId: string) {
   const workspace = await db.workspace.findUnique({ where: { id: workspaceId } });
   const owner = await db.membership.findFirst({ where: { workspaceId, role: "OWNER", ...activeMember }, include: { user: { select: { email: true } } } });
-  // Not while the owner's account is closed: they're told what happens to their plan when they close it or keep it.
-  // Not while support has it suspended (nothing is emailed in its name), or on legal hold (nothing is deleted then).
+  // Not while nobody can get in (the account closed, or suspended by support): the 30 days wait until they can
+  // (backupEnded, startBackupEndedClock). Not on legal hold either (nothing is deleted then).
   if (!workspace || !owner || workspace.deleteAt || workspace.suspendedAt || workspace.closedAt || workspace.legalHoldAt) return;
   const left = await db.video.count({ where: { workspaceId, status: { not: "EXPIRED" }, replyToId: null, sourceId: null } });
   if (!left) return;
@@ -36,4 +36,32 @@ export async function tellOwnerBackupEnded(workspaceId: string) {
     color: brand.color,
   });
   await sendMail({ to: owner.user.email, ...mail }).catch((err) => console.error("[billing] backup-ended email", workspaceId, err));
+}
+
+/** Support has the workspace suspended or closed, or its owner closed their account: nobody can save their recordings. */
+const lockedOut = (w: { suspendedAt: Date | null; closedAt: Date | null; deleteAt: Date | null }) => !!(w.suspendedAt || w.closedAt || w.deleteAt);
+
+/**
+ * Cloud backup ended (the plan was cancelled or lapsed). Recordings' 30 days
+ * start now, with the owner told, unless nobody can get in to save them: then
+ * they wait until the workspace is unsuspended, reopened or kept
+ * (startBackupEndedClock).
+ */
+export async function backupEnded(workspaceId: string, { notify = true } = {}) {
+  const w = await db.workspace.findUnique({ where: { id: workspaceId }, select: { suspendedAt: true, closedAt: true, deleteAt: true } });
+  if (!w || lockedOut(w)) return;
+  await applyBackupSetting(workspaceId, false);
+  if (notify) await tellOwnerBackupEnded(workspaceId);
+}
+
+/**
+ * Starts the 30 days for recordings whose backup ended while nobody could get
+ * in (backupEnded), once they can again, and tells the owner the date.
+ */
+export async function startBackupEndedClock(workspaceId: string) {
+  const w = await db.workspace.findUnique({ where: { id: workspaceId }, select: { cloudBackup: true, suspendedAt: true, closedAt: true, deleteAt: true } });
+  if (!w || w.cloudBackup || lockedOut(w)) return 0;
+  const { count } = await db.video.updateMany({ where: { workspaceId, status: { not: "EXPIRED" }, purgeAt: null }, data: { purgeAt: purgeDate(false), expiryWarnedAt: null } });
+  if (count) await tellOwnerBackupEnded(workspaceId);
+  return count;
 }
